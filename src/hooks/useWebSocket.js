@@ -26,6 +26,7 @@ const ACTIVE_STUDENTS = STUDENTS.filter(s => s.todayActive).map(s => ({
   avatar: s.avatar,
   // Sub-materi aktif hari ini (sesuai riwayat 16 Mar / todayMateriId)
   materiId: s.todayMateriId,
+  level: s.todayLevel || 'low',
   // Emosi awal sesuai masterData
   emosi: s.emotionKey,
   // Quiz score aktual dari masterData
@@ -132,6 +133,9 @@ export function useWebSocket({ kelasId, guruId, enabled = true }) {
         upd.lastViolationTime = event.payload.timestamp || event.timestamp;
         upd.hasViolation = true;
       }
+      if (event.type === 'student_progress') {
+        upd.level = event.payload.level || prev.level;  // ← tambah
+      }
       if (event.type === 'student_quiz') {
         // Simpan score aktual (bukan /100)
         upd.lastQuiz = event.payload.score;
@@ -157,6 +161,7 @@ export function useWebSocket({ kelasId, guruId, enabled = true }) {
           avatar: s.avatar,
           emosi: s.emosi,
           materiId: s.materiId,
+          level: s.todayLevel || 'low',
           progress: Math.floor(40 + Math.random() * 50),
           aktif: true,
           lastSeen: s.lastActive,

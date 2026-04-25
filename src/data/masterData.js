@@ -398,12 +398,13 @@ export const STUDENTS = [
     status: "Perhatian", lastActive: "4 hari lalu",
     todayActive: false,
     todayStudyHours: null, todayQuizScore: null, todayQuizTotal: null,
-    todayMapelId: null, todayMateriId: null,
+    todayMapelId: null, todayMateriId: null, todayLevel: null,
     riwayat: [
       {
         tanggal: "Senin, 10 Mar 2026",
         mapelId: "mat", materiId: "Aljabar Dasar",
-        durasi: 0.5, quiz: 3, quizTotal: 10,
+        level: "mid",
+        durasi: 0.5, quiz: 30, quizTotal: 100,
         emosiSesi: [{ jam: "09:00", emosi: "tidak_terdeteksi" }, { jam: "09:10", emosi: "bingung" }, { jam: "09:20", emosi: "frustrasi" }, { jam: "09:30", emosi: "frustrasi" }],
         violations: [
           { detail: "Keluar Fullscreen", timestamp: "09:08" },
@@ -413,7 +414,8 @@ export const STUDENTS = [
       {
         tanggal: "Rabu, 5 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 0.7, quiz: 4, quizTotal: 10,
+        level: "low",
+        durasi: 0.7, quiz: 40, quizTotal: 100,
         emosiSesi: [{ jam: "10:00", emosi: "bingung" }, { jam: "10:15", emosi: "bingung" }, { jam: "10:30", emosi: "frustrasi" }, { jam: "10:42", emosi: "frustrasi" }],
         violations: []
       },
@@ -425,27 +427,30 @@ export const STUDENTS = [
     kelasId: "x1",
     emotionKey: "antusias",
     status: "Normal", lastActive: "Hari ini 13:45",
-    todayActive: true, todayStudyHours: 1.5, todayQuizScore: 8, todayQuizTotal: 10,
-    todayMapelId: "mat", todayMateriId: "Fungsi Kuadrat",
+    todayActive: true, todayStudyHours: 1.5, todayQuizScore: 80, todayQuizTotal: 100,
+    todayMapelId: "mat", todayMateriId: "Fungsi Kuadrat", todayLevel: "high",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Fungsi Kuadrat",
-        durasi: 1.5, quiz: 8, quizTotal: 10,
+        level: "high",
+        durasi: 1.5, quiz: 80, quizTotal: 100,
         emosiSesi: [{ jam: "13:00", emosi: "bingung" }, { jam: "13:30", emosi: "tidak_terdeteksi" }, { jam: "13:45", emosi: "antusias" }, { jam: "15:00", emosi: "antusias" }],
         violations: [{ detail: "Keluar Fullscreen", timestamp: "13:45" }]
       },
       {
         tanggal: "Jumat, 14 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        durasi: 1.8, quiz: 9, quizTotal: 10,
+        level: "low",
+        durasi: 1.8, quiz: 90, quizTotal: 100,
         emosiSesi: [{ jam: "08:00", emosi: "bosan" }, { jam: "08:20", emosi: "antusias" }, { jam: "09:20", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Kamis, 13 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 2.0, quiz: 8, quizTotal: 10,
+        level: "mid",
+        durasi: 2.0, quiz: 80, quizTotal: 100,
         emosiSesi: [{ jam: "14:00", emosi: "bosan" }, { jam: "14:45", emosi: "antusias" }, { jam: "15:00", emosi: "antusias" }, { jam: "15:20", emosi: "antusias" }],
         violations: []
       },
@@ -458,12 +463,13 @@ export const STUDENTS = [
     emotionKey: "frustrasi",
     status: "Perhatian", lastActive: "3 hari lalu",
     todayActive: false, todayStudyHours: null, todayQuizScore: null, todayQuizTotal: null,
-    todayMapelId: null, todayMateriId: null,
+    todayMapelId: null, todayMateriId: null, todayLevel: null,
     riwayat: [
       {
         tanggal: "Jumat, 13 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 0.6, quiz: 4, quizTotal: 10,
+        level: "low",
+        durasi: 0.6, quiz: 40, quizTotal: 100,
         emosiSesi: [{ jam: "11:00", emosi: "bingung" }, { jam: "11:10", emosi: "frustrasi" }, { jam: "11:20", emosi: "tidak_terdeteksi" }, { jam: "11:36", emosi: "frustrasi" }],
         violations: [
           { detail: "Pindah Tab terdeteksi", timestamp: "11:05" },
@@ -473,7 +479,8 @@ export const STUDENTS = [
       {
         tanggal: "Rabu, 11 Mar 2026",
         mapelId: "mat", materiId: "Aljabar Dasar",
-        durasi: 0.5, quiz: 3, quizTotal: 10,
+        level: "low",
+        durasi: 0.5, quiz: 30, quizTotal: 100,
         emosiSesi: [{ jam: "09:00", emosi: "bingung" }, { jam: "09:15", emosi: "frustrasi" }, { jam: "09:30", emosi: "frustrasi" }],
         violations: [{ detail: "Keluar Fullscreen", timestamp: "09:21" }]
       },
@@ -485,41 +492,46 @@ export const STUDENTS = [
     kelasId: "x1",
     emotionKey: "antusias",
     status: "Normal", lastActive: "Hari ini 14:30",
-    todayActive: true, todayStudyHours: 2.0, todayQuizScore: 10, todayQuizTotal: 10,
-    todayMapelId: "mat", todayMateriId: "Statistika",
+    todayActive: true, todayStudyHours: 2.0, todayQuizScore: 100, todayQuizTotal: 100,
+    todayMapelId: "mat", todayMateriId: "Statistika", todayLevel: "high",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        durasi: 2.0, quiz: 10, quizTotal: 10,
+        level: "high",
+        durasi: 2.0, quiz: 100, quizTotal: 100,
         emosiSesi: [{ jam: "14:00", emosi: "tidak_terdeteksi" }, { jam: "14:15", emosi: "bingung" }, { jam: "14:45", emosi: "antusias" }, { jam: "16:00", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Fungsi Kuadrat",
-        durasi: 1.5, quiz: 9, quizTotal: 10,
+        level: "high",
+        durasi: 1.5, quiz: 90, quizTotal: 100,
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:20", emosi: "bingung" }, { jam: "10:40", emosi: "antusias" }, { jam: "11:20", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Jumat, 14 Mar 2026",
         mapelId: "mat", materiId: "Fungsi Kuadrat",
-        durasi: 2.5, quiz: 10, quizTotal: 10,
+        level: "high",
+        durasi: 2.5, quiz: 100, quizTotal: 100,
         emosiSesi: [{ jam: "09:00", emosi: "bosan" }, { jam: "09:20", emosi: "antusias" }, { jam: "10:30", emosi: "tidak_terdeteksi" }, { jam: "11:00", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Kamis, 13 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 1.5, quiz: 9, quizTotal: 10,
+        level: "high",
+        durasi: 1.5, quiz: 90, quizTotal: 100,
         emosiSesi: [{ jam: "13:00", emosi: "bingung" }, { jam: "13:20", emosi: "antusias" }, { jam: "14:30", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Rabu, 12 Mar 2026",
         mapelId: "mat", materiId: "Aljabar Dasar",
-        durasi: 2.0, quiz: 10, quizTotal: 10,
+        level: "high",
+        durasi: 2.0, quiz: 100, quizTotal: 100,
         emosiSesi: [{ jam: "08:00", emosi: "bosan" }, { jam: "08:20", emosi: "antusias" }, { jam: "08:45", emosi: "bingung" }, { jam: "09:15", emosi: "antusias" }, { jam: "09:30", emosi: "antusias" }, { jam: "10:00", emosi: "antusias" }],
         violations: []
       },
@@ -531,27 +543,30 @@ export const STUDENTS = [
     kelasId: "x1",
     emotionKey: "bosan",
     status: "Normal", lastActive: "Hari ini 11:20",
-    todayActive: true, todayStudyHours: 1.0, todayQuizScore: 7, todayQuizTotal: 10,
-    todayMapelId: "mat", todayMateriId: "Persamaan Linear",
+    todayActive: true, todayStudyHours: 1.0, todayQuizScore: 70, todayQuizTotal: 100,
+    todayMapelId: "mat", todayMateriId: "Persamaan Linear", todayLevel: "high",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 1.0, quiz: 7, quizTotal: 10,
+        level: "high",
+        durasi: 1.0, quiz: 70, quizTotal: 100,
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:15", emosi: "tidak_terdeteksi" }, { jam: "10:30", emosi: "bosan" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "bosan" }],
         violations: [{ detail: "Pindah Tab terdeteksi", timestamp: "10:22" }]
       },
       {
         tanggal: "Jumat, 14 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        durasi: 1.5, quiz: 6, quizTotal: 10,
+        level: "high",
+        durasi: 1.5, quiz: 60, quizTotal: 100,
         emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "14:00", emosi: "bosan" }, { jam: "14:30", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Rabu, 12 Mar 2026",
         mapelId: "mat", materiId: "Aljabar Dasar",
-        durasi: 1.3, quiz: 7, quizTotal: 10,
+        level: "high",
+        durasi: 1.3, quiz: 70, quizTotal: 100,
         emosiSesi: [{ jam: "09:00", emosi: "bingung" }, { jam: "09:20", emosi: "bosan" }, { jam: "09:40", emosi: "antusias" }, { jam: "10:20", emosi: "antusias" }],
         violations: []
       },
@@ -563,27 +578,30 @@ export const STUDENTS = [
     kelasId: "x1",
     emotionKey: "bingung",
     status: "Normal", lastActive: "Hari ini 12:30",
-    todayActive: true, todayStudyHours: 0.5, todayQuizScore: 4, todayQuizTotal: 10,
-    todayMapelId: "mat", todayMateriId: "Persamaan Linear",
+    todayActive: true, todayStudyHours: 0.5, todayQuizScore: 40, todayQuizTotal: 100,
+    todayMapelId: "mat", todayMateriId: "Persamaan Linear", todayLevel: "low",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 0.5, quiz: 4, quizTotal: 10,
+        level: "low",
+        durasi: 0.5, quiz: 40, quizTotal: 100,
         emosiSesi: [{ jam: "12:00", emosi: "bingung" }, { jam: "12:20", emosi: "frustrasi" }, { jam: "12:30", emosi: "bingung" }],
         violations: []
       },
       {
         tanggal: "Minggu, 15 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        durasi: 0.8, quiz: 4, quizTotal: 10,
+        level: "low",
+        durasi: 0.8, quiz: 40, quizTotal: 100,
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:15", emosi: "bingung" }, { jam: "10:48", emosi: "bingung" }],
         violations: []
       },
       {
         tanggal: "Jumat, 13 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 1.0, quiz: 5, quizTotal: 10,
+        level: "low",
+        durasi: 1.0, quiz: 50, quizTotal: 100,
         emosiSesi: [{ jam: "14:00", emosi: "bingung" }, { jam: "14:30", emosi: "antusias" }, { jam: "14:45", emosi: "bingung" }, { jam: "15:00", emosi: "bingung" }],
         violations: [{ detail: "Keluar Fullscreen", timestamp: "14:17" }]
       },
@@ -596,19 +614,21 @@ export const STUDENTS = [
     emotionKey: "bosan",
     status: "Normal", lastActive: "1 Hari lalu",
     todayActive: false, todayStudyHours: null, todayQuizScore: null, todayQuizTotal: null,
-    todayMapelId: null, todayMateriId: null,
+    todayMapelId: null, todayMateriId: null, todayLevel: null,
     riwayat: [
       {
         tanggal: "Minggu, 15 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 1.0, quiz: 7, quizTotal: 10,
+        level: "low",
+        durasi: 1.0, quiz: 70, quizTotal: 100,
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:30", emosi: "tidak_terdeteksi" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "bosan" }],
         violations: []
       },
       {
         tanggal: "Sabtu, 14 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        durasi: 1.5, quiz: 6, quizTotal: 10,
+        level: "low",
+        durasi: 1.5, quiz: 60, quizTotal: 100,
         emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "13:40", emosi: "bosan" }, { jam: "14:30", emosi: "antusias" }],
         violations: []
       },
@@ -621,23 +641,24 @@ export const STUDENTS = [
     emotionKey: "bosan",
     status: "Normal", lastActive: "1 Hari lalu",
     todayActive: false, todayStudyHours: null, todayQuizScore: null, todayQuizTotal: null,
-    todayMapelId: null, todayMateriId: null,
+    todayMapelId: null, todayMateriId: null, todayLevel: null,
     riwayat: [
       {
         tanggal: "Minggu, 15 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 1.0, quiz: 7, quizTotal: 10,
+        level: "low",
+        durasi: 1.0, quiz: 70, quizTotal: 100,
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:30", emosi: "bosan" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "antusias" }],
         violations: [
           { detail: "Keluar Fullscreen", timestamp: "10:18" },
-          { detail: "Pindah Tab terdeteksi", timestamp: "10:31" },
         ]
       },
       {
         tanggal: "Sabtu, 14 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        durasi: 1.5, quiz: 6, quizTotal: 10,
-        emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "13:40", emosi: "frustasi" }, { jam: "14:00", emosi: "tidak_terdeteksi" }, { jam: "14:30", emosi: "bosan" }],
+        level: "low",
+        durasi: 1.5, quiz: 60, quizTotal: 100,
+        emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "13:40", emosi: "frustrasi" }, { jam: "14:00", emosi: "tidak_terdeteksi" }, { jam: "14:30", emosi: "bosan" }],
         violations: []
       },
     ]
@@ -648,27 +669,30 @@ export const STUDENTS = [
     kelasId: "x1",
     emotionKey: "bosan",
     status: "Normal", lastActive: "Hari ini 11:20",
-    todayActive: true, todayStudyHours: 1.0, todayQuizScore: 7, todayQuizTotal: 10,
-    todayMapelId: "mat", todayMateriId: "Persamaan Linear",
+    todayActive: true, todayStudyHours: 1.0, todayQuizScore: 70, todayQuizTotal: 100,
+    todayMapelId: "mat", todayMateriId: "Persamaan Linear", todayLevel: "high",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        durasi: 1.0, quiz: 7, quizTotal: 10,
-        emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:15", emosi: "bosan" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "bosan" }],
+        level: "high",
+        durasi: 1.0, quiz: 70, quizTotal: 100,
+        emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:15", emosi: "bosan" }, { jam: "10:40", emosi: "frustrasi" }, { jam: "11:00", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Minggu, 15 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        durasi: 1.5, quiz: 6, quizTotal: 10,
+        level: "mid",
+        durasi: 1.5, quiz: 60, quizTotal: 100,
         emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "13:40", emosi: "bosan" }, { jam: "14:30", emosi: "tidak_terdeteksi" }],
         violations: []
       },
       {
         tanggal: "Sabtu, 14 Mar 2026",
         mapelId: "mat", materiId: "Fungsi Kuadrat",
-        durasi: 2.0, quiz: 9, quizTotal: 10,
+        level: "high",
+        durasi: 2.0, quiz: 90, quizTotal: 100,
         emosiSesi: [{ jam: "13:00", emosi: "tidak_terdeteksi" }, { jam: "13:20", emosi: "bingung" }, { jam: "14:00", emosi: "antusias" }, { jam: "15:00", emosi: "antusias" }],
         violations: []
       },

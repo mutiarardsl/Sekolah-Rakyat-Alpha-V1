@@ -9,7 +9,7 @@
  *    → set chatMateri + reset camGranted → navigasi ke chat
  *  - Hapus showCamModal (modal kamera sekarang inside ChatSection)
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useStudentStore } from '../../stores/studentStore';
@@ -17,6 +17,7 @@ import { Btn } from '../shared/UI';
 import ChangePasswordModal from '../shared/ChangePasswordModal';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { CONF_CONTENT_INIT } from '../../data/masterData';
+import { getGame } from '../../api/game';
 import DashboardSection from './sections/DashboardSection';
 import ProgressSection from './sections/ProgressSection';
 import ChatSection from './sections/ChatSection';
@@ -256,8 +257,11 @@ const StudentView = () => {
     addRecentActivity,      // ← dari store (persisten, anti stale-closure)
   } = useStudentStore();
 
-  // Tambahkan state baru (dekat state lainnya)
+  // gameContext: { mapelId, mapelLabel, mapelIcon, mapelColor, elemenId, elemenLabel, materiId, level, game_id? }
+  // gameData:   response dari getGame() — berisi html_url + status dari Tim 4
   const [gameContext, setGameContext] = useState(null);
+  const [gameData, setGameData] = useState(null);   // null | GameItem
+  const [gameLoading, setGameLoading] = useState(false);
 
   /* ── Camera (inside ChatSection) ────────────────────────────── */
   const [camGranted, setCamGranted] = useState(false);
@@ -352,7 +356,18 @@ const StudentView = () => {
     setActivePage,
     camGranted, setCamGranted,
     addRecentActivity,
-    openGame: (ctx) => setGameContext(ctx),
+    openGame: (ctx) => {
+      // ctx: { mapelId, mapelLabel, mapelIcon, mapelColor, elemenId, elemenLabel, materiId?, level, game_id? }
+      setGameContext(ctx);
+      setGameData(null);
+      // Jika ada game_id → fetch detail (html_url) dari Tim 4
+      if (ctx.game_id) {
+        setGameLoading(true);
+        getGame(ctx.game_id)
+          .then(data => { setGameData(data); setGameLoading(false); })
+          .catch(() => setGameLoading(false));
+      }
+    },
   };
 
   return (
@@ -483,14 +498,17 @@ const StudentView = () => {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: FS.lg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                🎮 Game Belajar — {gameContext.materiId}
+                🎮 {gameData?.nama || 'Game Belajar'}
               </div>
               <div style={{ color: 'rgba(255,255,255,.7)', fontSize: FS.sm, marginTop: 1 }}>
-                {gameContext.mapelLabel} · Level {(gameContext.level || 'low').toUpperCase()}
+                {gameContext.mapelLabel}
+                {gameContext.elemenLabel && ` · ${gameContext.elemenLabel}`}
+                {(gameData?.materi || gameContext.materiId) && ` · ${gameData?.materi || gameContext.materiId}`}
+                {` · Level ${(gameContext.level || 'Low').toUpperCase()}`}
               </div>
             </div>
             <button
-              onClick={() => setGameContext(null)}
+              onClick={() => { setGameContext(null); setGameData(null); setGameLoading(false); }}
               style={{
                 background: 'rgba(255,255,255,.15)', border: '1.5px solid rgba(255,255,255,.25)',
                 borderRadius: 10, padding: '8px 16px', color: '#fff',
@@ -505,51 +523,86 @@ const StudentView = () => {
             </button>
           </div>
 
-          {/* Game Canvas Area — Tim 4 mount komponen game di sini */}
-          <div style={{
-            flex: 1, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            padding: 32, gap: 20,
-            background: 'radial-gradient(ellipse at center, #1a2a3a 0%, #0d1520 70%)',
-          }}>
-            {/* Placeholder game canvas — diganti Tim 4 */}
-            <div style={{
-              width: '100%', maxWidth: 720,
-              aspectRatio: '16/9',
-              borderRadius: 20,
-              background: '#111c2a',
-              border: `2px solid ${gameContext.mapelColor}44`,
-              boxShadow: `0 0 60px ${gameContext.mapelColor}22, 0 8px 32px rgba(0,0,0,.5)`,
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: 18,
-              position: 'relative', overflow: 'hidden',
-            }}>
-              {/* Decorative glow */}
-              <div style={{ position: 'absolute', top: -60, left: '50%', transform: 'translateX(-50%)', width: 240, height: 240, borderRadius: '50%', background: `${gameContext.mapelColor}18`, filter: 'blur(40px)', pointerEvents: 'none' }} />
-              <div style={{ fontSize: 64, filter: 'drop-shadow(0 4px 12px rgba(0,0,0,.4))' }}>🎮</div>
-              <div style={{ textAlign: 'center', zIndex: 1 }}>
-                <div style={{ color: '#fff', fontWeight: 700, fontSize: FS.h2, marginBottom: 8 }}>
-                  Area Game
-                </div>
-                <div style={{ color: 'rgba(255,255,255,.45)', fontSize: FS.base, lineHeight: 1.6, maxWidth: 360 }}>
-                  Tim 4 akan mount komponen game edukatif di sini.<br />
-                  Kontainer sudah siap dengan konteks mapel & level.
-                </div>
-              </div>
-              <div style={{
-                background: `${gameContext.mapelColor}22`,
-                border: `1px solid ${gameContext.mapelColor}55`,
-                borderRadius: 12, padding: '8px 20px', zIndex: 1,
-              }}>
-                <span style={{ color: gameContext.mapelColor, fontSize: FS.md, fontWeight: 700 }}>
-                  {gameContext.materiId} · Level {(gameContext.level || 'low').toUpperCase()}
-                </span>
-              </div>
-            </div>
+          {/* Game Canvas — Tim 4 deliver HTML, render via iframe */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
 
-            <div style={{ fontSize: FS.md, color: 'rgba(255,255,255,.3)', textAlign: 'center' }}>
-              Klik "← Kembali Belajar" di atas untuk melanjutkan sesi dengan Mentor AI
-            </div>
+            {/* State: loading — fetch getGame() sedang berlangsung */}
+            {gameLoading && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: 'radial-gradient(ellipse at center, #1a2a3a 0%, #0d1520 70%)' }}>
+                <div style={{ width: 52, height: 52, border: `4px solid ${gameContext.mapelColor}33`, borderTopColor: gameContext.mapelColor, borderRadius: '50%', animation: 'spin .9s linear infinite' }} />
+                <div style={{ color: 'rgba(255,255,255,.6)', fontWeight: 600, fontSize: FS.lg }}>Memuat game…</div>
+              </div>
+            )}
+
+            {/* State: generating — Tim 4 masih proses generate HTML */}
+            {!gameLoading && gameData?.status === 'generating' && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: 'radial-gradient(ellipse at center, #1a2a3a 0%, #0d1520 70%)' }}>
+                <div style={{ width: 52, height: 52, border: `4px solid ${gameContext.mapelColor}33`, borderTopColor: gameContext.mapelColor, borderRadius: '50%', animation: 'spin .9s linear infinite' }} />
+                <div style={{ color: '#fff', fontWeight: 700, fontSize: FS.h2 }}>Sedang generate game…</div>
+                <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.md, textAlign: 'center', maxWidth: 340, lineHeight: 1.6 }}>
+                  Tim 4 sedang menyiapkan game untuk<br />
+                  <strong style={{ color: gameContext.mapelColor }}>{gameContext.elemenLabel || gameContext.mapelLabel}</strong>
+                  {gameContext.materiId && <> · <strong style={{ color: 'rgba(255,255,255,.6)' }}>{gameContext.materiId}</strong></>}
+                </div>
+              </div>
+            )}
+
+            {/* State: failed */}
+            {!gameLoading && gameData?.status === 'failed' && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: 'radial-gradient(ellipse at center, #1a2a3a 0%, #0d1520 70%)' }}>
+                <div style={{ fontSize: 52 }}>⚠️</div>
+                <div style={{ color: '#fff', fontWeight: 700, fontSize: FS.h2 }}>Gagal memuat game</div>
+                <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.md }}>Coba kembali beberapa saat lagi</div>
+                <button
+                  onClick={() => { setGameContext(null); setGameData(null); setGameLoading(false); }}
+                  style={{ marginTop: 8, padding: '10px 24px', borderRadius: 10, border: `1.5px solid ${gameContext.mapelColor}`, background: 'transparent', color: gameContext.mapelColor, fontWeight: 700, fontSize: FS.md, cursor: 'pointer', fontFamily: 'inherit' }}
+                >← Kembali Belajar</button>
+              </div>
+            )}
+
+            {/* State: ready — render game HTML dari Tim 4 via iframe */}
+            {!gameLoading && gameData?.status === 'ready' && gameData?.html_url && (
+              <iframe
+                key={gameData.html_url}
+                src={gameData.html_url}
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                title={`Game ${gameData.elemen_label || gameContext.mapelLabel}${gameData.materi ? ' · ' + gameData.materi : ''} Level ${gameData.level}`}
+                sandbox="allow-scripts allow-same-origin allow-forms"
+                allow="fullscreen"
+              />
+            )}
+
+            {/* State: belum ada game_id — placeholder informatif */}
+            {!gameLoading && !gameData && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                padding: 32, gap: 20,
+                background: 'radial-gradient(ellipse at center, #1a2a3a 0%, #0d1520 70%)',
+              }}>
+                <div style={{ width: '100%', maxWidth: 680, aspectRatio: '16/9', borderRadius: 20, background: '#111c2a', border: `2px solid ${gameContext.mapelColor}44`, boxShadow: `0 0 60px ${gameContext.mapelColor}22, 0 8px 32px rgba(0,0,0,.5)`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', top: -60, left: '50%', transform: 'translateX(-50%)', width: 240, height: 240, borderRadius: '50%', background: `${gameContext.mapelColor}18`, filter: 'blur(40px)', pointerEvents: 'none' }} />
+                  <div style={{ fontSize: 60, filter: 'drop-shadow(0 4px 12px rgba(0,0,0,.4))' }}>🎮</div>
+                  <div style={{ textAlign: 'center', zIndex: 1 }}>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: FS.h2, marginBottom: 8 }}>Game Edukatif</div>
+                    <div style={{ color: 'rgba(255,255,255,.45)', fontSize: FS.base, lineHeight: 1.6, maxWidth: 360 }}>
+                      Game HTML dari Tim 4 akan di-render di sini.<br />
+                      Pilih game dari daftar di menu belajar.
+                    </div>
+                  </div>
+                  <div style={{ background: `${gameContext.mapelColor}22`, border: `1px solid ${gameContext.mapelColor}55`, borderRadius: 12, padding: '8px 20px', zIndex: 1 }}>
+                    <span style={{ color: gameContext.mapelColor, fontSize: FS.md, fontWeight: 700 }}>
+                      {gameContext.elemenLabel || gameContext.mapelLabel}
+                      {gameContext.materiId && ` · ${gameContext.materiId}`}
+                      {` · Level ${(gameContext.level || 'Low').toUpperCase()}`}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ fontSize: FS.md, color: 'rgba(255,255,255,.3)', textAlign: 'center' }}>
+                  Klik &ldquo;← Kembali Belajar&rdquo; di atas untuk melanjutkan sesi dengan Mentor AI
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

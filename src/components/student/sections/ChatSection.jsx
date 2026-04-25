@@ -1909,7 +1909,18 @@ const ChatSection = ({
             {/* Tombol Game */}
             <div style={{ padding: '8px 12px', borderBottom: `1px solid rgba(13,92,99,.06)`, flexShrink: 0 }}>
               <button
-                onClick={() => { if (materiId && openGame) openGame({ mapelId: chatMateri.mapelId, materiId, level: chatMateri.level || 'low', mapelColor: chatMateri.mapelColor, mapelLabel: chatMateri.mapelLabel, mapelIcon: chatMateri.mapelIcon }); }}
+                onClick={() => { if (materiId && openGame) openGame({
+                  mapelId:     chatMateri.mapelId,
+                  mapelLabel:  chatMateri.mapelLabel,
+                  mapelIcon:   chatMateri.mapelIcon,
+                  mapelColor:  chatMateri.mapelColor,
+                  elemenId:    chatMateri.elemenId    || null,
+                  elemenLabel: chatMateri.elemenLabel || null,
+                  materiId,
+                  level:       chatMateri.level || 'Low',
+                  // game_id tidak diisi di sini — siswa pilih game dari getGameList
+                  // di produksi: buka modal pilih game, set game_id sebelum openGame
+                }); }}
                 disabled={!materiId}
                 style={{
                   width: '100%', padding: '9px 0', borderRadius: 9,

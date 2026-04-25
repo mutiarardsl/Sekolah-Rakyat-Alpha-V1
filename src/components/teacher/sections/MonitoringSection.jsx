@@ -64,6 +64,8 @@ const generateAIEvaluasi = (st) => {
   const hasQuiz = st.todayQuizScore != null && st.todayQuizTotal != null;
   const noQuiz = st.todayActive && st.todayMateriId && !hasQuiz;
   const latestSesi = st.riwayat?.[0];
+  const levelLabel = { low: 'Level Low', mid: 'Level Mid', high: 'Level High' };
+  const levelCtx = st.todayLevel ? `(${levelLabel[st.todayLevel]}) ` : '';
   const emosiProfile = calcEmosiProfile(latestSesi?.emosiSesi);
   const durasi = st.todayStudyHours;
   const durasiLabel = !durasi ? null : durasi < 0.5 ? 'sangat singkat (< 30 menit)' : durasi < 1.0 ? 'singkat (< 1 jam)' : durasi >= 2.5 ? 'sangat panjang (> 2.5 jam)' : null;
@@ -85,16 +87,17 @@ const generateAIEvaluasi = (st) => {
   }
   if (!hasQuiz) return null;
   const pct = st.todayQuizScore / st.todayQuizTotal;
+  const pctStr = `${Math.round(pct * 100)}/100`;
   if (pct >= 0.9) {
-    return [`Pencapaian luar biasa (${st.todayQuizScore}/${st.todayQuizTotal}).`, emosiProfile?.positiveEnd ? 'Emosi antusias — kondisi ideal.' : '', 'Siswa dapat diberi materi lanjut.'].filter(Boolean).join(' ');
+    return [`Pencapaian luar biasa (${pctStr}).`, emosiProfile?.positiveEnd ? 'Emosi antusias — kondisi ideal.' : '', 'Siswa dapat diberi materi lanjut.'].filter(Boolean).join(' ');
   }
   if (pct >= 0.7) {
-    return [`Pemahaman cukup baik (${st.todayQuizScore}/${st.todayQuizTotal}).`, durasiLabel === 'singkat (< 1 jam)' ? 'Durasi singkat — pendalaman berpotensi tingkatkan skor.' : '', emosiInsight, 'Latihan variatif untuk perkuat konsep.'].filter(Boolean).join(' ');
+    return [`Pemahaman cukup baik (${pctStr}).`, durasiLabel === 'singkat (< 1 jam)' ? 'Durasi singkat — pendalaman berpotensi tingkatkan skor.' : '', emosiInsight, 'Latihan variatif untuk perkuat konsep.'].filter(Boolean).join(' ');
   }
   if (pct >= 0.5) {
-    return [`Perlu perhatian (${st.todayQuizScore}/${st.todayQuizTotal}).`, emosiInsight || (emosiProfile?.negRatio > 0.4 ? 'Emosi negatif dominan — intervensi dini.' : ''), 'Rekomendasikan sesi ulang dengan pendekatan visual.'].filter(Boolean).join(' ');
+    return [`Perlu perhatian (${pctStr}).`, emosiInsight || (emosiProfile?.negRatio > 0.4 ? 'Emosi negatif dominan — intervensi dini.' : ''), 'Rekomendasikan sesi ulang dengan pendekatan visual.'].filter(Boolean).join(' ');
   }
-  return [`Pemahaman masih sangat kurang (${st.todayQuizScore}/${st.todayQuizTotal}).`, emosiInsight, 'Intervensi segera — pertimbangkan bimbingan individual.'].filter(Boolean).join(' ');
+  return [`Pemahaman masih sangat kurang (${pctStr}).`, emosiInsight, 'Intervensi segera — pertimbangkan bimbingan individual.'].filter(Boolean).join(' ');
 };
 
 /* ── Smart Alerts ────────────────────────────────────────────────── */
@@ -117,9 +120,9 @@ function generateSmartAlerts(studentsWithLive) {
         if ((seg.emosi === 'frustrasi' || seg.emosi === 'bingung') && seg.durasi !== null) {
           if (!kritisEmosi) { kritisEmosi = seg.emosi; firstJam = seg.mulai; }
           totalDurasi += seg.durasi; lastJam = seg.selesai;
-        } else if (totalDurasi <= 10) { kritisEmosi = null; totalDurasi = 0; firstJam = null; lastJam = null; }
+        } else if (!seg.isLast) { kritisEmosi = null; totalDurasi = 0; firstJam = null; lastJam = null; }
       });
-      if (totalDurasi > 10 && kritisEmosi && !alerts.find(a => a.id === `emosi-${st.id}`)) {
+      if (totalDurasi > 15 && kritisEmosi && !alerts.find(a => a.id === `emosi-${st.id}`)) {
         const meta = EMOSI_META[kritisEmosi];
         alerts.push({ id: `emosi-${st.id}`, level: kritisEmosi === 'frustrasi' ? 'critical' : 'warning', icon: meta.emoji, text: `${st.name} terdeteksi ${meta.label} ±${totalDurasi} menit (${firstJam}${lastJam ? '–' + lastJam : ''})`, color: meta.color, bg: kritisEmosi === 'frustrasi' ? '#FFF5F5' : '#FFFBF0', student: st });
       }
@@ -172,7 +175,7 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, onClose }) => {
     // Header — tanpa kolom evaluasi
     const header = [
       'Nama Siswa', 'NIS', 'Tanggal', 'Kelas', 'Mata Pelajaran',
-      'Elemen / Materi', 'Nilai Quiz', 'Total Soal', 'Durasi (jam)', 'Evaluasi',
+      'Elemen / Materi', 'Level', 'Nilai Quiz', 'Durasi (jam)', 'Evaluasi',
     ].join(',');
 
     // Parse tanggal yang dipilih untuk matching riwayat
@@ -206,8 +209,8 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, onClose }) => {
             `"${st.name}"`, `"${st.nis || '-'}"`, selectedDate,
             `"${cls?.label || '-'}"`, `"${teacherMapel?.label || '-'}"`,
             `"${r.materiId || '-'}"`,
-            hasQuiz ? r.quiz : '-',
-            hasQuiz ? r.quizTotal : '-',
+            `"${r.level || '-'}"`,
+            hasQuiz ? Math.round((r.quiz / r.quizTotal) * 100) : '-',
             r.durasi != null ? r.durasi.toFixed(1) : '-',
             generateAIEvaluasi(st),
           ].join(','));
@@ -387,6 +390,16 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                             <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, marginBottom: 3 }}>{r.materiId}</div>
                             <div style={{ display: 'flex', gap: 10 }}>
                               <span style={{ fontSize: FS.sm, fontWeight: 700, color: quizColor }}>Quiz: {r.quiz}/{r.quizTotal}</span>
+                              {r.level && (
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700, padding: '1px 7px',
+                                  borderRadius: 99,
+                                  background: r.level === 'high' ? '#FFF5F5' : r.level === 'mid' ? '#FFFBF0' : '#F0FFF4',
+                                  color: r.level === 'high' ? '#9B2C2C' : r.level === 'mid' ? '#B7791F' : '#276749',
+                                }}>
+                                  Level {r.level}
+                                </span>
+                              )}
                               <span style={{ fontSize: FS.sm, color: C.darkL }}>{r.durasi.toFixed(1)} jam</span>
                             </div>
                           </div>
@@ -526,7 +539,7 @@ const MonitoringSection = ({
     const allViolations = [...latestSessionViolations, ...liveViolations, ...eventViolations].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
     const seen = new Set();
     const violations = allViolations.filter(v => { const key = `${v.detail}__${v.timestamp}`; if (seen.has(key)) return false; seen.add(key); return true; });
-    const baseStudent = live ? { ...s, todayActive: live.aktif ?? s.todayActive, emotionKey: live.emosi || s.emotionKey, todayMateriId: live.materiId || s.todayMateriId, todayQuizScore: live.lastQuiz ?? s.todayQuizScore, todayQuizTotal: live.lastQuizTotal ?? s.todayQuizTotal } : s;
+    const baseStudent = live ? { ...s, todayActive: live.aktif ?? s.todayActive, todayLevel: live.level || s.todayLevel, emotionKey: live.emosi || s.emotionKey, todayMateriId: live.materiId || s.todayMateriId, todayQuizScore: live.lastQuiz ?? s.todayQuizScore, todayQuizTotal: live.lastQuizTotal ?? s.todayQuizTotal } : s;
     return { ...baseStudent, violations, hasViolation: violations.length > 0, lastViolation: violations[violations.length - 1] || null, violationCount: violations.length };
   });
 
@@ -601,8 +614,16 @@ const MonitoringSection = ({
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: C.teal }}>
-                    {['Nama Siswa', 'Materi', 'Nilai Quiz', 'Durasi', 'Evaluasi', 'Aksi'].map(h => (
-                      <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontSize: FS.xs, fontWeight: 700, color: C.white, textTransform: 'uppercase', letterSpacing: .7, whiteSpace: 'nowrap' }}>{h}</th>
+                    {[
+                      { label: 'Nama Siswa', align: 'left' },
+                      { label: 'Materi/Elemen', align: 'left' },
+                      { label: 'Level', align: 'center' },
+                      { label: 'Nilai Quiz', align: 'center' },
+                      { label: 'Durasi', align: 'center' },
+                      { label: 'Evaluasi', align: 'center' },
+                      { label: 'Aksi', align: 'center' },
+                    ].map(h => (
+                      <th key={h.label} style={{ padding: '9px 12px', textAlign: h.align, fontSize: FS.xs, fontWeight: 700, color: C.white, textTransform: 'uppercase', letterSpacing: .7, whiteSpace: 'nowrap' }}>{h.label}</th>
                     ))}
                   </tr>
                 </thead>
@@ -637,22 +658,41 @@ const MonitoringSection = ({
                             : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
                         </td>
 
+                        {/* level*/}
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                          {isActive && st.todayLevel ? (() => {
+                            const LEVEL_COLOR = {
+                              low: { label: 'Low', color: '#276749', bg: '#F0FFF4' },
+                              mid: { label: 'Mid', color: '#B7791F', bg: '#FFFBF0' },
+                              high: { label: 'High', color: '#9B2C2C', bg: '#FFF5F5' },
+                            };
+                            const lv = LEVEL_COLOR[st.todayLevel] || LEVEL_COLOR.low;
+                            return (
+                              <span style={{
+                                fontSize: 11, fontWeight: 700, padding: '2px 8px',
+                                borderRadius: 99, background: lv.bg, color: lv.color,
+                                border: `1px solid ${lv.color}40`,
+                              }}>{lv.label}</span>
+                            );
+                          })() : <span style={{ color: C.slate }}>—</span>}
+                        </td>
+
                         {/* Nilai Quiz */}
-                        <td style={{ padding: '10px 12px' }}>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                           {isActive && st.todayQuizScore != null
-                            ? <span style={{ fontSize: FS.md, fontWeight: 600, color: C.dark }}>{st.todayQuizScore}/{st.todayQuizTotal}</span>
+                            ? <span style={{ fontSize: FS.md, fontWeight: 600, color: C.dark }}>{Math.round((st.todayQuizScore / st.todayQuizTotal) * 100)}</span>
                             : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
                         </td>
 
                         {/* Durasi */}
-                        <td style={{ padding: '10px 12px' }}>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                           {isActive && st.todayStudyHours != null
                             ? <span style={{ fontSize: FS.md, color: C.darkL, fontWeight: 600 }}>{st.todayStudyHours.toFixed(1)} jam</span>
                             : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
                         </td>
 
                         {/* Evaluasi */}
-                        <td style={{ padding: '10px 12px' }}>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                           {(() => {
                             const evaluasi = generateAIEvaluasi(st);
                             if (!evaluasi) return <span style={{ fontSize: FS.base, color: C.slate }}>—</span>;
@@ -661,7 +701,7 @@ const MonitoringSection = ({
                         </td>
 
                         {/* Aksi */}
-                        <td style={{ padding: '10px 12px' }}>
+                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                           <button onClick={() => setSelectedStudent(st)}
                             style={{ background: isActive ? C.tealXL : '#EDF2F7', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: FS.sm, color: isActive ? C.teal : C.slate, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                             Detail
@@ -728,7 +768,7 @@ const MonitoringSection = ({
             return (
               <div>
                 <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#C05621', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
-                  😣 Emosi Negatif &gt;10 menit
+                  😣 Emosi Negatif &gt;15 menit
                 </div>
                 {siswaEmosiNegatif.length === 0 ? (
                   <div style={{ background: '#FFFBF0', borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', fontSize: FS.sm, color: '#744210', fontWeight: 600 }}>
@@ -785,7 +825,7 @@ const MonitoringSection = ({
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#9B2C2C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.name}</div>
-                          <div style={{ fontSize: FS.xs, color: '#718096' }}>Quiz: {st.todayQuizScore}/{st.todayQuizTotal} ({pct}%) · klik detail</div>
+                          <div style={{ fontSize: FS.xs, color: '#718096' }}>Quiz: {pct}/100 · klik detail</div>
                         </div>
                       </div>
                     </div>
@@ -794,30 +834,6 @@ const MonitoringSection = ({
               </div>
             );
           })()}
-
-          {/* Divider */}
-          <div style={{ height: 1, background: 'rgba(13,92,99,.06)', margin: '3px 0' }} />
-
-          {/* ── Kategori Akses Game (biru) ── */}
-          {(() => {
-            const siswaGame = studentsWithLive.filter(s => s.todayActive);
-            return (
-              <div>
-                <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#2B6CB0', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
-                  🎮 Akses Game
-                </div>
-                <div style={{ background: '#EBF8FF', borderRadius: 9, padding: '9px 11px', border: '1px solid #BEE3F8' }}>
-                  <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#2B6CB0', marginBottom: 3 }}>
-                    {siswaGame.length} siswa aktif hari ini
-                  </div>
-                  <div style={{ fontSize: FS.xs, color: '#718096' }}>
-                    {siswaGame.length > 0 ? `${siswaGame.map(s => s.name.split(' ')[0]).slice(0, 3).join(', ')}${siswaGame.length > 3 ? ` +${siswaGame.length - 3} lainnya` : ''}` : 'Belum ada aktivitas game'}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
         </div>
       </div>
 

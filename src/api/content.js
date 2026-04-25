@@ -9,10 +9,15 @@
  *  POST /content/generate       → generate mindmap / flashcard
  *  POST /content/publish        → guru publish paket konten ke siswa
  *  GET  /content/siswa          → ambil konten yang dipublish untuk siswa ini
- *  POST /content/curriculum     → admin upload dokumen ke VectorDB
  *  GET  /content/progress       → progress belajar siswa (dipakai dashboard + monitoring guru)
  *  POST /content/quiz/submit    → simpan hasil quiz siswa
  *  GET  /content/recommend      → rekomendasi topik berikutnya
+ *
+ * ── Catatan Kurikulum ────────────────────────────────────────────────
+ *  Kurikulum (mapel → elemen) sudah tersedia di DB dan di masterData.js.
+ *  Admin mengelola struktur kurikulum via /admin/mapel dan CRUD elemen.
+ *  Tidak ada endpoint upload kurikulum dari FE — Tim 3 mengelola VectorDB
+ *  secara internal di sisi backend.
  *
  * ── Auth Requirement ────────────────────────────────────────────────
  *  Bearer token required semua endpoint.
@@ -33,7 +38,7 @@ import { apiClient } from "./client";
 
 // ─── Types ────────────────────────────────────────────────────────────
 /**
- * @typedef {"antusias"|"bosan"|"bingung"|"frustrasi"} Emosi
+ * @typedef {"antusias"|"bosan"|"bingung"|"frustrasi"|"tidak_terdeteksi"} Emosi
  * @typedef {"mindmap"|"flashcard"} ContentTipe
  * @typedef {"Low"|"Mid"|"High"} Level
  *
@@ -141,35 +146,6 @@ export async function publishKonten(payload) {
  */
 export async function getKontenSiswa(params) {
   const { data } = await apiClient.get("/content/siswa", { params });
-  return data;
-}
-
-// ─── POST /content/curriculum ─────────────────────────────────────────
-/**
- * Admin upload dokumen kurikulum/silabus ke VectorDB Tim 3.
- * File diproses async — status dapat di-poll via doc_id.
- * Multipart/form-data.
- *
- * Success 202 → { doc_id: string, chunk_count: number, status: "indexed"|"processing"|"failed" }
- * Error   403 → role bukan admin
- * Error   413 → file terlalu besar
- *
- * @param {{ file: File, mapel_id: string, deskripsi?: string }} payload
- * @param {function(number):void} [onProgress]  - callback upload progress 0-100
- * @returns {Promise<{ doc_id: string, chunk_count: number, status: string }>}
- */
-export async function uploadCurriculum(payload, onProgress) {
-  const form = new FormData();
-  form.append("file", payload.file);
-  form.append("mapel_id", payload.mapel_id);
-  if (payload.deskripsi) form.append("deskripsi", payload.deskripsi);
-
-  const { data } = await apiClient.post("/content/curriculum", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-    onUploadProgress: (e) => {
-      if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
-    },
-  });
   return data;
 }
 

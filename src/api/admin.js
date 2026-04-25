@@ -32,17 +32,19 @@
  *            PUT    /admin/mapel/:id
  *            DELETE /admin/mapel/:id
  *
- *  Nilai  : POST   /admin/nilai/upload
+ *  Rekomendasi Guru → Siswa:
+ *            POST   /guru/rekomendasi   → guru kirim catatan/rekomendasi ke siswa
+ *            GET    /guru/rekomendasi   → siswa ambil rekomendasi yang diterima
  *
- *  Rekomendasi Guru:
- *            POST   /admin/rekomendasi
- *            GET    /admin/rekomendasi
+ * ── Catatan Nilai ────────────────────────────────────────────────────
+ *  Upload nilai dilakukan oleh guru langsung via /content/quiz/submit
+ *  per sesi quiz. Tidak ada endpoint bulk upload nilai dari sisi FE.
  *
  * ── Auth Requirement ────────────────────────────────────────────────
  *  Semua endpoint butuh Bearer token.
- *  role: admin       → semua endpoint
- *  role: guru        → nilai/upload, rekomendasi
- *  role: siswa       → (tidak ada akses ke /admin/*)
+ *  role: admin       → semua endpoint /admin/*
+ *  role: guru        → /guru/rekomendasi (POST)
+ *  role: siswa       → /guru/rekomendasi (GET), tidak ada akses ke /admin/*
  *
  * ── Field Conventions ────────────────────────────────────────────────
  *  - NIP guru: string 18 digit (bukan number — hindari overflow JS)
@@ -409,54 +411,17 @@ export const mapelApi = {
 };
 
 // ════════════════════════════════════════════════════════════════════
-// NILAI (Upload bulk dari guru)
-// ════════════════════════════════════════════════════════════════════
-
-/**
- * POST /admin/nilai/upload
- * Upload nilai siswa massal via CSV/XLSX.
- * Diizinkan untuk role: admin dan guru.
- * Multipart/form-data.
- *
- * Success 200 → {
- *   doc_id: string,
- *   filename: string,
- *   rows_parsed: number,
- *   rows_valid: number,
- *   rows_error: number,
- *   status: "processed"|"processing"|"failed",
- *   processed_at: string
- * }
- * Error   403 → role tidak diizinkan
- *
- * @param {{ file: File, kelas_id: string, mapel_id: string }} payload
- * @param {function(number):void} [onProgress]  - upload progress 0-100
- * @returns {Promise<object>}
- */
-export async function uploadNilai(payload, onProgress) {
-  const form = new FormData();
-  form.append("file", payload.file);
-  form.append("kelas_id", payload.kelas_id);
-  form.append("mapel_id", payload.mapel_id);
-
-  const { data } = await apiClient.post("/admin/nilai/upload", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-    onUploadProgress: (e) => {
-      if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
-    },
-  });
-  return data;
-}
-
-// ════════════════════════════════════════════════════════════════════
 // REKOMENDASI GURU → SISWA
 // ════════════════════════════════════════════════════════════════════
 
 /**
- * POST /admin/rekomendasi
+ * POST /guru/rekomendasi
  * Guru kirim rekomendasi/catatan ke siswa tertentu.
  * Muncul sebagai notifikasi di dashboard siswa (bell icon).
  * Dipakai dari MonitoringSection (modal "Beri Rekomendasi").
+ *
+ * Endpoint ada di namespace /guru/ bukan /admin/ karena ini fitur guru,
+ * bukan fitur administrasi. Hanya role guru yang boleh POST.
  *
  * Success 201 → { id: string, created_at: string }
  *
@@ -469,14 +434,15 @@ export async function uploadNilai(payload, onProgress) {
  * @returns {Promise<{ id: string, created_at: string }>}
  */
 export async function kirimRekomendasi(payload) {
-  const { data } = await apiClient.post("/admin/rekomendasi", payload);
+  const { data } = await apiClient.post("/guru/rekomendasi", payload);
   return data;
 }
 
 /**
- * GET /admin/rekomendasi
+ * GET /guru/rekomendasi
  * Ambil semua rekomendasi yang diterima siswa (notifikasi bell).
- * Dipakai DashboardSection siswa — NOTIFIKASI_GURU_INIT akan digantikan ini.
+ * Dipakai DashboardSection siswa.
+ * Role siswa yang mengakses, filter by siswa_id dari query param.
  *
  * Success 200 → Array<{
  *   id: string,
@@ -491,6 +457,6 @@ export async function kirimRekomendasi(payload) {
  * @returns {Promise<object[]>}
  */
 export async function getRekomendasiSiswa(params) {
-  const { data } = await apiClient.get("/admin/rekomendasi", { params });
+  const { data } = await apiClient.get("/guru/rekomendasi", { params });
   return data;
 }

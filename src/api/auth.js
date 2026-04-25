@@ -11,12 +11,17 @@
  *  POST /auth/logout          → invalidasi token di server
  *  POST /auth/refresh         → tukar refresh_token → access_token baru
  *  POST /auth/forgot-password → kirim email reset password
- *  POST /auth/register        → daftar akun baru (menunggu verifikasi admin)
  *  POST /auth/aktivasi        → aktivasi akun siswa (first login: ganti password)
  *  GET  /auth/me              → profil user saat ini (dari token)
  *
+ * ── Catatan Alur Akun ───────────────────────────────────────────────
+ *  Tidak ada self-register. Semua akun (siswa & guru) didaftarkan admin:
+ *   - Siswa : admin bulk upload CSV/XLSX → backend generate password sementara
+ *             → siswa login → is_first_login=true → ActivasiPage → aktivasi
+ *   - Guru  : admin tambah manual → backend kirim password via email
+ *
  * ── Auth Requirement ────────────────────────────────────────────────
- *  Public (tanpa token) : login, google, forgot-password, register, refresh
+ *  Public (tanpa token) : login, google, forgot-password, refresh
  *  Bearer token required : logout, aktivasi, me
  *
  * ── localStorage Keys ───────────────────────────────────────────────
@@ -138,30 +143,6 @@ export async function refreshToken(refresh_token) {
  */
 export async function forgotPassword(email) {
   const { data } = await apiClient.post("/auth/forgot-password", { email });
-  return data;
-}
-
-// ─── POST /auth/register ──────────────────────────────────────────────
-/**
- * Daftarkan akun siswa baru.
- * Akun berstatus "Belum Aktif" sampai diverifikasi admin.
- * Setelah admin approve, siswa bisa login dengan password sementara.
- *
- * Success 201 → { message: string, user_id: string }
- * Error   409 → { message: "NIS/email sudah terdaftar." }
- *
- * @param {{
- *   nama: string,
- *   nis: string,
- *   email: string,
- *   kelas_id: string,
- *   sekolah_id: string,
- *   password: string
- * }} payload
- * @returns {Promise<{ message: string, user_id: string }>}
- */
-export async function register(payload) {
-  const { data } = await apiClient.post("/auth/register", payload);
   return data;
 }
 

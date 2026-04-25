@@ -633,7 +633,14 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
   /* ── Ambil data siswa untuk KPI & AI Insight ── */
   const studentData = STUDENTS?.find(s => s.id === CURRENT_STUDENT_ID);
   const riwayat = studentData?.riwayat || [];
-  const totalScore = (studentData.riwayat || []).reduce((sum, r) => sum + (r.quiz || 0), 0);
+  // Poin Quiz: prioritas progressData.total_poin_quiz (skala 0-100, dari BE via /content/progress)
+  // Fallback ke penjumlahan riwayat lokal (untuk mock — nilai mentah, bukan skala 100)
+  // Di produksi: selalu pakai total_poin_quiz dari BE agar konsisten skala 0-100
+  const totalScore = progressData?.total_poin_quiz ??
+    (studentData?.riwayat || []).reduce((sum, r) => {
+      const score = r.quizTotal > 0 ? Math.round((r.quiz / r.quizTotal) * 100) : 0;
+      return sum + score;
+    }, 0);
   const totalSesiHours = riwayat.reduce((s, r) => s + (r.durasi || 0), 0).toFixed(1);
   const avgQuiz = riwayat.length > 0
     ? Math.round(riwayat.reduce((s, r) => s + ((r.quiz / r.quizTotal) * 100 || 0), 0) / riwayat.length)

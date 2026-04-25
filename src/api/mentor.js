@@ -26,7 +26,7 @@ import { apiClient, openStream } from "./client";
 
 // ─── Types ────────────────────────────────────────────────────────────
 /**
- * @typedef {"antusias"|"bosan"|"bingung"|"frustrasi"} Emosi
+ * @typedef {"antusias"|"bosan"|"bingung"|"frustrasi"|"tidak_terdeteksi"} Emosi
  *
  * @typedef {Object} MentorContext
  * @property {Emosi|null}   [emosi]             - Emosi terkini dari Tim 1, untuk adaptasi gaya respons

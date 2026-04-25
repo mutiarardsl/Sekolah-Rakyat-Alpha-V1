@@ -73,20 +73,25 @@ const generatePlaceholderKonten = (type, level, config) => {
 };
 
 /* ── GamePreviewModal — container game asli (Tim 4) ─────────────── */
+// Tim 4 deliver game dalam bentuk HTML. html_url diperoleh dari:
+//   - Saat guru preview: konten.html_url (hasil generateGame API)
+//   - Fallback: URL dibangun dari params jika html_url belum tersedia (status: generating)
 const GamePreviewModal = ({ konten, config, onClose }) => {
-  // Game URL dari tim 4 — di produksi akan berupa URL dinamis per mapel/elemen/level
-  // Saat ini menggunakan placeholder iframe yang bisa diisi tim 4
-  const gameParams = new URLSearchParams({
-    mapelId: config?.mapelId || '',
-    elemen: config?.elemenLabel || '',
-    materi: config?.materi || '',
-    level: konten?.level || 'low',
-    mode: 'preview',         // mode preview — tidak disimpan ke progress siswa
+  // html_url prioritas utama — dari response API /game/generate atau /game/:id
+  // Fallback ke URL manual dengan query params jika html_url belum ada
+  const GAME_BASE_URL = 'https://game.sekolahrakyat.id/play'; // Tim 4 host
+  const fallbackParams = new URLSearchParams({
+    mapel_id:    config?.mapelId || '',
+    elemen_id:   config?.elemenId || '',
+    elemen:      config?.elemenLabel || '',
+    materi:      config?.materi || '',
+    level:       konten?.level || 'Low',
+    mode:        'preview',  // tidak mempengaruhi progress siswa
   }).toString();
-
-  // URL game dari tim 4 — ganti dengan endpoint sebenarnya saat integrasi
-  const GAME_BASE_URL = 'https://game.sekolahrakyat.id/play'; // placeholder
-  const gameUrl = `${GAME_BASE_URL}?${gameParams}`;
+  // Pakai html_url dari API jika ada, fallback ke URL manual
+  const gameUrl = konten?.html_url || `${GAME_BASE_URL}?${fallbackParams}`;
+  const isReady = !!konten?.html_url;
+  const isGenerating = !konten?.html_url && konten?.status === 'generating';
 
   return (
     <div style={{
@@ -110,28 +115,46 @@ const GamePreviewModal = ({ konten, config, onClose }) => {
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 8, width: 30, height: 30, color: C.white, cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
         </div>
 
-        {/* Game container — iframe tim 4 */}
+        {/* Game container — Tim 4 deliver HTML, render via iframe */}
         <div style={{ flex: 1, background: '#0f172a', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-          {/* Placeholder saat URL game belum tersedia */}
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14, zIndex: 1 }}>
-            <div style={{ fontSize: 56, opacity: .3 }}>🎮</div>
-            <div style={{ color: 'rgba(255,255,255,.5)', fontSize: FS.lg, fontWeight: 600 }}>Container Game Tim 4</div>
-            <div style={{ color: 'rgba(255,255,255,.3)', fontSize: FS.md, textAlign: 'center', maxWidth: 360, lineHeight: 1.6 }}>
-              Game akan ditampilkan di sini setelah integrasi dengan Tim 4.<br />
-              Parameter: mapel <strong style={{ color: 'rgba(255,255,255,.5)' }}>{config?.mapelLabel}</strong> · elemen <strong style={{ color: 'rgba(255,255,255,.5)' }}>{config?.elemenLabel}</strong> · level <strong style={{ color: 'rgba(255,255,255,.5)' }}>{konten?.level}</strong>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 10, padding: '10px 18px', fontSize: FS.sm, color: 'rgba(255,255,255,.4)', fontFamily: 'monospace', maxWidth: 420, wordBreak: 'break-all', textAlign: 'center' }}>
-              {gameUrl}
-            </div>
-          </div>
 
-          {/* Iframe — aktif ketika URL game sudah tersedia dari tim 4 */}
-          {/* <iframe
-            src={gameUrl}
-            style={{ width: '100%', height: '100%', border: 'none', position: 'relative', zIndex: 2 }}
-            title={`Preview Game ${config?.elemenLabel} Level ${konten?.level}`}
-            allow="fullscreen"
-          /> */}
+          {/* State: generating — Tim 4 masih memproses */}
+          {isGenerating && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14, zIndex: 2 }}>
+              <div style={{ width: 48, height: 48, border: '4px solid rgba(255,255,255,.1)', borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .9s linear infinite' }} />
+              <div style={{ color: 'rgba(255,255,255,.6)', fontSize: FS.lg, fontWeight: 600 }}>Sedang generate game…</div>
+              <div style={{ color: 'rgba(255,255,255,.3)', fontSize: FS.md }}>Tim 4 sedang menyiapkan konten HTML</div>
+            </div>
+          )}
+
+          {/* State: ready — render iframe dengan html_url dari Tim 4 */}
+          {isReady && (
+            <iframe
+              src={gameUrl}
+              style={{ width: '100%', height: '100%', border: 'none', position: 'relative', zIndex: 2 }}
+              title={`Preview Game ${config?.elemenLabel || ''} ${config?.materi ? '· ' + config.materi : ''} Level ${konten?.level}`}
+              sandbox="allow-scripts allow-same-origin allow-forms"
+              allow="fullscreen"
+            />
+          )}
+
+          {/* State: belum ada html_url (integrasi belum aktif) — tampilkan placeholder informatif */}
+          {!isReady && !isGenerating && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14, zIndex: 1 }}>
+              <div style={{ fontSize: 56, opacity: .3 }}>🎮</div>
+              <div style={{ color: 'rgba(255,255,255,.5)', fontSize: FS.lg, fontWeight: 600 }}>Game HTML Tim 4</div>
+              <div style={{ color: 'rgba(255,255,255,.3)', fontSize: FS.md, textAlign: 'center', maxWidth: 400, lineHeight: 1.6 }}>
+                Game akan di-render via iframe setelah Tim 4 menyediakan html_url.<br />
+                Mapel <strong style={{ color: 'rgba(255,255,255,.5)' }}>{config?.mapelLabel}</strong>
+                {' · '} Elemen <strong style={{ color: 'rgba(255,255,255,.5)' }}>{config?.elemenLabel}</strong>
+                {config?.materi && <>{' · '} Materi <strong style={{ color: 'rgba(255,255,255,.5)' }}>{config.materi}</strong></>}
+                {' · '} Level <strong style={{ color: 'rgba(255,255,255,.5)' }}>{konten?.level}</strong>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 10, padding: '10px 18px', fontSize: FS.sm, color: 'rgba(255,255,255,.4)', fontFamily: 'monospace', maxWidth: 440, wordBreak: 'break-all', textAlign: 'center' }}>
+                {gameUrl}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer info */}

@@ -22,7 +22,10 @@ const CURRENT_STUDENT_ID = 's9';
 
 /* ── Helper ── */
 const getTotalScore = (student) =>
-    (student.riwayat || []).reduce((sum, r) => sum + (r.quiz || 0), 0);
+    (student.riwayat || []).reduce((sum, r) => {
+        const score = r.quizTotal > 0 ? Math.round((r.quiz / r.quizTotal) * 100) : 0;
+        return sum + score;
+    }, 0);
 
 const buildLeaderboard = () => {
     const kelasK1Students = STUDENTS.filter(s =>

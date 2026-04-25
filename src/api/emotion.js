@@ -20,12 +20,13 @@
  *  Frame: base64 JPEG 224×224 pixel, TANPA prefix "data:image/jpeg;base64,"
  *
  * ── Label Emosi ──────────────────────────────────────────────────────
- *  "antusias"  — siswa aktif & bersemangat
- *  "netral"    — kondisi normal
- *  "bingung"   — ekspresi kebingungan
- *  "frustrasi" — siswa tampak frustrasi/terganggu
+ *  "antusias"         — siswa aktif & bersemangat
+ *  "bosan"            — siswa terlihat tidak tertarik / pasif
+ *  "bingung"          — ekspresi kebingungan
+ *  "frustrasi"        — siswa tampak frustrasi/terganggu
+ *  "tidak_terdeteksi" — tidak ada wajah terdeteksi / kamera terhalang
  *
- *  Catatan: label "senang"/"bosan" dari mock lama diganti ke "antusias"/"netral"
+ *  Catatan: label "netral" dari mock lama diganti ke "bosan"
  *  agar konsisten dengan EMOSI_META di masterData.js dan MonitoringSection.
  */
 
@@ -33,7 +34,7 @@ import { apiClient } from "./client";
 
 // ─── Types ────────────────────────────────────────────────────────────
 /**
- * @typedef {"antusias"|"netral"|"bingung"|"frustrasi"} Emosi
+ * @typedef {"antusias"|"bosan"|"bingung"|"frustrasi"|"tidak_terdeteksi"} Emosi
  *
  * @typedef {Object} EmotionResult
  * @property {Emosi}  emosi       - Label emosi yang terdeteksi

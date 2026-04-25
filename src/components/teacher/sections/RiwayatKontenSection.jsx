@@ -296,7 +296,7 @@ const RiwayatCard = ({ riwayat }) => {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
           {totalSelesai > 0 && (
             <span style={{ fontSize: FS.sm, padding: '3px 10px', borderRadius: 99, background: '#F0F7FF', color: '#2B6CB0', fontWeight: 700, border: '1px solid #BEE3F8', whiteSpace: 'nowrap' }}>
-              🎮 {totalSelesai} selesai
+              🎮 {totalSelesai} siswa memainkan
             </span>
           )}
         </div>

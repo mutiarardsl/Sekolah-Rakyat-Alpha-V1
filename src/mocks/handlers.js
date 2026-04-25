@@ -12,9 +12,9 @@
  * state terkini — sinkron dengan AdminContext di UI.
  *
  * ── Handler Index ────────────────────────────────────────────────────
- *  AUTH (6 endpoint)
+ *  AUTH (5 endpoint — tidak ada register, akun dibuat admin)
  *    POST /auth/login, /auth/google, /auth/logout, /auth/refresh
- *    POST /auth/forgot-password, /auth/register, /auth/aktivasi
+ *    POST /auth/forgot-password, /auth/aktivasi
  *    GET  /auth/me
  *
  *  MENTOR — Tim 5 (5 endpoint)
@@ -24,11 +24,10 @@
  *    DELETE /mentor/chat/session
  *    POST   /mentor/insight
  *
- *  CONTENT — Tim 3 (7 endpoint)
+ *  CONTENT — Tim 3 (6 endpoint — curriculum tidak diupload dari FE)
  *    POST /content/generate
  *    POST /content/publish
  *    GET  /content/siswa
- *    POST /content/curriculum
  *    GET  /content/progress
  *    POST /content/quiz/submit
  *    GET  /content/recommend
@@ -37,7 +36,7 @@
  *    POST /emotion/detect
  *    GET  /emotion/history
  *
- *  GAME — Tim 4 (3 endpoint)
+ *  GAME — Tim 4 (3 endpoint — hirarki mapel→elemen→materi, deliver HTML)
  *    POST /game/generate
  *    GET  /game/list
  *    GET  /game/:game_id
@@ -72,10 +71,9 @@
  *    PUT    /admin/mapel/:id
  *    DELETE /admin/mapel/:id
  *
- *  ADMIN — Nilai & Rekomendasi (3 endpoint)
- *    POST /admin/nilai/upload
- *    POST /admin/rekomendasi
- *    GET  /admin/rekomendasi
+ *  GURU — Rekomendasi (2 endpoint — fitur guru, bukan admin)
+ *    POST /guru/rekomendasi
+ *    GET  /guru/rekomendasi
  */
 
 import { http, HttpResponse, delay } from 'msw';
@@ -187,15 +185,6 @@ export const handlers = [
         ? 'Link reset password telah dikirim ke email Anda.'
         : 'Jika email terdaftar, link reset akan dikirimkan.',
     });
-  }),
-
-  // POST /auth/register
-  http.post(url('/auth/register'), async () => {
-    await d(600);
-    return HttpResponse.json(
-      { message: 'Registrasi berhasil. Akun menunggu verifikasi admin.', user_id: 'usr_' + Date.now() },
-      { status: 201 }
-    );
   }),
 
   // POST /auth/aktivasi
@@ -349,16 +338,6 @@ export const handlers = [
     return HttpResponse.json([]); // Kosong di mock — konten baru muncul setelah guru publish
   }),
 
-  // POST /content/curriculum
-  // Multipart: { file, mapel_id, deskripsi? }
-  http.post(url('/content/curriculum'), async () => {
-    await d(1800);
-    return HttpResponse.json(
-      { doc_id: 'doc_' + Date.now(), chunk_count: 42, status: 'indexed' },
-      { status: 202 }
-    );
-  }),
-
   // GET /content/progress
   // Params: { siswa_id }
   http.get(url('/content/progress'), async () => {
@@ -407,85 +386,186 @@ export const handlers = [
 
   // POST /emotion/detect
   // Body: { siswa_id, frame_base64, session_id? }
+  // 5 label emosi: antusias | bosan | bingung | frustrasi | tidak_terdeteksi
+  // Distribusi probabilitas dibuat realistis: tidak_terdeteksi ~15%, lainnya merata
   http.post(url('/emotion/detect'), async () => {
     await d(300);
-    const labels = ['antusias', 'netral', 'netral', 'bingung', 'antusias'];
-    return HttpResponse.json({
-      emosi: labels[Math.floor(Math.random() * labels.length)],
-      confidence: +(0.70 + Math.random() * 0.28).toFixed(2),
-      timestamp: nowISO(),
-    });
+    // Weighted random: antusias 25%, bosan 25%, bingung 20%, frustrasi 15%, tidak_terdeteksi 15%
+    const weighted = [
+      'antusias', 'antusias', 'antusias', 'antusias', 'antusias',
+      'bosan', 'bosan', 'bosan', 'bosan', 'bosan',
+      'bingung', 'bingung', 'bingung', 'bingung',
+      'frustrasi', 'frustrasi', 'frustrasi',
+      'tidak_terdeteksi', 'tidak_terdeteksi', 'tidak_terdeteksi',
+    ];
+    const emosi = weighted[Math.floor(Math.random() * weighted.length)];
+    // tidak_terdeteksi punya confidence rendah (kamera buram/tidak ada wajah)
+    const confidence = emosi === 'tidak_terdeteksi'
+      ? +(0.30 + Math.random() * 0.30).toFixed(2)
+      : +(0.68 + Math.random() * 0.30).toFixed(2);
+    return HttpResponse.json({ emosi, confidence, timestamp: nowISO() });
   }),
 
   // GET /emotion/history
   // Params: { siswa_id, session_id }
+  // Return array EmotionResult terurut dari terlama ke terbaru
+  // Mensimulasikan tren emosi yang berubah selama sesi belajar
   http.get(url('/emotion/history'), async () => {
     const now = Date.now();
     await d(300);
     return HttpResponse.json([
-      { emosi: 'antusias', confidence: 0.91, timestamp: new Date(now - 300000).toISOString() },
-      { emosi: 'netral', confidence: 0.78, timestamp: new Date(now - 240000).toISOString() },
-      { emosi: 'bingung', confidence: 0.82, timestamp: new Date(now - 180000).toISOString() },
-      { emosi: 'netral', confidence: 0.75, timestamp: new Date(now - 120000).toISOString() },
-      { emosi: 'antusias', confidence: 0.88, timestamp: new Date(now - 60000).toISOString() },
+      { emosi: 'tidak_terdeteksi', confidence: 0.45, timestamp: new Date(now - 300000).toISOString() },
+      { emosi: 'bosan',            confidence: 0.72, timestamp: new Date(now - 240000).toISOString() },
+      { emosi: 'bingung',          confidence: 0.84, timestamp: new Date(now - 180000).toISOString() },
+      { emosi: 'bingung',          confidence: 0.79, timestamp: new Date(now - 120000).toISOString() },
+      { emosi: 'antusias',         confidence: 0.91, timestamp: new Date(now - 60000).toISOString() },
+      { emosi: 'antusias',         confidence: 0.88, timestamp: new Date(now - 10000).toISOString() },
     ]);
   }),
 
   // ════════════════════════════════════════════════════════════════════
   // GAME — Tim 4
+  // Hirarki: mapel → elemen → materi (opsional, jika guru turun ke level materi)
+  // Tim 4 deliver game dalam format HTML — frontend render via <iframe src={html_url}>
   // ════════════════════════════════════════════════════════════════════
 
   // POST /game/generate
-  // Body: { mapel_id, materi, sub_materi, kelas_id, level, kelas_target?, prompt_tambahan? }
+  // Body: { mapel_id, elemen_id, elemen_label, materi?, materi_id?, kelas_id, level, jenjang?, prompt_tambahan? }
+  // Hirarki wajib: mapel_id + elemen_id + elemen_label. Materi opsional.
   http.post(url('/game/generate'), async ({ request }) => {
-    const { materi, sub_materi, mapel_id, level } = await request.json();
+    const { mapel_id, elemen_id, elemen_label, materi, materi_id, level } = await request.json();
     await d(2500);
-    const topik = sub_materi || materi || 'Pelajaran';
+    // Label topik: pakai materi jika ada, fallback ke elemen_label
+    const topik = materi || elemen_label || 'Pelajaran';
+    const game_id = 'game_' + Date.now();
     return HttpResponse.json({
-      game_id: 'game_' + Date.now(),
+      game_id,
       nama: `Quest: ${topik}`,
-      deskripsi: `Game edukasi interaktif tentang ${topik}`,
+      deskripsi: `Game edukasi interaktif tentang ${topik} — level ${level || 'Low'}`,
       mapel_id: mapel_id || '',
-      materi,
-      sub_materi,
+      elemen_id: elemen_id || '',
+      elemen_label: elemen_label || '',
+      materi: materi || null,
+      materi_id: materi_id || null,
       level: level || 'Low',
       status: 'ready',
-      config: {
-        levels: 3,
-        questions_per_level: 5,
-        timer_seconds: 30,
-      },
+      // html_url: URL ke file HTML game dari Tim 4
+      // Di mock pakai placeholder — produksi: URL CDN/hosting Tim 4
+      html_url: `https://game.sekolahrakyat.id/play/${game_id}?level=${level || 'Low'}`,
     });
   }),
 
   // GET /game/list
-  // Params: { kelas_id?, mapel_id?, materi_id? }
-  http.get(url('/game/list'), async () => {
+  // Params: { kelas_id?, mapel_id?, elemen_id?, materi_id? }
+  // html_url tidak disertakan di list — fetch GET /:id untuk dapat html_url
+  http.get(url('/game/list'), async ({ request }) => {
     await d(400);
-    return HttpResponse.json([
-      { game_id: 'g1', nama: 'Algebraic Quest', mapel_id: 'mat', materi: 'Aljabar', sub_materi: 'Persamaan Linear', level: 'Mid', status: 'ready', pemain: 24 },
-      { game_id: 'g2', nama: 'EcoWorld Explorer', mapel_id: 'ipa', materi: 'Ekosistem', sub_materi: 'Rantai Makanan', level: 'Low', status: 'ready', pemain: 18 },
-    ]);
+    const p = new URL(request.url).searchParams;
+    const filterMapel = p.get('mapel_id');
+    const filterElemen = p.get('elemen_id');
+    const games = [
+      {
+        game_id: 'g1',
+        nama: 'Algebraic Quest',
+        deskripsi: 'Selesaikan persamaan untuk mengalahkan musuh!',
+        mapel_id: 'mat',
+        elemen_id: 'bil_aljabar',
+        elemen_label: 'Bilangan dan Aljabar',
+        materi: 'Persamaan Linear Satu Variabel',
+        materi_id: 'mat__persamaan_linear_satu_variabel',
+        level: 'Mid',
+        status: 'ready',
+        pemain: 24,
+      },
+      {
+        game_id: 'g2',
+        nama: 'Data Explorer',
+        deskripsi: 'Jelajahi dunia statistika lewat petualangan data!',
+        mapel_id: 'mat',
+        elemen_id: 'data_statistika',
+        elemen_label: 'Data dan Statistika',
+        materi: null,
+        materi_id: null,
+        level: 'Low',
+        status: 'ready',
+        pemain: 18,
+      },
+      {
+        game_id: 'g3',
+        nama: 'Bio Cell Wars',
+        deskripsi: 'Pertahankan sel dari serangan virus dalam simulasi biologi!',
+        mapel_id: 'bio',
+        elemen_id: 'pemahaman_bio',
+        elemen_label: 'Pemahaman Biologi',
+        materi: 'Sel dan Organel Sel',
+        materi_id: 'bio__sel_dan_organel_sel',
+        level: 'High',
+        status: 'ready',
+        pemain: 11,
+      },
+    ];
+    // Filter sesuai params yang dikirim
+    const filtered = games.filter(g =>
+      (!filterMapel || g.mapel_id === filterMapel) &&
+      (!filterElemen || g.elemen_id === filterElemen)
+    );
+    return HttpResponse.json(filtered);
   }),
 
   // GET /game/:game_id
+  // Mengembalikan detail lengkap termasuk html_url untuk iframe
   // Tidak ada leaderboard — game tidak menghasilkan skor numerik
   http.get(url('/game/:game_id'), async ({ params }) => {
     await d(300);
+    // Seed data untuk game_id yang sudah ada
+    const seed = {
+      g1: {
+        nama: 'Algebraic Quest',
+        deskripsi: 'Selesaikan persamaan untuk mengalahkan musuh!',
+        mapel_id: 'mat',
+        elemen_id: 'bil_aljabar',
+        elemen_label: 'Bilangan dan Aljabar',
+        materi: 'Persamaan Linear Satu Variabel',
+        materi_id: 'mat__persamaan_linear_satu_variabel',
+        level: 'Mid',
+      },
+      g2: {
+        nama: 'Data Explorer',
+        deskripsi: 'Jelajahi dunia statistika lewat petualangan data!',
+        mapel_id: 'mat',
+        elemen_id: 'data_statistika',
+        elemen_label: 'Data dan Statistika',
+        materi: null,
+        materi_id: null,
+        level: 'Low',
+      },
+      g3: {
+        nama: 'Bio Cell Wars',
+        deskripsi: 'Pertahankan sel dari serangan virus dalam simulasi biologi!',
+        mapel_id: 'bio',
+        elemen_id: 'pemahaman_bio',
+        elemen_label: 'Pemahaman Biologi',
+        materi: 'Sel dan Organel Sel',
+        materi_id: 'bio__sel_dan_organel_sel',
+        level: 'High',
+      },
+    };
+    const data = seed[params.game_id] || {
+      nama: 'Game Edukasi',
+      deskripsi: 'Game edukasi interaktif.',
+      mapel_id: 'mat',
+      elemen_id: 'bil_aljabar',
+      elemen_label: 'Bilangan dan Aljabar',
+      materi: null,
+      materi_id: null,
+      level: 'Low',
+    };
     return HttpResponse.json({
       game_id: params.game_id,
-      nama: 'Algebraic Quest',
-      deskripsi: 'Selesaikan persamaan untuk mengalahkan musuh!',
-      mapel_id: 'mat',
-      materi: 'Aljabar',
-      sub_materi: 'Persamaan Linear',
-      level: 'Mid',
+      ...data,
       status: 'ready',
-      config: {
-        levels: 3,
-        questions_per_level: 5,
-        timer_seconds: 30,
-      },
+      // html_url: URL placeholder — Tim 4 ganti dengan URL CDN sebenarnya
+      html_url: `https://game.sekolahrakyat.id/play/${params.game_id}?level=${data.level}`,
     });
   }),
 
@@ -756,31 +836,14 @@ export const handlers = [
   }),
 
   // ════════════════════════════════════════════════════════════════════
-  // ADMIN — Nilai
+  // GURU — Rekomendasi Guru → Siswa
+  // Fitur guru (bukan admin). Endpoint di /guru/ bukan /admin/.
   // ════════════════════════════════════════════════════════════════════
 
-  // POST /admin/nilai/upload
-  // Multipart: { file, kelas_id, mapel_id }
-  http.post(url('/admin/nilai/upload'), async () => {
-    await d(1500);
-    return HttpResponse.json({
-      doc_id: 'nilai_' + Date.now(),
-      filename: 'nilai.csv',
-      rows_parsed: 32,
-      rows_valid: 30,
-      rows_error: 2,
-      status: 'processed',
-      processed_at: nowISO(),
-    });
-  }),
-
-  // ════════════════════════════════════════════════════════════════════
-  // ADMIN — Rekomendasi Guru → Siswa
-  // ════════════════════════════════════════════════════════════════════
-
-  // POST /admin/rekomendasi
+  // POST /guru/rekomendasi
   // Body: { guru_id, siswa_id, mapel_id, pesan }
-  http.post(url('/admin/rekomendasi'), async ({ request }) => {
+  // Role: guru
+  http.post(url('/guru/rekomendasi'), async ({ request }) => {
     const body = await request.json();
     await d(400);
     const guru = store.guru.find(g => g.id === body.guru_id);
@@ -799,10 +862,10 @@ export const handlers = [
     return HttpResponse.json({ id: newRek.id, created_at: newRek.created_at }, { status: 201 });
   }),
 
-  // GET /admin/rekomendasi
+  // GET /guru/rekomendasi
   // Params: { siswa_id }
-  // Dipanggil DashboardSection siswa — menggantikan NOTIFIKASI_GURU_INIT hardcoded
-  http.get(url('/admin/rekomendasi'), async ({ request }) => {
+  // Role: siswa — dipanggil DashboardSection untuk notifikasi bell
+  http.get(url('/guru/rekomendasi'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const siswaId = p.get('siswa_id');
     await d(400);
