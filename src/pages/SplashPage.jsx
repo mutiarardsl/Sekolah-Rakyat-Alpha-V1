@@ -42,7 +42,7 @@ export default function SplashPage() {
       ))}
       <div className="bounce-in" style={{ textAlign: 'center', zIndex: 1 }}>
         <div style={{ fontSize: 72, marginBottom: 8 }}>🏫</div>
-        <div style={{ fontFamily: FONTS.serif, fontSize: 42, fontWeight: 600, color: C.white, letterSpacing: '-1px' }}>
+        <div className="sr-splash-title" style={{ fontFamily: FONTS.serif, fontWeight: 600, color: C.white, letterSpacing: '-1px' }}>
           Sekolah Rakyat
         </div>
         <div style={{ color: 'rgba(255,255,255,.65)', fontSize: FS.xl, marginTop: 4, fontStyle: 'italic' }}>

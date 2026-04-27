@@ -20,6 +20,7 @@ import { CONF_TYPES, SUBJECTS, MATERI_PER_ELEMEN } from '../../../data/masterDat
 import { useWebSocket } from '../../../hooks/useWebSocket';
 import { useStudentStore } from '../../../stores/studentStore';
 import QuizModal, { getQuizV2 } from './QuizModal';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 
 
 /* ─────────────────────────────────────────────────────────────────── */
@@ -541,9 +542,10 @@ const ChatSection = ({
   sessionVideoRef,
   stopSessionCamera,
 }) => {
+  const { isMobile } = useBreakpoint();
   const [materiId, setSubMateri] = useState(null);
   const [openDrops, setOpenDrops] = useState({});
-  const [confModal, setConfModal] = useState(null); // { type }
+  const [confModal, setConfModal] = useState(null);
   const [pendingQuizResult, setPendingQuizResult] = useState(null);
 
   const [quizHistoryModal, setQuizHistoryModal] = useState(null);
@@ -570,7 +572,7 @@ const ChatSection = ({
   const setQuizHistory = useStudentStore(s => s.setQuizHistory);
   const levelMap = useStudentStore(s => s.levelMap);
   const setLevelMap = useStudentStore(s => s.setLevelMap);
-  const rightPanelWidth = quizHistoryModal ? 380 : confModal ? 380 : 238;
+  const rightPanelWidth = isMobile ? 0 : (quizHistoryModal ? 380 : confModal ? 380 : 238);
 
   /* ── [TIM 5] Context Injection Pasca-Kuis ──────────────────────────
    * Setiap kali needsQuizAnalysis berubah jadi true dan ada quiz result,
@@ -1135,9 +1137,11 @@ const ChatSection = ({
     }
   }, [camGranted, sessionStreamRef, sessionVideoRef]);
 
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false);
+
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
-      {/* Hidden video element untuk capture emosi — stream sesi persisten */}
+      {/* Hidden video element untuk capture emosi */}
       <video
         ref={sessionVideoRef}
         autoPlay
@@ -1146,12 +1150,32 @@ const ChatSection = ({
         style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
       />
 
+      {/* Mobile: overlay backdrop for left panel */}
+      {isMobile && leftPanelOpen && (
+        <div
+          onClick={() => setLeftPanelOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 198 }}
+        />
+      )}
+
       {/* ══ PANEL KIRI ══════════════════════════════════════════ */}
-      <div style={{ width: 200, minWidth: 200, background: C.white, borderRight: `1px solid rgba(13,92,99,.08)`, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <div style={{
+        width: isMobile ? 220 : 200,
+        minWidth: isMobile ? 220 : 200,
+        background: C.white,
+        borderRight: `1px solid rgba(13,92,99,.08)`,
+        display: 'flex', flexDirection: 'column', overflowY: 'auto',
+        ...(isMobile ? {
+          position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 199,
+          transform: leftPanelOpen ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform .25s ease',
+          boxShadow: leftPanelOpen ? '4px 0 20px rgba(0,0,0,.15)' : 'none',
+        } : {}),
+      }}>
         <div style={{ padding: '14px 14px 12px' }}>
-          <button onClick={handleSafeBack}
+          <button onClick={isMobile ? () => setLeftPanelOpen(false) : handleSafeBack}
             style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', color: C.teal, fontWeight: 700, fontSize: FS.md, cursor: 'pointer', marginBottom: 14, padding: 0 }}>
-            ← Kembali
+            ← {isMobile ? 'Tutup' : 'Kembali'}
           </button>
 
           {/* Kamera aktif — klik untuk cek posisi kamera */}
@@ -1258,15 +1282,34 @@ const ChatSection = ({
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0, background: C.white }}>
         {/* Header */}
         <div style={{ padding: '10px 14px', background: C.white, borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+
+          {/* Mobile: hamburger to open left panel */}
+          {isMobile && (
+            <button
+              onClick={() => setLeftPanelOpen(p => !p)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}
+            >
+              {[0, 1, 2].map(i => <div key={i} style={{ width: 16, height: 2, background: C.teal, borderRadius: 1 }} />)}
+            </button>
+          )}
+
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.xl, flexShrink: 0 }}>🤖</div>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark }}>Mentor AI — Kak Nusa</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green, display: 'inline-block' }} />
               <span style={{ fontSize: FS.xs, color: C.green }}>Online</span>
-              <span style={{ fontSize: FS.xs, color: C.slate, marginLeft: 6 }}>· {materiId || chatMateri.mapelLabel}</span>
+              <span style={{ fontSize: FS.xs, color: C.slate, marginLeft: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>· {materiId || chatMateri?.mapelLabel}</span>
             </div>
           </div>
+
+          {/* Mobile: back button */}
+          {isMobile && (
+            <button onClick={handleSafeBack}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.teal, fontWeight: 700, fontSize: FS.md, padding: '4px 8px', flexShrink: 0 }}>
+              ✕
+            </button>
+          )}
         </div>
 
         {/* Messages */}
@@ -1542,7 +1585,7 @@ const ChatSection = ({
         </div>
 
         {/* Input */}
-        <div style={{ padding: '8px 12px', background: C.white, borderTop: `1px solid rgba(13,92,99,.08)`, flexShrink: 0 }}>
+        <div style={{ padding: isMobile ? '8px 12px calc(8px + var(--bottom-nav-h, 0px))' : '8px 12px', background: C.white, borderTop: `1px solid rgba(13,92,99,.08)`, flexShrink: 0 }}>
           {chatAttachments.length > 0 && (
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 6 }}>
               {chatAttachments.map((f, i) => (
@@ -2237,7 +2280,7 @@ const ChatSection = ({
             animation: 'fadeIn .2s ease',
           }}>
             <div style={{
-              background: C.white, borderRadius: 22, width: 440, padding: 36,
+              background: C.white, borderRadius: 22, width: 'min(440px, calc(100vw - 32px))', padding: 36,
               boxShadow: '0 28px 72px rgba(197,48,48,.28), 0 4px 24px rgba(0,0,0,.12)',
               border: '2px solid rgba(197,48,48,.25)', textAlign: 'center',
             }}>

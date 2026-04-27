@@ -234,7 +234,7 @@ const BulkUploadGuru = ({ mapelList = [], kelasList = [], onBulkSave, _externalO
   const checkedCount = rows.filter(r => r._checked).length;
 
   // Panel lebar adaptif: REVIEW pakai lebar lebih besar untuk akomodasi tabel
-  const panelWidth = step === STEP.REVIEW ? 780 : 500;
+  const panelWidth = step === STEP.REVIEW ? 'min(780px, 100vw)' : 'min(500px, 96vw)';
 
   if (!open) return null;
 

@@ -16,6 +16,7 @@ import { useStudentStore } from '../../stores/studentStore';
 import { Btn } from '../shared/UI';
 import ChangePasswordModal from '../shared/ChangePasswordModal';
 import { C, FONTS, FS } from '../../styles/tokens';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { CONF_CONTENT_INIT } from '../../data/masterData';
 import { getGame } from '../../api/game';
 import DashboardSection from './sections/DashboardSection';
@@ -74,9 +75,8 @@ const ATPCamModal = ({ camPendingMateri, onConfirm, onDeny }) => {
       backdropFilter: 'blur(5px)', zIndex: 700,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
     }}>
-      <div className="bounce-in" style={{
-        background: C.white, borderRadius: 20, width: 440,
-        boxShadow: '0 28px 64px rgba(0,0,0,.28)', overflow: 'hidden',
+      <div className="bounce-in sr-modal-box" style={{
+        overflow: 'hidden',
       }}>
 
         {/* ── Idle: tampilan ATP ── */}
@@ -196,6 +196,7 @@ const StudentView = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { isMobile } = useBreakpoint();
 
   // Ambil state dari navigation (dikirim oleh PretestPage)
   const pretestResult = location.state?.pretestResult || null;
@@ -342,7 +343,7 @@ const StudentView = () => {
       // Attach ke hidden video element jika sudah ada
       if (sessionVideoRef.current) {
         sessionVideoRef.current.srcObject = stream;
-        sessionVideoRef.current.play().catch(() => {});
+        sessionVideoRef.current.play().catch(() => { });
       }
     }
     markTopicOngoing(materiOrMapel);
@@ -360,7 +361,15 @@ const StudentView = () => {
   /* ── Nav items ───────────────────────────────────────────────── */
   const navItems = [
     { id: 'dashboard', icon: '🏠', label: 'Dashboard' },
-    { id: 'progress', icon: '📈', label: 'Progress Belajar' },
+    { id: 'progress', icon: '📈', label: 'Progress' },
+    { id: 'profile', icon: '👤', label: 'Profil' },
+  ];
+
+  // Bottom nav item for mobile chat access (chat ditampilkan sebagai page penuh)
+  const allNavItems = [
+    { id: 'dashboard', icon: '🏠', label: 'Beranda' },
+    { id: 'progress', icon: '📈', label: 'Progress' },
+    { id: 'profile', icon: '👤', label: 'Profil' },
   ];
 
   const sharedChat = {
@@ -396,9 +405,9 @@ const StudentView = () => {
     <>
       <div style={{ display: 'flex', height: '100vh', background: C.bg, overflow: 'hidden' }}>
 
-        {/* ── Sidebar (hidden during chat) ── */}
+        {/* ── Sidebar (desktop only, hidden during chat) ── */}
         {activePage !== 'chat' && (
-          <div style={{ width: 210, background: C.dark, display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'hidden' }}>
+          <div className="sr-sidebar" style={{ background: C.dark, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {/* Logo */}
             <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,.07)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 20 }}>🏫</span>
@@ -408,7 +417,7 @@ const StudentView = () => {
               </div>
             </div>
 
-            {/* User info — klik untuk buka profil */}
+            {/* User info */}
             <div
               onClick={() => setActivePage('profile')}
               style={{ padding: '14px', borderBottom: '1px solid rgba(255,255,255,.07)', cursor: 'pointer' }}
@@ -418,7 +427,7 @@ const StudentView = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 40, height: 40, borderRadius: '50%', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.lg, border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.4)'}`, flexShrink: 0 }}>{user?.avatar || '?'}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ color: C.white, fontWeight: 700, fontSize: 13 }}>{user?.nama || 'Siswa'}</div>
+                  <div style={{ color: C.white, fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.nama || 'Siswa'}</div>
                   <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.xs, marginTop: 1 }}>SR Kota Malang</div>
                   <div style={{ color: 'rgba(255,255,255,.35)', fontSize: 10 }}>Kelas {user?.kelas_id || 'X-1'}</div>
                 </div>
@@ -428,7 +437,7 @@ const StudentView = () => {
 
             {/* Nav items */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
-              {navItems.map(item => (
+              {navItems.filter(n => n.id !== 'profile').map(item => (
                 <button key={item.id} onClick={() => setActivePage(item.id)}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', background: activePage === item.id ? 'rgba(13,92,99,.5)' : 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 2, transition: 'all .15s' }}
                   onMouseEnter={e => { if (activePage !== item.id) e.currentTarget.style.background = 'rgba(255,255,255,.06)'; }}
@@ -458,7 +467,7 @@ const StudentView = () => {
         )}
 
         {/* ── Main content ── */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', width: '100%' }}>
+        <div className={activePage !== 'chat' ? 'sr-main-content' : ''} style={{ flex: 1, display: 'flex', overflow: 'hidden', width: '100%', flexDirection: 'column' }}>
           {activePage === 'dashboard' && (
             <DashboardSection
               currentUser={user}
@@ -500,7 +509,43 @@ const StudentView = () => {
         </div>
       </div>
 
-      {/* ── Game Overlay — full screen di atas chatbot ── */}
+      {/* ── Bottom Navigation (mobile only) ── */}
+      {activePage !== 'chat' && (
+        <nav className="sr-bottom-nav">
+          {allNavItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActivePage(item.id)}
+              style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 3, background: 'none', border: 'none',
+                cursor: 'pointer', padding: '6px 4px', fontFamily: 'inherit',
+              }}
+            >
+              <span style={{ fontSize: 20 }}>{item.icon}</span>
+              <span style={{
+                fontSize: 10, fontWeight: activePage === item.id ? 700 : 400,
+                color: activePage === item.id ? C.amber : 'rgba(255,255,255,.5)',
+              }}>{item.label}</span>
+              {activePage === item.id && (
+                <div style={{ width: 4, height: 4, borderRadius: '50%', background: C.amber }} />
+              )}
+            </button>
+          ))}
+          <button
+            onClick={() => onNavigate('login')}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 3, background: 'none', border: 'none',
+              cursor: 'pointer', padding: '6px 4px', fontFamily: 'inherit',
+            }}
+          >
+            <span style={{ fontSize: 20 }}>🚪</span>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>Keluar</span>
+          </button>
+        </nav>
+      )}
+
       {gameContext && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 800,

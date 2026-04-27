@@ -22,6 +22,7 @@
 import { useState, useRef } from 'react';
 import { Card, Btn } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import {
   ADMIN_MAPEL_LIST,
   ADMIN_KELAS_INIT,
@@ -81,12 +82,12 @@ const GamePreviewModal = ({ konten, config, onClose }) => {
   // Fallback ke URL manual dengan query params jika html_url belum ada
   const GAME_BASE_URL = 'https://game.sekolahrakyat.id/play'; // Tim 4 host
   const fallbackParams = new URLSearchParams({
-    mapel_id:    config?.mapelId || '',
-    elemen_id:   config?.elemenId || '',
-    elemen:      config?.elemenLabel || '',
-    materi:      config?.materi || '',
-    level:       konten?.level || 'Low',
-    mode:        'preview',  // tidak mempengaruhi progress siswa
+    mapel_id: config?.mapelId || '',
+    elemen_id: config?.elemenId || '',
+    elemen: config?.elemenLabel || '',
+    materi: config?.materi || '',
+    level: konten?.level || 'Low',
+    mode: 'preview',  // tidak mempengaruhi progress siswa
   }).toString();
   // Pakai html_url dari API jika ada, fallback ke URL manual
   const gameUrl = konten?.html_url || `${GAME_BASE_URL}?${fallbackParams}`;
@@ -465,6 +466,7 @@ const KelolaBelajarSection = () => {
   ) || ADMIN_GURU_INIT[0]; // absolute fallback ke guru pertama
   const guruMapelIds = Array.isArray(guru?.mapelId) ? guru.mapelId : (guru?.mapelId ? [guru.mapelId] : []);
 
+  const { isMobile } = useBreakpoint();
   const [jenjang, setJenjang] = useState('X');
   const [kelasId, setKelasId] = useState('');
   const [mapelId, setMapelId] = useState('');
@@ -523,10 +525,10 @@ const KelolaBelajarSection = () => {
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', overflow: 'hidden', background: C.bg }}>
+    <div style={{ flex: 1, display: 'flex', overflow: isMobile ? 'auto' : 'hidden', flexDirection: isMobile ? 'column' : 'row', background: C.bg }}>
 
       {/* ── Panel Kiri: Form Konfigurasi ── */}
-      <div style={{ width: 340, background: C.white, borderRight: `1px solid rgba(13,92,99,.1)`, overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: isMobile ? '100%' : 340, background: C.white, borderRight: isMobile ? 'none' : `1px solid rgba(13,92,99,.1)`, borderBottom: isMobile ? `1px solid rgba(13,92,99,.1)` : 'none', overflowY: isMobile ? 'visible' : 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid rgba(13,92,99,.08)` }}>
           <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>📐 Kelola Konten Belajar</div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 3 }}>Konfigurasi dan generate konten interaktif untuk siswa</div>

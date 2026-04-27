@@ -223,7 +223,7 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, onClose }) => {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.5)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, backdropFilter: 'blur(3px)' }} onClick={() => !generating && onClose()}>
-      <div style={{ background: C.white, borderRadius: 18, width: 380, boxShadow: '0 20px 60px rgba(0,0,0,.18)' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: C.white, borderRadius: 18, width: 'min(380px, calc(100vw - 24px))', boxShadow: '0 20px 60px rgba(0,0,0,.18)' }} onClick={e => e.stopPropagation()}>
         <div style={{ padding: '18px 20px 14px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontFamily: FONTS.serif, fontSize: FS.xl, fontWeight: 700, color: C.dark }}>📥 Unduh Laporan Harian</div>
@@ -344,7 +344,7 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.4)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', zIndex: 998, backdropFilter: 'blur(2px)' }} onClick={onClose}>
       <div className="slide-right" onClick={e => e.stopPropagation()}
-        style={{ width: 420, height: '100vh', background: C.bg, overflowY: 'auto', boxShadow: '-10px 0 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column' }}>
+        style={{ width: 'min(420px, 96vw)', height: '100vh', background: C.bg, overflowY: 'auto', boxShadow: '-10px 0 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
         <div style={{ padding: '16px 18px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, ...(hasAnyViolation ? { borderLeft: '4px solid #C53030' } : {}) }}>
@@ -603,7 +603,7 @@ const MonitoringSection = ({
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, background: C.bg }}>
 
           {/* KPI */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
             {[
               { icon: '👥', label: 'Total Siswa', value: classStudents.length, sub: `Di ${cls?.label || 'kelas ini'}`, color: C.teal },
               { icon: '🟢', label: 'Aktif Hari Ini', value: aktifHariIni.length, sub: `${Math.round(aktifHariIni.length / (classStudents.length || 1) * 100)}% dari total`, color: C.green },
@@ -875,7 +875,7 @@ const MonitoringSection = ({
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, backdropFilter: 'blur(3px)' }}
               onClick={() => setRecModal(null)}>
               <div className="bounce-in" onClick={e => e.stopPropagation()}
-                style={{ background: C.white, borderRadius: 16, padding: 28, width: 460, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+                style={{ background: C.white, borderRadius: 16, padding: 28, width: 'min(460px, calc(100vw - 24px))', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
                 <div style={{ fontSize: FS.h1, marginBottom: 4 }}>💬</div>
                 <div style={{ fontFamily: FONTS.serif, fontSize: FS.h2, fontWeight: 600, color: C.dark, marginBottom: 4 }}>Beri Rekomendasi</div>
                 <div style={{ fontSize: FS.base, color: C.darkL, marginBottom: 4 }}>untuk <strong>{s.name}</strong> — {teacherMapel?.icon} {teacherMapel?.label}</div>

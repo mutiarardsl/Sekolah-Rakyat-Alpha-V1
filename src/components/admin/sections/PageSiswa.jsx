@@ -57,7 +57,7 @@ const ResetPasswordModal = ({ siswa, type, onClose, onConfirm }) => {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1400, backdropFilter: 'blur(4px)' }}
       onClick={onClose}>
       <div className="bounce-in" onClick={e => e.stopPropagation()}
-        style={{ background: C.white, borderRadius: 16, padding: 28, width: 420, boxShadow: '0 24px 60px rgba(0,0,0,.2)' }}>
+        style={{ background: C.white, borderRadius: 16, padding: 28, width: "min(420px, calc(100vw - 24px))", boxShadow: "0 24px 60px rgba(0,0,0,.2)" }}>
         <div style={{ fontSize: 28, textAlign: 'center', marginBottom: 12 }}>{isTemp ? '🔄' : '🔑'}</div>
         <div style={{ fontFamily: FONTS.serif, fontSize: FS.xl, fontWeight: 600, color: C.dark, textAlign: 'center', marginBottom: 6 }}>
           {isTemp ? 'Reset Password Sementara' : 'Reset Password Siswa'}
@@ -95,7 +95,7 @@ export const SiswaDrawer = ({ siswaId, siswaList, kelasList, getKelas, setSelect
       <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.4)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', zIndex: 998, backdropFilter: 'blur(2px)' }}
         onClick={() => setSelectedSiswa(null)}>
         <div className="slide-right" onClick={e => e.stopPropagation()}
-          style={{ width: 380, height: '100vh', background: C.white, overflowY: 'auto', boxShadow: '-10px 0 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column' }}>
+          style={{ width: 'min(380px, 92vw)', height: '100vh', background: C.white, overflowY: 'auto', boxShadow: '-10px 0 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column' }}>
 
           {/* Header */}
           <div style={{ padding: '18px 18px 14px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
@@ -218,7 +218,7 @@ export const ModalSiswa = ({ modalData, kelasList, saveSiswa, onClose }) => {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, backdropFilter: 'blur(4px)' }}
       onClick={onClose}>
       <div className="bounce-in" onClick={e => e.stopPropagation()}
-        style={{ background: C.white, borderRadius: 16, padding: 28, width: 480, maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,.2)' }}>
+        style={{ background: C.white, borderRadius: 16, padding: 28, width: "min(480px, calc(100vw - 24px))", maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,.2)' }}>
         <div style={{ fontFamily: FONTS.serif, fontSize: FS.h2, fontWeight: 600, color: C.dark, marginBottom: 4 }}>
           {isEdit ? '✏️ Edit Data Siswa' : '🎒 Tambah Siswa Baru'}
         </div>
@@ -368,7 +368,7 @@ const PageSiswa = ({ siswaList, kelasList, getKelas, setSelectedSiswa, setModalD
 
       {/* Tabel */}
       <div className="admin-table-wrap">
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 540 }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
             <tr style={{ background: C.teal }}>
               {['Nama Siswa', 'NIS', 'Email', 'Kelas', 'Status', 'Bergabung', 'Aksi'].map(h => (

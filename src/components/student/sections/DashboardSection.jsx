@@ -685,7 +685,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
   const ACTIVITY_LIMIT = 10;  // batas tampil aktivitas terbaru sebelum expand
 
   return (
-    <div style={{ overflowY: 'auto', height: '100%', width: '100%', padding: '20px 22px', background: C.bg }}>
+    <div style={{ overflowY: 'auto', height: '100%', width: '100%', padding: 'var(--content-py, 20px) var(--content-px, 22px)', background: C.bg }}>
 
       {/* ── HERO GABUNGAN (dengan Bell Notif di pojok kanan atas) ── */}
       <HeroWithInsight
@@ -698,7 +698,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
       />
 
       {/* ── KPI Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 20, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
           { icon: '⚡', val: `${streakDays} Hari`, label: 'Streak Belajar', color: C.amber },
           { icon: '🎓', val: progressData.sudahSelesai.length, label: 'Topik Selesai', color: C.green },
@@ -725,7 +725,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
             </div>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
           {rekomList.map((r, i) => (
             <RekomCard key={`${r.mapelId}-${r.materiId}-${i}`} rekom={r}
               onStart={(rekom) => {

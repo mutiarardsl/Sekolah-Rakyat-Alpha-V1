@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAdmin } from '../../context/AdminContext';
 import { C, FONTS, FS } from '../../styles/tokens';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 import PageGuru, { GuruDrawer, ModalGuru } from './sections/PageGuru';
 import PageSiswa, { SiswaDrawer, ModalSiswa } from './sections/PageSiswa';
@@ -21,6 +22,8 @@ import PageKurikulum from './sections/KurikulumSection';
 const AdminContent = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const { isMobile } = useBreakpoint();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const {
     guruList, siswaList, kelasList, mapelList,
     setKelasList, setGuruList, setSiswaList, setMapelList,
@@ -123,8 +126,16 @@ const AdminContent = () => {
   return (
     <div className="admin-view" style={{ background: C.bg }}>
 
+      {/* ── Mobile overlay backdrop ── */}
+      {isMobile && (
+        <div
+          className={`admin-sidebar-overlay${sidebarOpen ? ' open' : ''}`}
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar ── */}
-      <div className="admin-sidebar" style={{ background: C.dark }}>
+      <div className={`admin-sidebar${isMobile ? (sidebarOpen ? ' open' : '') : ''}`} style={{ background: C.dark }}>
         <div style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <span style={{ fontSize: 22 }}>🏫</span>
@@ -149,7 +160,7 @@ const AdminContent = () => {
         <div style={{ flex: 1, padding: '8px 6px', overflowY: 'auto' }}>
           {navItems.map(item => (
             <button key={item.id}
-              onClick={() => { setActivePage(item.id); if (item.id !== 'kelas') setSelectedKelas(null); }}
+              onClick={() => { setActivePage(item.id); if (item.id !== 'kelas') setSelectedKelas(null); if (isMobile) setSidebarOpen(false); }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', background: activePage === item.id ? 'rgba(13,92,99,.5)' : 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 2, transition: 'all .15s' }}
               onMouseEnter={e => { if (activePage !== item.id) e.currentTarget.style.background = 'rgba(255,255,255,.06)'; }}
               onMouseLeave={e => { if (activePage !== item.id) e.currentTarget.style.background = 'transparent'; }}>
@@ -181,7 +192,17 @@ const AdminContent = () => {
       </div>
 
       {/* ── Main Content ──────────────────────────────────────────── */}
-      <div className="admin-main">
+      <div className="admin-main" style={{ flexDirection: 'column' }}>
+        {/* Mobile top bar */}
+        {isMobile && (
+          <div style={{ height: 52, background: C.dark, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,.08)', zIndex: 10 }}>
+            <button onClick={() => setSidebarOpen(s => !s)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {[0, 1, 2].map(i => <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />)}
+            </button>
+            <span style={{ fontSize: 16 }}>🏫</span>
+            <span style={{ color: C.white, fontWeight: 700, fontSize: FS.base }}>Portal Admin</span>
+          </div>
+        )}
         {activePage === 'kurikulum' && (
           <PageKurikulum
             mapelList={mapelList}

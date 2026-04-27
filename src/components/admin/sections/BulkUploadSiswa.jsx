@@ -323,7 +323,7 @@ const BulkUploadSiswa = ({ kelasList = [], onBulkSave, _externalOpen = false, _o
             <div
                 className="slide-right"
                 onClick={e => e.stopPropagation()}
-                style={{ width: step === STEP.REVIEW ? 760 : 500, height: '100vh', background: C.white, boxShadow: '-12px 0 48px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', transition: 'width .25s cubic-bezier(.4,0,.2,1)' }}
+                style={{ width: step === STEP.REVIEW ? 'min(760px, 100vw)' : 'min(500px, 96vw)', height: '100vh', background: C.white, boxShadow: '-12px 0 48px rgba(0,0,0,.18)', display: 'flex', flexDirection: 'column', transition: 'width .25s cubic-bezier(.4,0,.2,1)' }}
             >
                 {/* Header */}
                 <div style={{ padding: '18px 20px 14px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>

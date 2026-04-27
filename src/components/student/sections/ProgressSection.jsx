@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { EmptyState } from '../../shared/UI';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import {
   ADMIN_MAPEL_LIST,
   KURIKULUM_ELEMEN,
@@ -41,7 +42,7 @@ const PretestGateModal = ({ mapel, elemen, materi, onDoPretest, onDismiss }) => 
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.45)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}
       onClick={onDismiss}>
       <div className="bounce-in" onClick={e => e.stopPropagation()}
-        style={{ background: C.white, borderRadius: 18, padding: '32px 28px', width: 420, textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,.18)' }}>
+        style={{ background: C.white, borderRadius: 18, padding: '32px 28px', width: 'min(420px, calc(100vw - 32px))', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,.18)' }}>
         <div style={{ fontSize: 42, marginBottom: 12 }}>📝</div>
         <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 700, color: C.dark, marginBottom: 6, lineHeight: 1.4 }}>
           Pretest dulu sebelum belajar!
@@ -379,6 +380,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
   const [selectedMapelId, setSelectedMapelId] = useState(null);
   const [searchQ, setSearchQ] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const { isMobile } = useBreakpoint();
 
   // Modal state
   const [pretestGateData, setPretestGateData] = useState(null);  // { mapel, elemen, materiData }
@@ -574,7 +576,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', background: C.bg }}>
 
       {/* Header */}
-      <div style={{ padding: '20px 24px 14px', flexShrink: 0, background: C.bg }}>
+      <div style={{ padding: 'var(--content-py,20px) var(--content-px,24px) 14px', flexShrink: 0, background: C.bg }}>
         <div style={{ fontFamily: FONTS.serif, fontSize: FS.h1, fontWeight: 600, color: C.dark, marginBottom: 3 }}>
           📈 Progress Belajarku
         </div>
@@ -633,10 +635,10 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
       </div>
 
       {/* 2-Column body */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', padding: '0 24px 20px', gap: 14 }}>
+      <div style={{ flex: 1, display: 'flex', overflow: isMobile ? 'auto' : 'hidden', padding: `0 var(--content-px, 24px) 20px`, gap: 14, flexDirection: isMobile ? 'column' : 'row' }}>
 
         {/* Kolom Kiri — Mata Pelajaran */}
-        <div style={{ width: 340, flexShrink: 0, background: C.white, borderRadius: 14, border: '1.5px solid #E8EDF2', overflowY: 'auto', boxShadow: '0 2px 10px rgba(26,35,50,.06)' }}>
+        <div style={{ width: isMobile ? '100%' : 340, flexShrink: 0, background: C.white, borderRadius: 14, border: '1.5px solid #E8EDF2', overflowY: isMobile ? 'visible' : 'auto', boxShadow: '0 2px 10px rgba(26,35,50,.06)' }}>
           <div style={{ padding: '10px 14px 8px', fontSize: FS.md, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: 1, borderBottom: '1px solid #EDF2F7', flexShrink: 0 }}>
             Mata Pelajaran
           </div>

@@ -31,7 +31,7 @@ export const ConfirmDeleteModal = ({ title, message, onConfirm, onClose, confirm
   <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, backdropFilter: 'blur(4px)' }}
     onClick={onClose}>
     <div className="bounce-in" onClick={e => e.stopPropagation()}
-      style={{ background: '#FFFFFF', borderRadius: 16, padding: 28, width: 400, boxShadow: '0 24px 60px rgba(0,0,0,.25)' }}>
+      style={{ background: '#FFFFFF', borderRadius: 16, padding: 28, width: "min(400px, calc(100vw - 24px))", boxShadow: "0 24px 60px rgba(0,0,0,.25)" }}>
       <div style={{ fontSize: 32, textAlign: 'center', marginBottom: 10 }}>⚠️</div>
       <div style={{ fontFamily: FONTS.serif, fontSize: FS.xl, fontWeight: 700, color: '#1A2332', textAlign: 'center', marginBottom: 8 }}>{title}</div>
       <div style={{ fontSize: FS.base, color: '#8899AA', textAlign: 'center', marginBottom: 24, lineHeight: 1.7 }}>{message}</div>
@@ -59,7 +59,7 @@ export const GuruDrawer = ({ guruId, guruList, kelasList, getMapel, getKelas, se
       }} onClick={() => setSelectedGuru(null)}>
         <div className="slide-right" onClick={e => e.stopPropagation()}
           style={{
-            width: 400, height: '100vh', background: '#FFFFFF', overflowY: 'auto',
+            width: 'min(400px, 92vw)', height: '100vh', background: '#FFFFFF', overflowY: 'auto',
             boxShadow: '-10px 0 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column'
           }}>
 
@@ -465,7 +465,7 @@ const PageGuru = ({ guruList, mapelList, kelasList, getMapel, getKelas, setSelec
 
       {/* Tabel */}
       <div className="admin-table-wrap">
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 540 }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
             <tr style={{ background: C.teal }}>
               {['Nama Guru', 'NIP', 'Email', 'Mapel', 'Status', 'Bergabung', 'Aksi'].map(h => (

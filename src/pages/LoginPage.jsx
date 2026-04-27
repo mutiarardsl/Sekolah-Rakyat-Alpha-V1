@@ -80,7 +80,7 @@ export default function LoginPage() {
     }}>
       <div style={{ position: 'absolute', inset: 0, backgroundImage: `radial-gradient(circle at 20% 50%,rgba(244,164,53,.12) 0%,transparent 50%)` }} />
 
-      <div className="fade-in" style={{ width: '100%', maxWidth: 420, position: 'relative' }}>
+      <div className="fade-in" style={{ width: '100%', maxWidth: 420, position: 'relative', padding: '0 4px' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{ fontSize: 48 }}>🏫</div>
           <div style={{ fontFamily: FONTS.serif, color: C.white, fontSize: 28, fontWeight: 600, marginTop: 8 }}>Sekolah Rakyat</div>
