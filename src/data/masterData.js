@@ -407,8 +407,8 @@ export const STUDENTS = [
         durasi: 0.5, quiz: 30, quizTotal: 100,
         emosiSesi: [{ jam: "09:00", emosi: "tidak_terdeteksi" }, { jam: "09:10", emosi: "bingung" }, { jam: "09:20", emosi: "frustrasi" }, { jam: "09:30", emosi: "frustrasi" }],
         violations: [
-          { detail: "Keluar Fullscreen", timestamp: "09:08" },
-          { detail: "Pindah Tab terdeteksi", timestamp: "09:22" },
+          { detail: "Membuka Aplikasi / Window Lain", timestamp: "09:08" },
+          { detail: "Browser Diperkecil / Split Screen", timestamp: "09:22" },
         ]
       },
       {
@@ -436,7 +436,7 @@ export const STUDENTS = [
         level: "high",
         durasi: 1.5, quiz: 80, quizTotal: 100,
         emosiSesi: [{ jam: "13:00", emosi: "bingung" }, { jam: "13:30", emosi: "tidak_terdeteksi" }, { jam: "13:45", emosi: "antusias" }, { jam: "15:00", emosi: "antusias" }],
-        violations: [{ detail: "Keluar Fullscreen", timestamp: "13:45" }]
+        violations: [{ detail: "Browser Diperkecil / Split Screen", timestamp: "13:45" }]
       },
       {
         tanggal: "Jumat, 14 Mar 2026",
@@ -472,8 +472,8 @@ export const STUDENTS = [
         durasi: 0.6, quiz: 40, quizTotal: 100,
         emosiSesi: [{ jam: "11:00", emosi: "bingung" }, { jam: "11:10", emosi: "frustrasi" }, { jam: "11:20", emosi: "tidak_terdeteksi" }, { jam: "11:36", emosi: "frustrasi" }],
         violations: [
-          { detail: "Pindah Tab terdeteksi", timestamp: "11:05" },
-          { detail: "Keluar Fullscreen", timestamp: "11:12" },
+          { detail: "Membuka Aplikasi / Window Lain", timestamp: "11:05" },
+          { detail: "Browser Diperkecil / Split Screen", timestamp: "11:12" },
         ]
       },
       {
@@ -482,7 +482,7 @@ export const STUDENTS = [
         level: "low",
         durasi: 0.5, quiz: 30, quizTotal: 100,
         emosiSesi: [{ jam: "09:00", emosi: "bingung" }, { jam: "09:15", emosi: "frustrasi" }, { jam: "09:30", emosi: "frustrasi" }],
-        violations: [{ detail: "Keluar Fullscreen", timestamp: "09:21" }]
+        violations: [{ detail: "Berpindah Tab / Menyembunyikan Halaman", timestamp: "09:21" }]
       },
     ]
   },
@@ -552,7 +552,7 @@ export const STUDENTS = [
         level: "high",
         durasi: 1.0, quiz: 70, quizTotal: 100,
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:15", emosi: "tidak_terdeteksi" }, { jam: "10:30", emosi: "bosan" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "bosan" }],
-        violations: [{ detail: "Pindah Tab terdeteksi", timestamp: "10:22" }]
+        violations: [{ detail: "Browser Diperkecil / Split Screen", timestamp: "10:22" }]
       },
       {
         tanggal: "Jumat, 14 Mar 2026",
@@ -603,7 +603,7 @@ export const STUDENTS = [
         level: "low",
         durasi: 1.0, quiz: 50, quizTotal: 100,
         emosiSesi: [{ jam: "14:00", emosi: "bingung" }, { jam: "14:30", emosi: "antusias" }, { jam: "14:45", emosi: "bingung" }, { jam: "15:00", emosi: "bingung" }],
-        violations: [{ detail: "Keluar Fullscreen", timestamp: "14:17" }]
+        violations: [{ detail: "Berpindah Tab / Menyembunyikan Halaman", timestamp: "14:17" }]
       },
     ]
   },
@@ -650,7 +650,7 @@ export const STUDENTS = [
         durasi: 1.0, quiz: 70, quizTotal: 100,
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:30", emosi: "bosan" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "antusias" }],
         violations: [
-          { detail: "Keluar Fullscreen", timestamp: "10:18" },
+          { detail: "Berpindah Tab / Menyembunyikan Halaman", timestamp: "10:18" },
         ]
       },
       {

@@ -537,6 +537,9 @@ const ChatSection = ({
   camGranted, setCamGranted,
   addRecentActivity,
   openGame,
+  sessionStreamRef,
+  sessionVideoRef,
+  stopSessionCamera,
 }) => {
   const [materiId, setSubMateri] = useState(null);
   const [openDrops, setOpenDrops] = useState({});
@@ -708,19 +711,52 @@ const ChatSection = ({
     return () => { recognitionRef.current?.stop(); };
   }, []);
 
-  /* ── Anti-Cheating Monitor ────────────────────────────────────── */
-  // Flag untuk membedakan exit resmi (klik tombol Back) vs exit paksa
+  /* ── Anti-Cheating Monitor (Tab / Window Switch Detection) ───── */
+  // Strategi baru: TIDAK pakai fullscreen.
+  // Pelanggaran = siswa pindah tab lain atau split/minimize window (visibilitychange / blur).
+  // Cek kamera via button di panel kiri — tidak trigger pelanggaran.
   const isExitingSession = useRef(false);
-  // Flag untuk membedakan saat file dialog OS terbuka (beberapa browser trigger fullscreenchange)
+  // Flag: sedang buka file dialog OS (blur browser tapi bukan pindah tab — bukan pelanggaran)
   const isOpeningFileDialog = useRef(false);
+  // Flag: webcam preview modal sedang terbuka (blur karena modal internal — bukan pelanggaran)
+  const isWebcamPreviewOpen = useRef(false);
   const [violationModal, setViolationModal] = useState(null); // { detail, count }
   const violationCount = useRef(0);
 
+  /* ── Webcam Preview Modal state ────────────────────────────────
+   * Modal in-page untuk siswa cek posisi kamera tanpa keluar halaman.
+   * Dibuka via button "Kamera Aktif" di panel kiri.
+   * ─────────────────────────────────────────────────────────────── */
+  const [showWebcamPreview, setShowWebcamPreview] = useState(false);
+  const previewVideoRef = useRef(null);
+  // TIDAK membuat stream baru — re-use sessionStreamRef yang sudah aktif dari startChat
+
+  const openWebcamPreview = useCallback(() => {
+    isWebcamPreviewOpen.current = true;
+    setShowWebcamPreview(true);
+    // Attach stream sesi ke preview video element setelah render
+    setTimeout(() => {
+      if (previewVideoRef.current && sessionStreamRef?.current) {
+        previewVideoRef.current.srcObject = sessionStreamRef.current;
+        previewVideoRef.current.play().catch(() => { });
+      }
+    }, 80);
+  }, [sessionStreamRef]);
+
+  const closeWebcamPreview = useCallback(() => {
+    // JANGAN stop stream — stream sesi harus tetap berjalan
+    // Cukup detach dari preview video element
+    if (previewVideoRef.current) {
+      previewVideoRef.current.srcObject = null;
+    }
+    setShowWebcamPreview(false);
+    setTimeout(() => { isWebcamPreviewOpen.current = false; }, 150);
+  }, []);
+
   // WebSocket untuk kirim event ke dashboard guru
   const { liveStudents: _ls, ...wsHook } = useWebSocket({ kelasId: 'kelas1', guruId: 'g1', enabled: false });
-  // Kirim violation event langsung ke pushEvent via custom approach — kita gunakan window event
+
   const sendViolationToTeacher = useCallback((detail) => {
-    // Dispatch custom event yang bisa di-listen oleh MonitoringSection
     window.dispatchEvent(new CustomEvent('sr_student_violation', {
       detail: {
         type: 'student_violation',
@@ -732,25 +768,22 @@ const ChatSection = ({
   }, []);
 
   const handleViolation = useCallback((detail) => {
-    // Gerbang utama: abaikan jika sedang proses exit resmi
     if (isExitingSession.current) return;
-    // Abaikan jika sedang membuka file dialog OS (beberapa browser picu fullscreenchange)
     if (isOpeningFileDialog.current) return;
+    if (isWebcamPreviewOpen.current) return; // buka modal webcam — bukan pelanggaran
     violationCount.current += 1;
     setViolationModal({ detail, count: violationCount.current });
     sendViolationToTeacher(detail);
   }, [sendViolationToTeacher]);
 
-  // Kembali ke fullscreen setelah file dialog / violation modal ditutup
-  const reEnterFullscreen = useCallback(() => {
-    if (!document.fullscreenElement && !isExitingSession.current) {
-      document.documentElement.requestFullscreen().catch(() => { });
-    }
-  }, []);
+  // reEnterFullscreen tidak lagi diperlukan — diganti noOp untuk kompatibilitas referensi file dialog
+  const reEnterFullscreen = useCallback(() => { /* no-op: tidak pakai fullscreen */ }, []);
 
   // Fungsi safe exit — dipanggil tombol Kembali
   const handleSafeBack = useCallback(() => {
     isExitingSession.current = true;
+    // Matikan kamera sesi — SATU-SATUNYA tempat stream dimatikan
+    stopSessionCamera?.();
     // Kirim status inactive ke teacher
     window.dispatchEvent(new CustomEvent('sr_student_violation', {
       detail: {
@@ -760,37 +793,65 @@ const ChatSection = ({
         timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
       }
     }));
-    // Keluar fullscreen
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => { });
-    }
     // Navigasi
     setActivePage('dashboard');
     setChatMateri(null);
     setSubMateri(null);
-  }, [setActivePage, setChatMateri]);
+  }, [setActivePage, setChatMateri, stopSessionCamera]);
 
-  // Setup & cleanup anti-cheating listeners saat camGranted aktif
+  // Setup & cleanup anti-cheating: deteksi pindah tab / split window
   useEffect(() => {
     if (!camGranted) return;
-    isExitingSession.current = false; // reset saat sesi baru dimulai
+    isExitingSession.current = false;
+    violationCount.current = 0;
 
-    const onFullscreenChange = () => {
-      if (!document.fullscreenElement) {
-        // Abaikan jika sedang buka file dialog — bukan pelanggaran
-        if (isOpeningFileDialog.current) return;
-        handleViolation('Keluar Fullscreen');
+    let pendingBlurTimer = null;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Batalkan pending blur — blur itu adalah efek samping minimize/tab-switch, bukan aksi terpisah
+        if (pendingBlurTimer) { clearTimeout(pendingBlurTimer); pendingBlurTimer = null; }
+        handleViolation('Berpindah Tab / Menyembunyikan Halaman');
       }
     };
 
-    document.addEventListener('fullscreenchange', onFullscreenChange);
+    const onWindowBlur = () => {
+      // Tahan eksekusi 80ms — beri kesempatan visibilitychange menyusul (kasus minimize)
+      // Jika visibilitychange datang dalam window ini, timer dibatalkan di atas → tidak double-count
+      pendingBlurTimer = setTimeout(() => {
+        pendingBlurTimer = null;
+        // Jika halaman sudah hidden berarti visibilitychange sudah fired dan menanganinya — skip
+        if (document.visibilityState === 'hidden') return;
+        handleViolation('Membuka Aplikasi / Window Lain');
+      }, 80);
+    };
+    // ── 3. Window resize — browser diperkecil (split-screen / snap window) ──
+    // Baseline diambil saat sesi dimulai; jika lebar turun >25% → pelanggaran
+    const BASE_WIDTH = window.innerWidth;
+    const SHRINK_THRESHOLD = 0.75; // toleransi: lebar turun lebih dari 25%
+    let resizeViolationFired = false; // hanya trigger sekali per "kejadian" mengecil
+
+    const onWindowResize = () => {
+      const ratio = window.innerWidth / BASE_WIDTH;
+      if (ratio < SHRINK_THRESHOLD) {
+        if (!resizeViolationFired) {
+          resizeViolationFired = true;
+          handleViolation('Browser Diperkecil / Split Screen');
+        }
+      } else {
+        // Browser kembali normal → reset flag agar bisa deteksi lagi jika mengecil ulang
+        resizeViolationFired = false;
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('blur', onWindowBlur);
+    window.addEventListener('resize', onWindowResize);
 
     return () => {
-      document.removeEventListener('fullscreenchange', onFullscreenChange);
-      // Saat unmount, pastikan keluar dari fullscreen
-      if (document.fullscreenElement && isExitingSession.current) {
-        document.exitFullscreen().catch(() => { });
-      }
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onWindowBlur);
+      window.removeEventListener('resize', onWindowResize);
     };
   }, [camGranted, handleViolation]);
 
@@ -1064,8 +1125,26 @@ const ChatSection = ({
   /* ─────────────────────────────────────────────────────────────────
      RENDER
   ───────────────────────────────────────────────────────────────── */
+  // Attach stream sesi ke sessionVideoRef saat camGranted aktif
+  // (stream sudah ada di sessionStreamRef dari startChat di StudentView)
+  useEffect(() => {
+    if (!camGranted || !sessionStreamRef?.current) return;
+    if (sessionVideoRef?.current) {
+      sessionVideoRef.current.srcObject = sessionStreamRef.current;
+      sessionVideoRef.current.play().catch(() => { });
+    }
+  }, [camGranted, sessionStreamRef, sessionVideoRef]);
+
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
+      {/* Hidden video element untuk capture emosi — stream sesi persisten */}
+      <video
+        ref={sessionVideoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+      />
 
       {/* ══ PANEL KIRI ══════════════════════════════════════════ */}
       <div style={{ width: 200, minWidth: 200, background: C.white, borderRight: `1px solid rgba(13,92,99,.08)`, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -1075,14 +1154,21 @@ const ChatSection = ({
             ← Kembali
           </button>
 
-          {/* Kamera aktif */}
-          <div style={{ background: `${C.red}0F`, border: `1px solid ${C.red}33`, borderRadius: 9, padding: '7px 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+          {/* Kamera aktif — klik untuk cek posisi kamera */}
+          <button
+            onClick={openWebcamPreview}
+            title="Klik untuk cek posisi kamera"
+            style={{ background: `${C.red}0F`, border: `1px solid ${C.red}33`, borderRadius: 9, padding: '7px 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', width: '100%', fontFamily: 'inherit', textAlign: 'left', transition: 'background .15s' }}
+            onMouseEnter={e => e.currentTarget.style.background = `${C.red}1A`}
+            onMouseLeave={e => e.currentTarget.style.background = `${C.red}0F`}
+          >
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: C.red, display: 'inline-block', animation: 'pulse 1.2s infinite', flexShrink: 0 }} />
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.red }}>Kamera Aktif</div>
-              <div style={{ fontSize: FS.xs, color: C.slate }}>Deteksi emosi ON</div>
+              <div style={{ fontSize: FS.xs, color: C.slate }}>Tap untuk cek kamera</div>
             </div>
-          </div>
+            <span style={{ fontSize: FS.xs, color: C.red, opacity: .7 }}>🔍</span>
+          </button>
 
           {/* Mapel info */}
           <div style={{ width: 38, height: 38, borderRadius: 10, background: `${chatMateri.mapelColor}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, marginBottom: 6 }}>
@@ -1909,18 +1995,20 @@ const ChatSection = ({
             {/* Tombol Game */}
             <div style={{ padding: '8px 12px', borderBottom: `1px solid rgba(13,92,99,.06)`, flexShrink: 0 }}>
               <button
-                onClick={() => { if (materiId && openGame) openGame({
-                  mapelId:     chatMateri.mapelId,
-                  mapelLabel:  chatMateri.mapelLabel,
-                  mapelIcon:   chatMateri.mapelIcon,
-                  mapelColor:  chatMateri.mapelColor,
-                  elemenId:    chatMateri.elemenId    || null,
-                  elemenLabel: chatMateri.elemenLabel || null,
-                  materiId,
-                  level:       chatMateri.level || 'Low',
-                  // game_id tidak diisi di sini — siswa pilih game dari getGameList
-                  // di produksi: buka modal pilih game, set game_id sebelum openGame
-                }); }}
+                onClick={() => {
+                  if (materiId && openGame) openGame({
+                    mapelId: chatMateri.mapelId,
+                    mapelLabel: chatMateri.mapelLabel,
+                    mapelIcon: chatMateri.mapelIcon,
+                    mapelColor: chatMateri.mapelColor,
+                    elemenId: chatMateri.elemenId || null,
+                    elemenLabel: chatMateri.elemenLabel || null,
+                    materiId,
+                    level: chatMateri.level || 'Low',
+                    // game_id tidak diisi di sini — siswa pilih game dari getGameList
+                    // di produksi: buka modal pilih game, set game_id sebelum openGame
+                  });
+                }}
                 disabled={!materiId}
                 style={{
                   width: '100%', padding: '9px 0', borderRadius: 9,
@@ -2163,26 +2251,36 @@ const ChatSection = ({
                   animation: 'pulse 1.4s infinite',
                 }}>⚠️</div>
               </div>
+              <div style={{ fontSize: FS.h2, fontWeight: 800, color: '#C53030', marginBottom: 8 }}>
+                Pelanggaran Terdeteksi
+              </div>
               <div style={{ fontSize: FS.lg, color: C.darkL, marginBottom: 16, lineHeight: 1.7 }}>
-                Sistem mendeteksi aktivitas di luar platform:
+                Sistem mendeteksi kamu berpindah ke luar halaman sesi belajar.
+              </div>
+
+              {/* Detail pelanggaran */}
+              <div style={{
+                background: 'rgba(197,48,48,.06)', borderRadius: 12,
+                padding: '11px 16px', marginBottom: 12, fontSize: FS.md,
+                color: '#744210', lineHeight: 1.7, textAlign: 'left',
+              }}>
+                📋 <strong>Jenis:</strong> {violationModal.detail}<br />
+                🔢 <strong>Jumlah pelanggaran:</strong> {violationModal.count}x<br />
               </div>
 
               {/* Info box */}
               <div style={{
-                background: 'rgba(197,48,48,.06)', borderRadius: 12,
+                background: '#FFF5F5', borderRadius: 12,
                 padding: '11px 16px', marginBottom: 24, fontSize: FS.md,
                 color: '#744210', lineHeight: 1.7, textAlign: 'left',
               }}>
                 🔒 <strong>Sesi belajar masih berjalan.</strong>
                 <br />
-                Diperlukan layar penuh untuk melanjutkan belajar.
+                Harap tetap berada di halaman ini selama sesi belajar berlangsung.
               </div>
 
               <button
-                onClick={() => {
-                  setViolationModal(null);
-                  reEnterFullscreen();
-                }}
+                onClick={() => setViolationModal(null)}
                 style={{
                   width: '100%', padding: '13px', borderRadius: 12,
                   background: 'linear-gradient(135deg, #C53030, #E53E3E)',
@@ -2195,7 +2293,7 @@ const ChatSection = ({
                 onMouseEnter={e => e.currentTarget.style.opacity = '.9'}
                 onMouseLeave={e => e.currentTarget.style.opacity = '1'}
               >
-                Kembali ke Mode Belajar Penuh
+                Kembali ke Sesi Belajar
               </button>
 
               <div style={{ marginTop: 12, fontSize: FS.sm, color: C.slate }}>
@@ -2205,7 +2303,114 @@ const ChatSection = ({
           </div>
         )
       }
-    </div >
+
+      {/* ══ WEBCAM PREVIEW MODAL ═════════════════════════════════ */}
+      {showWebcamPreview && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(26,35,50,.6)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 9998,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+            animation: 'fadeIn .2s ease',
+          }}
+          onClick={closeWebcamPreview}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: C.white, borderRadius: 22, width: 480, padding: 0,
+              boxShadow: '0 24px 64px rgba(0,0,0,.3)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '14px 18px', background: `linear-gradient(135deg, ${C.teal}, ${C.tealL})`,
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <span style={{ fontSize: 20 }}>📷</span>
+              <div style={{ flex: 1, color: '#fff' }}>
+                <div style={{ fontWeight: 700, fontSize: FS.md }}>Cek Posisi Kamera</div>
+                <div style={{ fontSize: FS.xs, opacity: .8 }}>Pastikan wajah terlihat jelas di tengah frame</div>
+              </div>
+              <button
+                onClick={closeWebcamPreview}
+                style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 8, width: 30, height: 30, color: '#fff', cursor: 'pointer', fontSize: FS.lg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >✕</button>
+            </div>
+
+            {/* Video preview */}
+            <div style={{ position: 'relative', background: '#000', aspectRatio: '4/3', overflow: 'hidden' }}>
+              <video
+                ref={previewVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{
+                  width: '100%', height: '100%',
+                  objectFit: 'cover',
+                  transform: 'scaleX(-1)', // mirror agar natural
+                  display: 'block',
+                }}
+              />
+              {/* Overlay guide frame */}
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                pointerEvents: 'none',
+              }}>
+                <div style={{
+                  width: 140, height: 170,
+                  border: '2.5px dashed rgba(255,255,255,.55)',
+                  borderRadius: '50% 50% 45% 45%',
+                  boxShadow: '0 0 0 9999px rgba(0,0,0,.15)',
+                }} />
+              </div>
+              {/* Status indicator */}
+              <div style={{
+                position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
+                background: 'rgba(0,0,0,.6)', borderRadius: 99, padding: '4px 14px',
+                color: '#fff', fontSize: FS.xs, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#68D391', display: 'inline-block', animation: 'pulse 1.2s infinite' }} />
+                Kamera Aktif — Deteksi Emosi Berjalan
+              </div>
+            </div>
+
+            {/* Tips */}
+            <div style={{ padding: '14px 18px 18px' }}>
+              <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.dark, marginBottom: 8 }}>💡 Tips agar deteksi emosi akurat:</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {[
+                  '👤 Pastikan wajah berada di tengah & mengisi sekitar 50% frame',
+                  '💡 Pastikan cahaya cukup — hindari backlight dari jendela',
+                  '📏 Jarak ideal: 30–60 cm dari layar',
+                  '😊 Usahakan ekspresi wajah terlihat natural',
+                ].map((tip, i) => (
+                  <div key={i} style={{ fontSize: FS.xs, color: C.darkL, background: C.cream, borderRadius: 7, padding: '5px 10px' }}>
+                    {tip}
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={closeWebcamPreview}
+                style={{
+                  width: '100%', marginTop: 14, padding: '10px', borderRadius: 10,
+                  background: `linear-gradient(135deg, ${C.teal}, ${C.tealL})`,
+                  border: 'none', color: '#fff', fontWeight: 700, fontSize: FS.md,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  boxShadow: `0 4px 12px ${C.teal}55`,
+                }}
+              >
+                ✅ Sudah OK, Lanjut Belajar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

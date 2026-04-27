@@ -333,7 +333,12 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
     return Object.entries(map).map(([tanggal, entries]) => ({ tanggal, entries }));
   }, [student]);
 
-  const wsViolations = student.violations || [];
+  const allHistoricViolations = new Set(
+    (student.riwayat || []).flatMap(r => r.violations || []).map(v => `${v.detail}__${v.timestamp}`)
+  );
+  const wsViolations = (student.violations || []).filter(
+    v => !allHistoricViolations.has(`${v.detail}__${v.timestamp}`)
+  );
   const hasAnyViolation = wsViolations.length > 0 || student.hasViolation;
 
   return (
@@ -381,7 +386,14 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                     const isViolOpen = openViolationIdx === gIdx;
                     const quizColor = r.quiz / r.quizTotal >= 0.7 ? C.green : r.quiz / r.quizTotal >= 0.5 ? C.amber : C.red;
                     const isLatestSession = riwayatByDate[0]?.entries[0]?.origIdx === gIdx;
-                    const sessionViolations = [...(r.violations || []), ...(isLatestSession ? wsViolations : [])];
+                    const rawSessionViolations = [...(r.violations || []), ...(isLatestSession ? wsViolations : [])];
+                    const seenKeys = new Set();
+                    const sessionViolations = rawSessionViolations.filter(v => {
+                      const key = `${v.detail}__${v.timestamp}`;
+                      if (seenKeys.has(key)) return false;
+                      seenKeys.add(key);
+                      return true;
+                    });
                     const hasSessionViolation = sessionViolations.length > 0;
                     return (
                       <div key={gIdx} style={{ background: C.white, borderRadius: 10, border: `1.5px solid rgba(13,92,99,.07)`, marginBottom: 6, overflow: 'hidden' }}>
@@ -449,20 +461,30 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                           <div style={{ borderTop: '1px solid rgba(197,48,48,.15)', padding: '12px 14px', background: '#FFFAFA' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                               {sessionViolations.map((v, i) => {
-                                const isFullscreen = v.detail?.includes('Fullscreen');
-                                const vColor = isFullscreen ? '#C53030' : '#C05621';
+                                const isTabSwitch = v.detail?.includes('Tab') || v.detail?.includes('Menyembunyikan');
+                                const isResize = v.detail?.includes('Diperkecil') || v.detail?.includes('Split');
+                                const isAppSwitch = v.detail?.includes('Aplikasi') || v.detail?.includes('Window');
+
+                                const vColor = '#C53030';
+
+                                const vIcon = isTabSwitch ? '🔀'
+                                  : isResize ? '⬛'
+                                    : isAppSwitch ? '🪟'
+                                      : '⚠️';
+
+                                const vBg = '#FFF5F5';
                                 return (
                                   <div key={i} style={{ display: 'flex', gap: 0, alignItems: 'stretch' }}>
                                     <div style={{ width: 28, display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: isFullscreen ? '#FFF5F5' : '#FFFBF0', border: `2px solid ${vColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.xs, marginTop: 4, flexShrink: 0 }}>
-                                        {isFullscreen ? '🖥️' : '🔀'}
+                                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: vBg, border: `2px solid ${vColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.xs, marginTop: 4, flexShrink: 0 }}>
+                                        {vIcon}
                                       </div>
                                       {i < sessionViolations.length - 1 && <div style={{ width: 2, flex: 1, background: `${vColor}33`, minHeight: 16 }} />}
                                     </div>
                                     <div style={{ paddingBottom: 12, paddingLeft: 10, flex: 1 }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                         <span style={{ fontSize: FS.sm, fontWeight: 700, color: vColor }}>{v.detail}</span>
-                                        <span style={{ fontSize: FS.xs, background: isFullscreen ? '#FFF5F5' : '#FFFBF0', color: vColor, padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>#{i + 1}</span>
+                                        <span style={{ fontSize: FS.xs, background: vBg, color: vColor, padding: '1px 6px', borderRadius: 99, fontWeight: 700 }}>#{i + 1}</span>
                                       </div>
                                       <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 1 }}>🕐 {v.timestamp || 'Baru saja'}</div>
                                     </div>

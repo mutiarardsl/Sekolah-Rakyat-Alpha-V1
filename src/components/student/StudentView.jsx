@@ -268,6 +268,21 @@ const StudentView = () => {
   const [camPendingMateri, setCamPendingMateri] = useState(null);
   const [showCamModal, setShowCamModal] = useState(false);
 
+  // Stream kamera sesi — dibuat saat startChat, dimatikan HANYA saat handleSafeBack
+  // Dikirim ke ChatSection via prop agar preview modal re-use stream yang sama
+  const sessionStreamRef = useRef(null);
+  const sessionVideoRef = useRef(null);
+
+  const stopSessionCamera = () => {
+    if (sessionStreamRef.current) {
+      sessionStreamRef.current.getTracks().forEach(t => t.stop());
+      sessionStreamRef.current = null;
+    }
+    if (sessionVideoRef.current) {
+      sessionVideoRef.current.srcObject = null;
+    }
+  };
+
   /* ── Search ─────────────────────────────────────────────────── */
   const [searchQ, setSearchQ] = useState('');
   const [searchResult, setSearchResult] = useState(null);
@@ -319,12 +334,16 @@ const StudentView = () => {
     }
   };
 
-  const startChat = (materiOrMapel) => {
-    // Minta masuk fullscreen — browser membutuhkan user gesture, tombol ini menjadi triggernya
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {
-        // Jika gagal/ditolak, lanjutkan saja — ChatSection akan menangani dengan warning
-      });
+  const startChat = (materiOrMapel, stream) => {
+    // Fullscreen tidak lagi dipaksakan — deteksi pelanggaran kini via visibilitychange / blur
+    // Simpan stream yang sudah diperoleh dari ATPCamModal sebagai stream sesi persisten
+    if (stream) {
+      sessionStreamRef.current = stream;
+      // Attach ke hidden video element jika sudah ada
+      if (sessionVideoRef.current) {
+        sessionVideoRef.current.srcObject = stream;
+        sessionVideoRef.current.play().catch(() => {});
+      }
     }
     markTopicOngoing(materiOrMapel);
     setChatMateri(materiOrMapel);
@@ -356,6 +375,9 @@ const StudentView = () => {
     setActivePage,
     camGranted, setCamGranted,
     addRecentActivity,
+    sessionStreamRef,
+    sessionVideoRef,
+    stopSessionCamera,
     openGame: (ctx) => {
       // ctx: { mapelId, mapelLabel, mapelIcon, mapelColor, elemenId, elemenLabel, materiId?, level, game_id? }
       setGameContext(ctx);

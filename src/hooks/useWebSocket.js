@@ -47,7 +47,11 @@ const SEED_VIOLATIONS = STUDENTS.reduce((acc, s) => {
 }, {});
 
 const EMOTIONS = ['bosan', 'bingung', 'frustrasi', 'antusias'];
-const VIOLATION_DETAILS = ['Keluar Fullscreen'];
+const VIOLATION_DETAILS = [
+  'Berpindah Tab / Menyembunyikan Halaman',
+  'Membuka Aplikasi / Window Lain',
+  'Browser Diperkecil / Split Screen',
+];
 
 const now = () =>
   new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
