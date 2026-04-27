@@ -635,7 +635,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
       </div>
 
       {/* 2-Column body */}
-      <div style={{ flex: 1, display: 'flex', overflow: (isMobile || isTablet) ? 'auto' : 'hidden', padding: `0 var(--content-px, 24px) 20px`, gap: 14, flexDirection: (isMobile || isTablet) ? 'column' : 'row' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'auto', padding: `0 var(--content-px, 24px) 20px`, gap: 14, flexDirection: (isMobile || isTablet) ? 'column' : 'row' }}>
 
         {/* Kolom Kiri — Mata Pelajaran */}
         <div style={{ width: (isMobile || isTablet) ? '100%' : 340, flexShrink: 0, background: C.white, borderRadius: 14, border: '1.5px solid #E8EDF2', overflowY: (isMobile || isTablet) ? 'visible' : 'auto', maxHeight: (isMobile || isTablet) ? 'none' : '100%', boxShadow: '0 2px 10px rgba(26,35,50,.06)' }}>

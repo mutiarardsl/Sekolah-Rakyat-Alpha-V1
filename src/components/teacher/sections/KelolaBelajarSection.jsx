@@ -526,7 +526,7 @@ const KelolaBelajarSection = () => {
   const isSmall = isMobile; // tablet uses row layout but scrollable right panel
 
   return (
-    <div style={{ flex: 1, display: 'flex', overflow: isSmall ? 'auto' : 'hidden', flexDirection: isSmall ? 'column' : 'row', background: C.bg }}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'auto', flexDirection: isSmall ? 'column' : 'row', background: C.bg }}>
 
       {/* ── Panel Kiri: Form Konfigurasi ── */}
       <div style={{ width: isSmall ? '100%' : 340, minWidth: isSmall ? 'auto' : 300, background: C.white, borderRight: isSmall ? 'none' : `1px solid rgba(13,92,99,.1)`, borderBottom: isSmall ? `1px solid rgba(13,92,99,.1)` : 'none', overflowY: isSmall ? 'visible' : 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
