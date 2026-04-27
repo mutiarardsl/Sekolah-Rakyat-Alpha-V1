@@ -11,8 +11,8 @@
  */
 import { useState, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
-import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import ChangePasswordModal from '../../shared/ChangePasswordModal';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import {
   ADMIN_GURU_INIT,
   ADMIN_KELAS_INIT,
@@ -88,6 +88,7 @@ const MapelBlock = ({ mapelId, kelasList }) => {
 // Main
 // ─────────────────────────────────────────────────────────────────
 const TeacherProfileSection = ({ onPwdSuccess }) => {
+  const { isMobile } = useBreakpoint();
   const guru = ADMIN_GURU_INIT.find(g => g.id === CURRENT_GURU_ID);
   const semuaKelas = ADMIN_KELAS_INIT;
 
@@ -98,8 +99,6 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
     kelasList: semuaKelas.filter(k => k.mapelGuruMap?.[mid] === CURRENT_GURU_ID),
   })).filter(m => m.kelasList.length > 0);
 
-  const { isMobile, isTablet } = useBreakpoint();
-  const isMobileOrTablet = isMobile || isTablet;
   const [avatarSrc, setAvatarSrc] = useState(null);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdToast, setPwdToast] = useState(false);
@@ -122,10 +121,12 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', background: C.bg,
+    }}>
 
-      {/* 1 ── Judul halaman (sticky) */}
-      <div className="sr-page-title-bar">
+      {/* 1 ── Judul halaman — STICKY */}
+      <div style={{ padding: '16px 28px 12px', background: C.bg, flexShrink: 0, borderBottom: `1px solid ${C.tealXL}` }}>
         <h1 style={{
           margin: 0,
           fontFamily: FONTS.serif,
@@ -138,8 +139,8 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
         </p>
       </div>
 
-      {/* Scrollable body */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: isMobileOrTablet ? '16px' : '28px 32px', background: C.bg }}>
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px 14px' : '28px 32px', background: C.bg }}>
 
       {/* 2 ── Kartu utama */}
       <div style={{
@@ -159,7 +160,7 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
           <div style={{ position: 'absolute', bottom: -20, right: 100, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,.04)', pointerEvents: 'none' }} />
           <div style={{ position: 'absolute', top: 18, right: 195, width: 50, height: 50, borderRadius: '50%', background: 'rgba(244,164,53,.07)', pointerEvents: 'none' }} />
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1, flexWrap: 'wrap', gap: 12 }}>
 
             {/* Avatar di dalam banner */}
             <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -222,12 +223,10 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
           </div>
         </div>
 
-        {/* Body — responsive grid */}
+        {/* Body — 2 kolom (1 kolom di mobile) */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMobileOrTablet ? '1fr' : '1fr 1fr',
-          gap: isMobileOrTablet ? '0' : '0 40px',
-          padding: isMobileOrTablet ? '16px 20px 24px' : '20px 32px 32px',
+          display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: '0 40px', padding: isMobile ? '16px 18px 24px' : '20px 32px 32px',
         }}>
 
           {/* Kolom kiri */}
@@ -280,8 +279,6 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
         </div>
       </div>
 
-      </div>{/* end scrollable body */}
-
       {/* Modal & Toast */}
       {showChangePwd && (
         <ChangePasswordModal
@@ -305,6 +302,7 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
           ✅ Password berhasil diubah!
         </div>
       )}
+      </div> {/* end scrollable content */}
     </div>
   );
 };

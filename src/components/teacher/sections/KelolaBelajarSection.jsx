@@ -82,12 +82,12 @@ const GamePreviewModal = ({ konten, config, onClose }) => {
   // Fallback ke URL manual dengan query params jika html_url belum ada
   const GAME_BASE_URL = 'https://game.sekolahrakyat.id/play'; // Tim 4 host
   const fallbackParams = new URLSearchParams({
-    mapel_id:    config?.mapelId || '',
-    elemen_id:   config?.elemenId || '',
-    elemen:      config?.elemenLabel || '',
-    materi:      config?.materi || '',
-    level:       konten?.level || 'Low',
-    mode:        'preview',  // tidak mempengaruhi progress siswa
+    mapel_id: config?.mapelId || '',
+    elemen_id: config?.elemenId || '',
+    elemen: config?.elemenLabel || '',
+    materi: config?.materi || '',
+    level: konten?.level || 'Low',
+    mode: 'preview',  // tidak mempengaruhi progress siswa
   }).toString();
   // Pakai html_url dari API jika ada, fallback ke URL manual
   const gameUrl = konten?.html_url || `${GAME_BASE_URL}?${fallbackParams}`;
@@ -465,8 +465,6 @@ const KelolaBelajarSection = () => {
     (teacherFromTeachers?.name && g.nama.includes(teacherFromTeachers.name.split(',')[0].replace('Bpk. ', '').replace('Ibu ', '').trim()))
   ) || ADMIN_GURU_INIT[0]; // absolute fallback ke guru pertama
   const guruMapelIds = Array.isArray(guru?.mapelId) ? guru.mapelId : (guru?.mapelId ? [guru.mapelId] : []);
-
-  const { isMobile } = useBreakpoint();
   const [jenjang, setJenjang] = useState('X');
   const [kelasId, setKelasId] = useState('');
   const [mapelId, setMapelId] = useState('');
@@ -524,11 +522,14 @@ const KelolaBelajarSection = () => {
     }, 1400);
   };
 
+  const { isMobile } = useBreakpoint();
+  const isSmall = isMobile; // tablet uses row layout but scrollable right panel
+
   return (
-    <div style={{ flex: 1, display: 'flex', overflow: isMobile ? 'auto' : 'hidden', flexDirection: isMobile ? 'column' : 'row', background: C.bg }}>
+    <div style={{ flex: 1, display: 'flex', overflow: isSmall ? 'auto' : 'hidden', flexDirection: isSmall ? 'column' : 'row', background: C.bg }}>
 
       {/* ── Panel Kiri: Form Konfigurasi ── */}
-      <div style={{ width: isMobile ? '100%' : 340, background: C.white, borderRight: isMobile ? 'none' : `1px solid rgba(13,92,99,.1)`, borderBottom: isMobile ? `1px solid rgba(13,92,99,.1)` : 'none', overflowY: isMobile ? 'visible' : 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: isSmall ? '100%' : 340, minWidth: isSmall ? 'auto' : 300, background: C.white, borderRight: isSmall ? 'none' : `1px solid rgba(13,92,99,.1)`, borderBottom: isSmall ? `1px solid rgba(13,92,99,.1)` : 'none', overflowY: isSmall ? 'visible' : 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid rgba(13,92,99,.08)` }}>
           <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>📐 Kelola Konten Belajar</div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 3 }}>Konfigurasi dan generate konten interaktif untuk siswa</div>
@@ -623,11 +624,7 @@ const KelolaBelajarSection = () => {
       </div>
 
       {/* ── Panel Kanan: Preview / Loading / Result ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div className="sr-page-title-bar" style={{ padding: '12px 20px 10px', background: C.white, display: phase === 'form' ? 'none' : 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ fontFamily: FONTS.serif, fontSize: FS.lg, fontWeight: 600, color: C.dark }}>📋 Hasil Generate Konten</div>
-      </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--content-py,20px) var(--content-px,24px)' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minWidth: 0 }}>
 
         {phase === 'form' && (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -681,7 +678,7 @@ const KelolaBelajarSection = () => {
             {/* Konteks Konten */}
             <Card style={{ padding: 16, marginBottom: 14 }}>
               <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark, marginBottom: 12 }}>Konteks Konten</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px 12px', marginBottom: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px 16px', marginBottom: 10 }}>
                 {[
                   { l: 'JENJANG', v: config.jenjang },
                   { l: 'KELAS', v: config.kelasId === '__semua__' ? `Semua Kelas ${config.jenjang} (${kelasList.length} kelas)` : config.kelasId ? ADMIN_KELAS_INIT.find(k => k.id === config.kelasId)?.nama || config.kelasId : '—' },
@@ -736,7 +733,6 @@ const KelolaBelajarSection = () => {
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
     </div>
   );
 };

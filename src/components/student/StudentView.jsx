@@ -196,7 +196,8 @@ const StudentView = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { isMobile } = useBreakpoint();
+  const { isMobile, isTablet } = useBreakpoint();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Ambil state dari navigation (dikirim oleh PretestPage)
   const pretestResult = location.state?.pretestResult || null;
@@ -343,7 +344,7 @@ const StudentView = () => {
       // Attach ke hidden video element jika sudah ada
       if (sessionVideoRef.current) {
         sessionVideoRef.current.srcObject = stream;
-        sessionVideoRef.current.play().catch(() => {});
+        sessionVideoRef.current.play().catch(() => { });
       }
     }
     markTopicOngoing(materiOrMapel);
@@ -405,9 +406,18 @@ const StudentView = () => {
     <>
       <div style={{ display: 'flex', height: '100vh', background: C.bg, overflow: 'hidden' }}>
 
-        {/* ── Sidebar (desktop only, hidden during chat) ── */}
+        {/* ── Sidebar overlay backdrop (mobile/tablet) ── */}
+        {(isMobile || isTablet) && (
+          <div
+            className={`sr-sidebar-overlay${sidebarOpen ? ' open' : ''}`}
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* ── Sidebar (desktop: always visible; mobile/tablet: overlay) ── */}
         {activePage !== 'chat' && (
-          <div className="sr-sidebar" style={{ background: C.dark, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className={`sr-sidebar${(isMobile || isTablet) ? (sidebarOpen ? ' open' : '') : ''}`}
+            style={{ background: C.dark, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {/* Logo */}
             <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,.07)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 20 }}>🏫</span>
@@ -419,7 +429,7 @@ const StudentView = () => {
 
             {/* User info */}
             <div
-              onClick={() => { setActivePage('profile'); setSidebarOpen(false); }}
+              onClick={() => setActivePage('profile')}
               style={{ padding: '14px', borderBottom: '1px solid rgba(255,255,255,.07)', cursor: 'pointer' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.04)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
@@ -437,7 +447,7 @@ const StudentView = () => {
 
             {/* Nav items */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
-              {navItems.filter(n => n.id !== 'profile').map(item => (
+              {navItems.map(item => (
                 <button key={item.id} onClick={() => { setActivePage(item.id); setSidebarOpen(false); }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', background: activePage === item.id ? 'rgba(13,92,99,.5)' : 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 2, transition: 'all .15s' }}
                   onMouseEnter={e => { if (activePage !== item.id) e.currentTarget.style.background = 'rgba(255,255,255,.06)'; }}
@@ -451,7 +461,7 @@ const StudentView = () => {
 
             {/* Footer */}
             <div style={{ padding: '6px 8px 8px', borderTop: '1px solid rgba(255,255,255,.07)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <button onClick={() => { setSidebarOpen(false); onNavigate('login'); }}
+              <button onClick={() => onNavigate('login')}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', fontWeight: 'bold', gap: 8, padding: '7px 10px', background: 'none', border: 'none', borderRadius: 8, color: 'rgba(255,255,255,.45)', fontSize: FS.sm, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s' }}
                 onMouseEnter={e => { e.currentTarget.style.color = '#fff'; }}
                 onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.45)'; }}>
@@ -467,7 +477,31 @@ const StudentView = () => {
         )}
 
         {/* ── Main content ── */}
-        <div className={activePage !== 'chat' ? 'sr-main-wrapper' : ''} style={{ flex: 1, display: 'flex', overflow: 'hidden', width: '100%', flexDirection: 'column' }}>
+        <div className={activePage !== 'chat' ? 'sr-main-content' : ''} style={{ flex: 1, display: 'flex', overflow: 'hidden', width: '100%', flexDirection: 'column' }}>
+
+          {/* ── Top Bar with hamburger (mobile/tablet only, hidden during chat) ── */}
+          {activePage !== 'chat' && (
+            <div className="sr-topbar">
+              <button
+                onClick={() => setSidebarOpen(s => !s)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}
+              >
+                {[0, 1, 2].map(i => <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />)}
+              </button>
+              <span style={{ fontSize: 16 }}>🏫</span>
+              <span style={{ color: C.white, fontWeight: 700, fontSize: FS.base }}>Portal Siswa</span>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={() => { setActivePage('profile'); setSidebarOpen(false); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+              >
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.base, border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.3)'}` }}>
+                  {user?.avatar || '?'}
+                </div>
+              </button>
+            </div>
+          )}
+
           {activePage === 'dashboard' && (
             <DashboardSection
               currentUser={user}
@@ -483,7 +517,6 @@ const StudentView = () => {
               progressData={progressData}
               openChatWithWebcam={openChatWithWebcam}
               onNavigateToPretest={(params) => {
-                // params: { mapelId, elemenId, elemenLabel, targetMateriId, isMateriLevel, materiData }
                 navigate('/pretest', {
                   state: {
                     targetMapelId: params.mapelId,
@@ -509,6 +542,7 @@ const StudentView = () => {
         </div>
       </div>
 
+      {/* ── Bottom Navigation removed — replaced by hamburger sidebar ── */}
 
       {gameContext && (
         <div style={{

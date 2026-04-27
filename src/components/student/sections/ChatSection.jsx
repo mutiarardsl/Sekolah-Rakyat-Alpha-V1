@@ -542,7 +542,8 @@ const ChatSection = ({
   sessionVideoRef,
   stopSessionCamera,
 }) => {
-  const { isMobile } = useBreakpoint();
+  const { isMobile, isTablet } = useBreakpoint();
+  const [showRightPanelMobile, setShowRightPanelMobile] = useState(false);
   const [materiId, setSubMateri] = useState(null);
   const [openDrops, setOpenDrops] = useState({});
   const [confModal, setConfModal] = useState(null);
@@ -572,7 +573,11 @@ const ChatSection = ({
   const setQuizHistory = useStudentStore(s => s.setQuizHistory);
   const levelMap = useStudentStore(s => s.levelMap);
   const setLevelMap = useStudentStore(s => s.setLevelMap);
-  const rightPanelWidth = isMobile ? 0 : (quizHistoryModal ? 380 : confModal ? 380 : 238);
+  const rightPanelWidth = isMobile
+    ? (showRightPanelMobile ? '100%' : 0)
+    : isTablet
+      ? (quizHistoryModal ? 320 : confModal ? 320 : 200)
+      : (quizHistoryModal ? 380 : confModal ? 380 : 238);
 
   /* ── [TIM 5] Context Injection Pasca-Kuis ──────────────────────────
    * Setiap kali needsQuizAnalysis berubah jadi true dan ada quiz result,
@@ -1138,9 +1143,6 @@ const ChatSection = ({
   }, [camGranted, sessionStreamRef, sessionVideoRef]);
 
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
-  const [rightPanelMobileOpen, setRightPanelMobileOpen] = useState(false);
-  // rightPanelContent is a flag — actual content is always rendered in the right panel div
-  const rightPanelContent = confModal || confOverlay || quizHistoryModal || true;
 
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
@@ -1292,7 +1294,7 @@ const ChatSection = ({
               onClick={() => setLeftPanelOpen(p => !p)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}
             >
-              {[0,1,2].map(i => <div key={i} style={{ width: 16, height: 2, background: C.teal, borderRadius: 1 }} />)}
+              {[0, 1, 2].map(i => <div key={i} style={{ width: 16, height: 2, background: C.teal, borderRadius: 1 }} />)}
             </button>
           )}
 
@@ -1306,12 +1308,20 @@ const ChatSection = ({
             </div>
           </div>
 
-          {/* Mobile: back button */}
+          {/* Mobile: right panel toggle + back button */}
           {isMobile && (
-            <button onClick={handleSafeBack}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.teal, fontWeight: 700, fontSize: FS.md, padding: '4px 8px', flexShrink: 0 }}>
-              ✕
-            </button>
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+              <button
+                onClick={() => setShowRightPanelMobile(s => !s)}
+                style={{ background: showRightPanelMobile ? C.teal : 'none', border: `1.5px solid ${C.tealXL}`, cursor: 'pointer', color: showRightPanelMobile ? '#fff' : C.teal, fontWeight: 700, fontSize: FS.xs, padding: '4px 8px', borderRadius: 8, flexShrink: 0 }}
+              >
+                📚 Konten
+              </button>
+              <button onClick={handleSafeBack}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.teal, fontWeight: 700, fontSize: FS.md, padding: '4px 8px', flexShrink: 0 }}>
+                ✕
+              </button>
+            </div>
           )}
         </div>
 
@@ -1705,29 +1715,35 @@ const ChatSection = ({
             </div>
             <Btn variant="primary" onClick={sendMsg} disabled={!input.trim() && !chatAttachments.length}
               style={{ height: 38, paddingLeft: 12, paddingRight: 12, flexShrink: 0, fontSize: FS.md, alignSelf: 'flex-end' }}>Kirim →</Btn>
-            {/* Mobile: floating alat belajar button */}
-            {isMobile && (
-              <button
-                onClick={() => setRightPanelMobileOpen(p => !p)}
-                style={{ height: 38, padding: '0 10px', background: C.tealXL, border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 18, flexShrink: 0 }}
-                title="Alat Belajar"
-              >📚</button>
-            )}
           </div>
         </div>
       </div>
 
       {/* ══ PANEL KANAN ══════════════════════════════════════════ */}
+      {(!isMobile || showRightPanelMobile) && (
       <div style={{
-        width: rightPanelWidth,
-        minWidth: rightPanelWidth,
+        width: isMobile ? '100%' : rightPanelWidth,
+        minWidth: isMobile ? '100%' : rightPanelWidth,
         transition: 'width .3s cubic-bezier(.4,0,.2,1), min-width .3s cubic-bezier(.4,0,.2,1)',
         borderLeft: `1px solid rgba(13,92,99,.08)`,
         background: C.white,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        ...(isMobile ? { position: 'absolute', inset: 0, zIndex: 50 } : {}),
       }}>
+
+        {/* Mobile close button */}
+        {isMobile && (
+          <div style={{ padding: '8px 12px', background: C.dark, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button
+              onClick={() => setShowRightPanelMobile(false)}
+              style={{ background: 'none', border: 'none', color: C.white, fontWeight: 700, fontSize: FS.md, cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              ← Kembali ke Chat
+            </button>
+          </div>
+        )}
 
         {/* ── Mode: Detail Riwayat Quiz (menimpa format konten & latihan soal) ── */}
         {quizHistoryModal ? (() => {
@@ -2253,6 +2269,7 @@ const ChatSection = ({
           </>
         )}
       </div>
+      )} {/* end mobile right panel conditional */}
 
       {/* ══ Modal Pilihan Ganda ══════════════════════════════════ */}
       <QuizModal

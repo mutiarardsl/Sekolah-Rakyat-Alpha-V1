@@ -15,13 +15,13 @@ import { C, FONTS, FS } from '../../styles/tokens';
 export const Btn = ({ children, variant = 'primary', onClick, style = {}, disabled = false, size = 'md' }) => {
   const sizes = { sm: '6px 12px', md: '9px 18px', lg: '12px 28px' };
   const vars = {
-    primary: { background: C.teal,   color: C.white, boxShadow: `0 2px 8px rgba(13,92,99,.3)` },
-    amber:   { background: C.amber,  color: C.dark,  boxShadow: `0 2px 8px rgba(244,164,53,.3)` },
-    ghost:   { background: 'transparent', color: C.teal, border: `1.5px solid ${C.teal}` },
-    danger:  { background: C.red,    color: C.white },
-    soft:    { background: C.tealXL, color: C.teal },
-    dark:    { background: C.dark,   color: C.white },
-    green:   { background: C.green,  color: C.white },
+    primary: { background: C.teal, color: C.white, boxShadow: `0 2px 8px rgba(13,92,99,.3)` },
+    amber: { background: C.amber, color: C.dark, boxShadow: `0 2px 8px rgba(244,164,53,.3)` },
+    ghost: { background: 'transparent', color: C.teal, border: `1.5px solid ${C.teal}` },
+    danger: { background: C.red, color: C.white },
+    soft: { background: C.tealXL, color: C.teal },
+    dark: { background: C.dark, color: C.white },
+    green: { background: C.green, color: C.white },
   };
   return (
     <button
@@ -47,12 +47,12 @@ export const Btn = ({ children, variant = 'primary', onClick, style = {}, disabl
 // ── Badge ──────────────────────────────────────────────────────────
 export const Badge = ({ label, color = 'teal' }) => {
   const m = {
-    teal:   { bg: C.tealXL,  fg: C.teal   },
-    amber:  { bg: C.amberL,  fg: C.orange },
-    red:    { bg: C.redL,    fg: C.red    },
-    green:  { bg: C.greenL,  fg: C.green  },
+    teal: { bg: C.tealXL, fg: C.teal },
+    amber: { bg: C.amberL, fg: C.orange },
+    red: { bg: C.redL, fg: C.red },
+    green: { bg: C.greenL, fg: C.green },
     purple: { bg: C.purpleL, fg: C.purple },
-    slate:  { bg: '#EDF2F7', fg: C.darkL  },
+    slate: { bg: '#EDF2F7', fg: C.darkL },
   };
   const s = m[color] ?? m.teal;
   return (
@@ -98,9 +98,9 @@ export const Divider = () => (
 
 // ── Emotion color map ──────────────────────────────────────────────
 export const EmotionColor = {
-  antusias:  C.green,
-  bosan:     C.darkL,
-  bingung:   C.amber,
+  antusias: C.green,
+  bosan: C.darkL,
+  bingung: C.amber,
   frustrasi: C.red,
 };
 
@@ -119,12 +119,12 @@ export const Spinner = ({ size = 18, color = C.teal }) => (
 // ── StatusBadge ────────────────────────────────────────────────────
 export const StatusBadge = ({ status }) => {
   const cfg = {
-    'Aktif':     { bg: C.greenL,  color: C.green  },
-    'Cuti':      { bg: C.amberL,  color: C.orange },
-    'Nonaktif':  { bg: '#EDF2F7', color: C.darkL  },
-    'Keluar':    { bg: C.redL,    color: C.red    },
-    'Normal':    { bg: C.greenL,  color: C.green  },
-    'Perhatian': { bg: C.redL,    color: C.red    },
+    'Aktif': { bg: C.greenL, color: C.green },
+    'Cuti': { bg: C.amberL, color: C.orange },
+    'Nonaktif': { bg: '#EDF2F7', color: C.darkL },
+    'Keluar': { bg: C.redL, color: C.red },
+    'Normal': { bg: C.greenL, color: C.green },
+    'Perhatian': { bg: C.redL, color: C.red },
   }[status] ?? { bg: '#EDF2F7', color: C.darkL };
   return (
     <span style={{ fontSize: FS.xs, padding: '2px 8px', borderRadius: 99, fontWeight: 700, background: cfg.bg, color: cfg.color, whiteSpace: 'nowrap' }}>
@@ -166,7 +166,7 @@ export const GlobalStyle = () => (
     /* ── CSS Variables — dipakai di semua View ── */
     :root{
       --sidebar-w:210px;
-      --top-bar-h:0px;
+      --bottom-nav-h:0px;
       --content-px:20px;
       --content-py:20px;
       --modal-w:440px;
@@ -174,7 +174,7 @@ export const GlobalStyle = () => (
     @media(max-width:767px){
       :root{
         --sidebar-w:0px;
-        --top-bar-h:52px;
+        --bottom-nav-h:0px;
         --content-px:14px;
         --content-py:14px;
         --modal-w:calc(100vw - 24px);
@@ -221,7 +221,7 @@ export const GlobalStyle = () => (
     .admin-page-scroll{flex:1;overflow:auto;width:100%;}
     .admin-table-wrap{flex:1;overflow:auto;}
     .admin-table-wrap table{width:100%;border-collapse:collapse;}
-    .admin-header{padding:14px var(--content-px);background:#fff;border-bottom:1px solid rgba(13,92,99,.08);display:flex;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap;position:sticky;top:0;z-index:50;}
+    .admin-header{padding:14px var(--content-px);background:#fff;border-bottom:1px solid rgba(13,92,99,.08);display:flex;align-items:center;gap:12px;flex-shrink:0;flex-wrap:wrap;}
 
     /* Mobile: sidebar jadi overlay, sembunyikan by default */
     @media(max-width:767px){
@@ -236,35 +236,9 @@ export const GlobalStyle = () => (
       .admin-sidebar-overlay.open{display:block;}
     }
 
-    /* ── Mobile Top Bar (hamburger + brand) ── */
-    .sr-top-bar{
-      display:none;
-      height:var(--top-bar-h,52px);
-      background:${C.dark};
-      align-items:center;
-      padding:0 16px;
-      gap:12px;
-      flex-shrink:0;
-      border-bottom:1px solid rgba(255,255,255,.08);
-      z-index:10;
-    }
-    @media(max-width:767px){
-      .sr-top-bar{ display:flex; }
-      /* konten utama butuh padding-top agar tidak tertutup fixed top bar */
-      .sr-main-wrapper{
-        padding-top:var(--top-bar-h,52px);
-      }
-    }
-    /* Hamburger button */
-    .sr-hamburger{
-      background:none;border:none;cursor:pointer;
-      padding:6px;display:flex;flex-direction:column;
-      gap:4px;flex-shrink:0;
-    }
-    .sr-hamburger span{
-      display:block;width:20px;height:2px;
-      background:${C.white};border-radius:1px;
-      transition:transform .2s, opacity .2s;
+    /* ── Bottom Navigation — HIDDEN pada semua ukuran (diganti hamburger) ── */
+    .sr-bottom-nav{
+      display:none !important;
     }
 
     /* ── Sidebar Siswa/Guru — responsive ── */
@@ -274,21 +248,43 @@ export const GlobalStyle = () => (
       display:flex;
       flex-direction:column;
       overflow:hidden;
-      transition:transform .25s ease, width .25s ease;
+      transition:width .25s ease;
     }
-    /* Mobile & Tablet: sidebar jadi overlay drawer */
+    /* Tablet & mobile: sidebar jadi overlay */
     @media(max-width:767px){
       .sr-sidebar{
         position:fixed;left:0;top:0;bottom:0;z-index:300;
         width:240px !important;
         transform:translateX(-100%);
+        transition:transform .25s ease;
+        box-shadow:4px 0 24px rgba(0,0,0,.2);
       }
       .sr-sidebar.open{ transform:translateX(0); }
       .sr-sidebar-overlay{
-        display:none;position:fixed;inset:0;
-        background:rgba(0,0,0,.45);z-index:299;
+        display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:299;
       }
       .sr-sidebar-overlay.open{ display:block; }
+      /* Top bar siswa/guru di mobile/tablet */
+      .sr-topbar{
+        display:flex !important;
+      }
+      .sr-main-content{
+        padding-bottom:0 !important;
+      }
+    }
+    @media(min-width:768px){
+      .sr-sidebar{ display:flex; }
+      .sr-topbar{ display:none !important; }
+      .sr-sidebar-overlay{ display:none !important; }
+    }
+
+    /* ── Top bar siswa/guru (hamburger) ── */
+    .sr-topbar{
+      display:none;
+      height:52px;background:${C.dark};
+      align-items:center;padding:0 16px;gap:12px;
+      flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.08);
+      z-index:10;
     }
 
     /* ── Modal responsif ── */
@@ -311,15 +307,6 @@ export const GlobalStyle = () => (
     @media(max-width:767px){
       .sr-hide-mobile{display:none !important;}
       .sr-show-mobile{display:flex !important;}
-    }
-    /* Sticky page title bar — always sticky */
-    .sr-page-title-bar{
-      padding:14px var(--content-px,20px) 10px;
-      background:${C.bg};
-      flex-shrink:0;
-      border-bottom:1px solid rgba(13,92,99,.07);
-      position:sticky;top:0;z-index:50;
-      box-shadow:0 2px 6px rgba(13,92,99,.05);
     }
 
     /* ── Drawer mobile: full-width ── */

@@ -38,7 +38,7 @@ const TeacherView = () => {
   const navigate = useNavigate();
   const { user, logout, completeFirstLogin } = useAuth();
   const { isMobile, isTablet } = useBreakpoint();
-  const isMobileOrTablet = isMobile || isTablet;
+  const isCompact = isMobile || isTablet;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showForceChange, setShowForceChange] = useState(user?.is_first_login === true);
   const onNavigate = (screen) => {
@@ -94,8 +94,8 @@ const TeacherView = () => {
     <>
       <div style={{ display: 'flex', height: '100vh', background: C.bg, overflow: 'hidden' }}>
 
-        {/* ── Mobile sidebar overlay ── */}
-        {isMobileOrTablet && (
+        {/* ── Sidebar overlay (mobile & tablet) ── */}
+        {isCompact && (
           <div
             className={`sr-sidebar-overlay${sidebarOpen ? ' open' : ''}`}
             onClick={() => setSidebarOpen(false)}
@@ -103,10 +103,9 @@ const TeacherView = () => {
         )}
 
         {/* ── Sidebar ── */}
-        <div className={`sr-sidebar${isMobileOrTablet ? (sidebarOpen ? ' open' : '') : ''}`}
+        <div className={`sr-sidebar${isCompact ? (sidebarOpen ? ' open' : '') : ''}`}
           style={{
             background: C.dark, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-            ...(isMobileOrTablet ? { position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 300, width: 240, transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform .25s ease' } : {}),
           }}>
 
           {/* Brand */}
@@ -120,7 +119,7 @@ const TeacherView = () => {
 
           {/* User info — klik untuk buka profil (mengikuti pola StudentView) */}
           <div
-            onClick={() => { setActivePage('profile'); if (isMobileOrTablet) setSidebarOpen(false); }}
+            onClick={() => { setActivePage('profile'); if (isCompact) setSidebarOpen(false); }}
             style={{
               padding: '14px',
               borderBottom: '1px solid rgba(255,255,255,.07)',
@@ -160,7 +159,7 @@ const TeacherView = () => {
               Menu Utama
             </div>
             {navItems.map(item => (
-              <button key={item.id} onClick={() => { setActivePage(item.id); if (isMobileOrTablet) setSidebarOpen(false); }}
+              <button key={item.id} onClick={() => { setActivePage(item.id); if (isCompact) setSidebarOpen(false); }}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                   padding: '9px 10px',
@@ -186,7 +185,7 @@ const TeacherView = () => {
                 Daftar Kelas
               </div>
               {classesWithCount.map(c => (
-                <button key={c.id} onClick={() => { setActiveClass(c.id); if (isMobileOrTablet) setSidebarOpen(false); }}
+                <button key={c.id} onClick={() => { setActiveClass(c.id); if (isCompact) setSidebarOpen(false); }}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '8px 10px',
@@ -223,18 +222,14 @@ const TeacherView = () => {
         {/* ── Main content ── */}
         <div className="sr-main-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-          {/* ── Mobile/Tablet top bar with hamburger ── */}
-          {isMobileOrTablet && (
-            <div style={{
-              height: 52, background: C.dark, display: 'flex', alignItems: 'center',
-              padding: '0 16px', gap: 12, flexShrink: 0,
-              borderBottom: '1px solid rgba(255,255,255,.08)',
-            }}>
+          {/* ── Top bar with hamburger (mobile & tablet) ── */}
+          {isCompact && (
+            <div className="sr-topbar" style={{ display: 'flex' }}>
               <button
                 onClick={() => setSidebarOpen(s => !s)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 4 }}
               >
-                {[0,1,2].map(i => <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />)}
+                {[0, 1, 2].map(i => <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />)}
               </button>
               <span style={{ fontSize: 16 }}>🏫</span>
               <span style={{ color: C.white, fontWeight: 700, fontSize: FS.base }}>Portal Guru</span>
@@ -242,21 +237,22 @@ const TeacherView = () => {
           )}
 
           <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-          {activePage === 'dashboard' && (
-            /* FIX 3: key={activeClass} → MonitoringSection remount saat kelas berubah */
-            <MonitoringSection key={activeClass} {...sharedMonitoring} />
-          )}
-          {activePage === 'kelola' && <KelolaBelajarSection />}
-          {activePage === 'riwayat' && <RiwayatKontenSection />}
-          {activePage === 'profile' && (
-            <TeacherProfileSection
-              onPwdSuccess={() => { setPwdToast(true); setTimeout(() => setPwdToast(false), 3500); }}
-            />
-          )}
-        </div>
+            {activePage === 'dashboard' && (
+              /* FIX 3: key={activeClass} → MonitoringSection remount saat kelas berubah */
+              <MonitoringSection key={activeClass} {...sharedMonitoring} />
+            )}
+            {activePage === 'kelola' && <KelolaBelajarSection />}
+            {activePage === 'riwayat' && <RiwayatKontenSection />}
+            {activePage === 'profile' && (
+              <TeacherProfileSection
+                onPwdSuccess={() => { setPwdToast(true); setTimeout(() => setPwdToast(false), 3500); }}
+              />
+            )}
+          </div>
         </div>
       </div>
 
+      {/* Bottom Navigation removed — replaced by hamburger sidebar */}
 
       {/* RecPipeline toast */}
       {recPipeline && recPipeline !== 'done' && (

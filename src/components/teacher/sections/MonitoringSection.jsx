@@ -14,9 +14,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Card, Btn, EmptyState } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
-import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { STUDENTS, EMOSI_META, EMOSI_Y } from '../../../data/masterData';
 import { useWebSocket } from '../../../hooks/useWebSocket';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import ReactDOM from 'react-dom';
 
 /* ── Download CSV ────────────────────────────────────────────────── */
@@ -530,10 +530,10 @@ const MonitoringSection = ({
   saveRec, barTooltip, setBarTooltip, selectedStudent, setSelectedStudent,
 }) => {
   const { liveStudents } = useWebSocket({ kelasId: activeClass, guruId: teacher?.id || 'g1', enabled: true });
-
   const { isMobile, isTablet } = useBreakpoint();
-  const isMobileOrTablet = isMobile || isTablet;
+  const isCompact = isMobile || isTablet;
   const [smartInfoOpen, setSmartInfoOpen] = useState(false);
+
   const [violationMap, setViolationMap] = useState({});
   const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
   const [dismissedViolations, setDismissedViolations] = useState(new Set());
@@ -589,16 +589,25 @@ const MonitoringSection = ({
   const sortedStudents = [...studentsWithLive.filter(s => s.todayActive), ...studentsWithLive.filter(s => !s.todayActive)];
 
   return (
-    <div style={{ flex: 1, display: 'flex', overflow: 'hidden', flexDirection: isMobileOrTablet ? 'column' : 'row', position: 'relative' }}>
+    <div style={{ flex: 1, display: 'flex', overflow: 'hidden', flexDirection: 'column' }}>
 
-      {/* Mobile/Tablet: Smart Info overlay */}
-      {isMobileOrTablet && smartInfoOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 280 }} onClick={() => setSmartInfoOpen(false)} />
+      {/* ── Mobile Smart Info toggle button ── */}
+      {isCompact && (
+        <div style={{ padding: '6px 14px', background: C.white, borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setSmartInfoOpen(o => !o)}
+            style={{ background: smartInfoOpen ? C.teal : 'none', border: `1.5px solid ${C.tealXL}`, borderRadius: 8, padding: '5px 12px', fontSize: FS.sm, fontWeight: 700, color: smartInfoOpen ? '#fff' : C.darkL, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            ℹ️ Smart Info {smartInfoOpen ? '▲' : '▼'}
+          </button>
+        </div>
       )}
 
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
       {/* ══ CENTER ══ */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-        <div className="sr-page-title-bar" style={{ padding: '12px 20px', background: C.white, borderBottom: `3px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '12px 20px', background: C.white, borderBottom: `3px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
           <div>
             <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>{cls?.label}</div>
             <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 1 }}>
@@ -607,15 +616,6 @@ const MonitoringSection = ({
             </div>
           </div>
           <div style={{ flex: 1 }} />
-          {/* Mobile/Tablet: toggle Smart Info */}
-          {isMobileOrTablet && (
-            <button
-              onClick={() => setSmartInfoOpen(p => !p)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: C.tealXL, border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: FS.sm, color: C.teal }}
-            >
-              ℹ️ Info
-            </button>
-          )}
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, background: C.bg }}>
@@ -758,28 +758,20 @@ const MonitoringSection = ({
       </div>
 
       {/* ══ RIGHT PANEL — Smart Info + Alert ══ */}
+      {(!isCompact || smartInfoOpen) && (
       <div style={{
-        width: isMobileOrTablet ? 'min(300px, 90vw)' : 272,
+        width: isCompact ? '100%' : 272,
         background: C.white,
-        borderLeft: `1px solid rgba(13,92,99,.1)`,
+        borderLeft: isCompact ? 'none' : `1px solid rgba(13,92,99,.1)`,
+        borderTop: isCompact ? `1px solid rgba(13,92,99,.1)` : 'none',
         overflowY: 'auto',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        ...(isMobileOrTablet ? {
-          position: 'fixed', right: 0, top: 0, bottom: 0, zIndex: 281,
-          transform: smartInfoOpen ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform .25s ease',
-          boxShadow: '-4px 0 20px rgba(0,0,0,.12)',
-        } : {}),
+        ...(isCompact ? { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 50, maxHeight: '65%', boxShadow: '0 -4px 24px rgba(0,0,0,.12)' } : {}),
       }}>
         <div style={{ padding: '13px 13px 10px', borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: FS.md, fontWeight: 700, color: C.dark }}>ℹ️ Smart Info</div>
-            {isMobileOrTablet && (
-              <button onClick={() => setSmartInfoOpen(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: C.slate, padding: 2 }}>✕</button>
-            )}
-          </div>
+          <div style={{ fontSize: FS.md, fontWeight: 700, color: C.dark }}>ℹ️ Smart Info</div>
           <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 2 }}>Ringkasan aktivitas kelas hari ini</div>
         </div>
 
@@ -895,6 +887,9 @@ const MonitoringSection = ({
           })()}
         </div>
       </div>
+      )} {/* end smart info conditional */}
+
+      </div> {/* end inner flex row */}
 
       {/* Student Drawer */}
       {
