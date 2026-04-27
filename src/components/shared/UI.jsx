@@ -216,7 +216,7 @@ export const GlobalStyle = () => (
     /* ── App Shell — Admin (dipakai di AdminContent) ── */
     .admin-view{display:flex;width:100vw;height:100vh;overflow:hidden;position:fixed;inset:0;}
     .admin-sidebar{width:220px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;transition:transform .25s ease,width .25s ease;}
-    .admin-main{flex:1;min-width:0;display:flex;overflow:hidden;}
+    .admin-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;}
     .admin-page{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;}
     .admin-page-scroll{flex:1;overflow:auto;width:100%;}
     .admin-table-wrap{flex:1;overflow:auto;}
@@ -267,6 +267,7 @@ export const GlobalStyle = () => (
       /* Top bar siswa/guru di mobile/tablet */
       .sr-topbar{
         display:flex !important;
+        align-items:center !important; 
       }
       .sr-main-content{
         padding-bottom:0 !important;

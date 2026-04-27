@@ -481,27 +481,55 @@ const StudentView = () => {
 
           {/* ── Top Bar with hamburger (mobile/tablet only, hidden during chat) ── */}
           {activePage !== 'chat' && (
-            <div className="sr-topbar">
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              height: 52,
+              padding: '0 16px',
+              gap: 12,
+              background: C.dark,
+              flexShrink: 0,
+              borderBottom: '1px solid rgba(255,255,255,.08)',
+              zIndex: 10,
+            }}>
               <button
                 onClick={() => setSidebarOpen(s => !s)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: 0, margin: 0,
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  gap: 4, width: 24, height: 24, flexShrink: 0,
+                }}
               >
-                {[0, 1, 2].map(i => <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />)}
+                {[0, 1, 2].map(i => (
+                  <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />
+                ))}
               </button>
-              <span style={{ fontSize: 16 }}>🏫</span>
-              <span style={{ color: C.white, fontWeight: 700, fontSize: FS.base }}>Portal Siswa</span>
+              <span style={{ fontSize: 16, lineHeight: '1', display: 'flex', alignItems: 'center' }}>🏫</span>
+              <span style={{ color: C.white, fontWeight: 700, fontSize: FS.base, lineHeight: '1' }}>
+                Portal Siswa
+              </span>
               <div style={{ flex: 1 }} />
               <button
                 onClick={() => { setActivePage('profile'); setSidebarOpen(false); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}
               >
-                <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.base, border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.3)'}` }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: `linear-gradient(135deg,${C.teal},${C.tealL})`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700, fontSize: FS.base,
+                  border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.3)'}`,
+                }}>
                   {user?.avatar || '?'}
                 </div>
               </button>
             </div>
           )}
-
           {activePage === 'dashboard' && (
             <DashboardSection
               currentUser={user}

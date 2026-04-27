@@ -193,15 +193,32 @@ const AdminContent = () => {
       </div>
 
       {/* ── Main Content ──────────────────────────────────────────── */}
-      <div className="admin-main" style={{ flexDirection: 'column' }}>
+      <div className="admin-main">
         {/* Mobile/Tablet top bar */}
         {isCompact && (
-          <div style={{ height: 52, background: C.dark, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,.08)', zIndex: 10 }}>
-            <button onClick={() => setSidebarOpen(s => !s)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {[0, 1, 2].map(i => <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />)}
+          <div style={{
+            height: 52, background: C.dark, display: 'flex', alignItems: 'center',
+            padding: '0 16px', gap: 12, flexShrink: 0,
+            borderBottom: '1px solid rgba(255,255,255,.08)', zIndex: 10
+          }}>
+            <button
+              onClick={() => setSidebarOpen(s => !s)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: 0, margin: 0,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', // ← ini kuncinya
+                gap: 4, width: 24, height: 24, flexShrink: 0,
+              }}
+            >
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />
+              ))}
             </button>
-            <span style={{ fontSize: 16 }}>🏫</span>
-            <span style={{ color: C.white, fontWeight: 700, fontSize: FS.base }}>Portal Admin</span>
+            <span style={{ fontSize: 16, lineHeight: '1', display: 'flex', alignItems: 'center' }}>🏫</span>
+            <span style={{ color: C.white, fontWeight: 700, fontSize: FS.base, lineHeight: '1' }}>
+              Portal Admin
+            </span>
           </div>
         )}
         {activePage === 'kurikulum' && (
