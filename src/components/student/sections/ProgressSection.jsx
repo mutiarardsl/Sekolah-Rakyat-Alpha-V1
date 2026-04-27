@@ -380,7 +380,8 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
   const [selectedMapelId, setSelectedMapelId] = useState(null);
   const [searchQ, setSearchQ] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
-  const { isMobile } = useBreakpoint();
+  const { isMobile, isTablet } = useBreakpoint();
+  const isMobileOrTablet = isMobile || isTablet;
 
   // Modal state
   const [pretestGateData, setPretestGateData] = useState(null);  // { mapel, elemen, materiData }
@@ -576,7 +577,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', background: C.bg }}>
 
       {/* Header */}
-      <div style={{ padding: 'var(--content-py,20px) var(--content-px,24px) 14px', flexShrink: 0, background: C.bg }}>
+      <div className="sr-page-title-bar">
         <div style={{ fontFamily: FONTS.serif, fontSize: FS.h1, fontWeight: 600, color: C.dark, marginBottom: 3 }}>
           📈 Progress Belajarku
         </div>
@@ -635,10 +636,10 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
       </div>
 
       {/* 2-Column body */}
-      <div style={{ flex: 1, display: 'flex', overflow: isMobile ? 'auto' : 'hidden', padding: `0 var(--content-px, 24px) 20px`, gap: 14, flexDirection: isMobile ? 'column' : 'row' }}>
+      <div style={{ flex: 1, display: 'flex', overflow: isMobileOrTablet ? 'auto' : 'hidden', padding: `0 var(--content-px, 24px) 20px`, gap: 14, flexDirection: isMobileOrTablet ? 'column' : 'row' }}>
 
         {/* Kolom Kiri — Mata Pelajaran */}
-        <div style={{ width: isMobile ? '100%' : 340, flexShrink: 0, background: C.white, borderRadius: 14, border: '1.5px solid #E8EDF2', overflowY: isMobile ? 'visible' : 'auto', boxShadow: '0 2px 10px rgba(26,35,50,.06)' }}>
+        <div style={{ width: isMobileOrTablet ? '100%' : 340, flexShrink: 0, background: C.white, borderRadius: 14, border: '1.5px solid #E8EDF2', overflowY: isMobileOrTablet ? 'visible' : 'auto', boxShadow: '0 2px 10px rgba(26,35,50,.06)' }}>
           <div style={{ padding: '10px 14px 8px', fontSize: FS.md, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: 1, borderBottom: '1px solid #EDF2F7', flexShrink: 0 }}>
             Mata Pelajaran
           </div>

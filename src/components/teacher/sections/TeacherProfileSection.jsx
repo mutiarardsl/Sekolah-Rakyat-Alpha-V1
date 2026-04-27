@@ -11,6 +11,7 @@
  */
 import { useState, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import ChangePasswordModal from '../../shared/ChangePasswordModal';
 import {
   ADMIN_GURU_INIT,
@@ -97,6 +98,8 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
     kelasList: semuaKelas.filter(k => k.mapelGuruMap?.[mid] === CURRENT_GURU_ID),
   })).filter(m => m.kelasList.length > 0);
 
+  const { isMobile, isTablet } = useBreakpoint();
+  const isMobileOrTablet = isMobile || isTablet;
   const [avatarSrc, setAvatarSrc] = useState(null);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdToast, setPwdToast] = useState(false);
@@ -119,13 +122,10 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
   );
 
   return (
-    <div style={{
-      overflowY: 'auto', height: '100%', width: '100%',
-      padding: '28px 32px', background: C.bg,
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {/* 1 ── Judul halaman */}
-      <div style={{ marginBottom: 28, paddingBottom: 28, borderBottom: `1px solid ${C.tealXL}` }}>
+      {/* 1 ── Judul halaman (sticky) */}
+      <div className="sr-page-title-bar">
         <h1 style={{
           margin: 0,
           fontFamily: FONTS.serif,
@@ -137,6 +137,9 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
           Informasi akun dan data mengajar Anda di Sekolah Rakyat.
         </p>
       </div>
+
+      {/* Scrollable body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: isMobileOrTablet ? '16px' : '28px 32px', background: C.bg }}>
 
       {/* 2 ── Kartu utama */}
       <div style={{
@@ -219,10 +222,12 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
           </div>
         </div>
 
-        {/* Body — 2 kolom */}
+        {/* Body — responsive grid */}
         <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr',
-          gap: '0 40px', padding: '20px 32px 32px',
+          display: 'grid',
+          gridTemplateColumns: isMobileOrTablet ? '1fr' : '1fr 1fr',
+          gap: isMobileOrTablet ? '0' : '0 40px',
+          padding: isMobileOrTablet ? '16px 20px 24px' : '20px 32px 32px',
         }}>
 
           {/* Kolom kiri */}
@@ -274,6 +279,8 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
           </div>
         </div>
       </div>
+
+      </div>{/* end scrollable body */}
 
       {/* Modal & Toast */}
       {showChangePwd && (

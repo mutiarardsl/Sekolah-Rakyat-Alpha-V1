@@ -226,7 +226,7 @@ const GameDetailModal = ({ riwayat, onClose }) => {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={onClose}>
       <div className="bounce-in" style={{ background: C.white, borderRadius: 16, width: 'min(480px, calc(100vw - 24px))', maxHeight: '85vh', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
-        <div style={{ padding: '16px 20px 14px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '16px 20px 14px', position: 'sticky', top: 0, zIndex: 50, background: '#F7F9FA', boxShadow: '0 2px 6px rgba(13,92,99,.05)', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontFamily: FONTS.serif, fontSize: FS.xl, fontWeight: 700, color: C.dark }}>🎮 Detail Game</div>
             <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>{riwayat.mapelLabel} · {riwayat.elemenLabel} · {riwayat.materi}</div>

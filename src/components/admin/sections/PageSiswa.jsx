@@ -326,7 +326,7 @@ const PageSiswa = ({ siswaList, kelasList, getKelas, setSelectedSiswa, setModalD
   return (
     <div className="admin-page">
       {/* Header */}
-      <div className="admin-header" style={{ background: C.white, borderBottom: `1px solid rgba(13,92,99,.08)`, padding: '16px 20px', flexWrap: 'wrap', gap: 10 }}>
+      <div className="admin-header sr-page-title-bar" style={{ background: C.white, borderBottom: `1px solid rgba(13,92,99,.08)`, padding: '16px 20px', flexWrap: 'wrap', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 160 }}>
           <div style={{ fontFamily: FONTS.serif, fontSize: 19, fontWeight: 600, color: C.dark }}>🎒 Manajemen Siswa</div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>

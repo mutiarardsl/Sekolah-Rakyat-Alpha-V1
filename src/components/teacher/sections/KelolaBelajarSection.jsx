@@ -82,12 +82,12 @@ const GamePreviewModal = ({ konten, config, onClose }) => {
   // Fallback ke URL manual dengan query params jika html_url belum ada
   const GAME_BASE_URL = 'https://game.sekolahrakyat.id/play'; // Tim 4 host
   const fallbackParams = new URLSearchParams({
-    mapel_id: config?.mapelId || '',
-    elemen_id: config?.elemenId || '',
-    elemen: config?.elemenLabel || '',
-    materi: config?.materi || '',
-    level: konten?.level || 'Low',
-    mode: 'preview',  // tidak mempengaruhi progress siswa
+    mapel_id:    config?.mapelId || '',
+    elemen_id:   config?.elemenId || '',
+    elemen:      config?.elemenLabel || '',
+    materi:      config?.materi || '',
+    level:       konten?.level || 'Low',
+    mode:        'preview',  // tidak mempengaruhi progress siswa
   }).toString();
   // Pakai html_url dari API jika ada, fallback ke URL manual
   const gameUrl = konten?.html_url || `${GAME_BASE_URL}?${fallbackParams}`;
@@ -623,7 +623,11 @@ const KelolaBelajarSection = () => {
       </div>
 
       {/* ── Panel Kanan: Preview / Loading / Result ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="sr-page-title-bar" style={{ padding: '12px 20px 10px', background: C.white, display: phase === 'form' ? 'none' : 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontFamily: FONTS.serif, fontSize: FS.lg, fontWeight: 600, color: C.dark }}>📋 Hasil Generate Konten</div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--content-py,20px) var(--content-px,24px)' }}>
 
         {phase === 'form' && (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -677,7 +681,7 @@ const KelolaBelajarSection = () => {
             {/* Konteks Konten */}
             <Card style={{ padding: 16, marginBottom: 14 }}>
               <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark, marginBottom: 12 }}>Konteks Konten</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, auto)', gap: '4px 20px', marginBottom: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '8px 12px', marginBottom: 10 }}>
                 {[
                   { l: 'JENJANG', v: config.jenjang },
                   { l: 'KELAS', v: config.kelasId === '__semua__' ? `Semua Kelas ${config.jenjang} (${kelasList.length} kelas)` : config.kelasId ? ADMIN_KELAS_INIT.find(k => k.id === config.kelasId)?.nama || config.kelasId : '—' },
@@ -732,6 +736,7 @@ const KelolaBelajarSection = () => {
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
     </div>
   );
 };

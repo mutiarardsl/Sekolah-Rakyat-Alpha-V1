@@ -22,7 +22,8 @@ import PageKurikulum from './sections/KurikulumSection';
 const AdminContent = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const { isMobile } = useBreakpoint();
+  const { isMobile, isTablet } = useBreakpoint();
+  const isMobileOrTablet = isMobile || isTablet;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const {
     guruList, siswaList, kelasList, mapelList,
@@ -127,15 +128,15 @@ const AdminContent = () => {
     <div className="admin-view" style={{ background: C.bg }}>
 
       {/* ── Mobile overlay backdrop ── */}
-      {isMobile && (
+      {isMobileOrTablet && (
         <div
-          className={`admin-sidebar-overlay${sidebarOpen ? ' open' : ''}`}
+          className={`sr-sidebar-overlay${sidebarOpen ? ' open' : ''}`}
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* ── Sidebar ── */}
-      <div className={`admin-sidebar${isMobile ? (sidebarOpen ? ' open' : '') : ''}`} style={{ background: C.dark }}>
+      <div className={`admin-sidebar${isMobileOrTablet ? (sidebarOpen ? ' open' : '') : ''}`} style={{ background: C.dark }}>
         <div style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <span style={{ fontSize: 22 }}>🏫</span>
@@ -160,7 +161,7 @@ const AdminContent = () => {
         <div style={{ flex: 1, padding: '8px 6px', overflowY: 'auto' }}>
           {navItems.map(item => (
             <button key={item.id}
-              onClick={() => { setActivePage(item.id); if (item.id !== 'kelas') setSelectedKelas(null); if (isMobile) setSidebarOpen(false); }}
+              onClick={() => { setActivePage(item.id); if (item.id !== 'kelas') setSelectedKelas(null); if (isMobileOrTablet) setSidebarOpen(false); }}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', background: activePage === item.id ? 'rgba(13,92,99,.5)' : 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 2, transition: 'all .15s' }}
               onMouseEnter={e => { if (activePage !== item.id) e.currentTarget.style.background = 'rgba(255,255,255,.06)'; }}
               onMouseLeave={e => { if (activePage !== item.id) e.currentTarget.style.background = 'transparent'; }}>
@@ -194,10 +195,10 @@ const AdminContent = () => {
       {/* ── Main Content ──────────────────────────────────────────── */}
       <div className="admin-main" style={{ flexDirection: 'column' }}>
         {/* Mobile top bar */}
-        {isMobile && (
+        {isMobileOrTablet && (
           <div style={{ height: 52, background: C.dark, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12, flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,.08)', zIndex: 10 }}>
             <button onClick={() => setSidebarOpen(s => !s)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {[0, 1, 2].map(i => <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />)}
+              {[0,1,2].map(i => <div key={i} style={{ width: 20, height: 2, background: C.white, borderRadius: 1 }} />)}
             </button>
             <span style={{ fontSize: 16 }}>🏫</span>
             <span style={{ color: C.white, fontWeight: 700, fontSize: FS.base }}>Portal Admin</span>

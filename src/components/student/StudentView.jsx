@@ -343,7 +343,7 @@ const StudentView = () => {
       // Attach ke hidden video element jika sudah ada
       if (sessionVideoRef.current) {
         sessionVideoRef.current.srcObject = stream;
-        sessionVideoRef.current.play().catch(() => { });
+        sessionVideoRef.current.play().catch(() => {});
       }
     }
     markTopicOngoing(materiOrMapel);
@@ -419,7 +419,7 @@ const StudentView = () => {
 
             {/* User info */}
             <div
-              onClick={() => setActivePage('profile')}
+              onClick={() => { setActivePage('profile'); setSidebarOpen(false); }}
               style={{ padding: '14px', borderBottom: '1px solid rgba(255,255,255,.07)', cursor: 'pointer' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.04)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
@@ -438,7 +438,7 @@ const StudentView = () => {
             {/* Nav items */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 6px' }}>
               {navItems.filter(n => n.id !== 'profile').map(item => (
-                <button key={item.id} onClick={() => setActivePage(item.id)}
+                <button key={item.id} onClick={() => { setActivePage(item.id); setSidebarOpen(false); }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', background: activePage === item.id ? 'rgba(13,92,99,.5)' : 'transparent', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 2, transition: 'all .15s' }}
                   onMouseEnter={e => { if (activePage !== item.id) e.currentTarget.style.background = 'rgba(255,255,255,.06)'; }}
                   onMouseLeave={e => { if (activePage !== item.id) e.currentTarget.style.background = 'transparent'; }}>
@@ -451,7 +451,7 @@ const StudentView = () => {
 
             {/* Footer */}
             <div style={{ padding: '6px 8px 8px', borderTop: '1px solid rgba(255,255,255,.07)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <button onClick={() => onNavigate('login')}
+              <button onClick={() => { setSidebarOpen(false); onNavigate('login'); }}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', fontWeight: 'bold', gap: 8, padding: '7px 10px', background: 'none', border: 'none', borderRadius: 8, color: 'rgba(255,255,255,.45)', fontSize: FS.sm, cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s' }}
                 onMouseEnter={e => { e.currentTarget.style.color = '#fff'; }}
                 onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.45)'; }}>
@@ -467,7 +467,7 @@ const StudentView = () => {
         )}
 
         {/* ── Main content ── */}
-        <div className={activePage !== 'chat' ? 'sr-main-content' : ''} style={{ flex: 1, display: 'flex', overflow: 'hidden', width: '100%', flexDirection: 'column' }}>
+        <div className={activePage !== 'chat' ? 'sr-main-wrapper' : ''} style={{ flex: 1, display: 'flex', overflow: 'hidden', width: '100%', flexDirection: 'column' }}>
           {activePage === 'dashboard' && (
             <DashboardSection
               currentUser={user}
@@ -509,42 +509,6 @@ const StudentView = () => {
         </div>
       </div>
 
-      {/* ── Bottom Navigation (mobile only) ── */}
-      {activePage !== 'chat' && (
-        <nav className="sr-bottom-nav">
-          {allNavItems.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setActivePage(item.id)}
-              style={{
-                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                justifyContent: 'center', gap: 3, background: 'none', border: 'none',
-                cursor: 'pointer', padding: '6px 4px', fontFamily: 'inherit',
-              }}
-            >
-              <span style={{ fontSize: 20 }}>{item.icon}</span>
-              <span style={{
-                fontSize: 10, fontWeight: activePage === item.id ? 700 : 400,
-                color: activePage === item.id ? C.amber : 'rgba(255,255,255,.5)',
-              }}>{item.label}</span>
-              {activePage === item.id && (
-                <div style={{ width: 4, height: 4, borderRadius: '50%', background: C.amber }} />
-              )}
-            </button>
-          ))}
-          <button
-            onClick={() => onNavigate('login')}
-            style={{
-              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', gap: 3, background: 'none', border: 'none',
-              cursor: 'pointer', padding: '6px 4px', fontFamily: 'inherit',
-            }}
-          >
-            <span style={{ fontSize: 20 }}>🚪</span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>Keluar</span>
-          </button>
-        </nav>
-      )}
 
       {gameContext && (
         <div style={{

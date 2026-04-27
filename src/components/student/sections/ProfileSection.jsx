@@ -11,6 +11,7 @@
  */
 import { useState, useRef, useEffect } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
+import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import ChangePasswordModal from '../../shared/ChangePasswordModal';
 import {
     STUDENTS,
@@ -253,6 +254,8 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
         k.id === adminData?.kelasId || k.nama === 'X-1'
     );
 
+    const { isMobile, isTablet } = useBreakpoint();
+    const isMobileOrTablet = isMobile || isTablet;
     /* ── Local state untuk avatar & email (simulasi edit lokal) ── */
     const [avatarSrc, setAvatarSrc] = useState(null); // URL foto upload
     const [email, setEmail] = useState(adminData?.email || 'budi@siswa.sr');
@@ -305,19 +308,22 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
     const maxScore = leaderboard.length > 0 ? leaderboard[0].totalScore : 1;
 
     return (
-        <div style={{ overflowY: 'auto', height: '100%', width: '100%', padding: '20px 22px', background: C.bg }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-            {/* ── Page Title ── */}
-            <div style={{ marginBottom: 18 }}>
+            {/* ── Page Title (sticky) ── */}
+            <div className="sr-page-title-bar">
                 <div style={{ fontFamily: FONTS.serif, fontSize: FS.h1, fontWeight: 600, color: C.dark }}>👤 Profil & Leaderboard</div>
                 <div style={{ fontSize: FS.md, color: C.slate, marginTop: 3 }}>Kelola informasi akunmu dan lihat peringkat kelas.</div>
             </div>
 
-            {/* ── Leaderboard ── */}
-            <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+            {/* ── Scrollable body ── */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--content-py,20px) var(--content-px,22px)', background: C.bg }}>
+
+            {/* ── Leaderboard + Profil ── */}
+            <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexDirection: isMobileOrTablet ? 'column' : 'row' }}>
 
                 {/* ── Kolom kiri: Leaderboard ── */}
-                <div style={{ flex: 1.4, display: 'flex', flexDirection: 'column', gap: 20, paddingRight: 20 }}>
+                <div style={{ flex: isMobileOrTablet ? 'none' : 1.4, width: isMobileOrTablet ? '100%' : 'auto', display: 'flex', flexDirection: 'column', gap: 20, paddingRight: isMobileOrTablet ? 0 : 20 }}>
 
                     {/* Podium */}
                     {leaderboard.length >= 3 && (
@@ -380,7 +386,7 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                 </div>
 
                 {/* ── Profile Card ── */}
-                <div style={{ flex: 1, flexDirection: 'column' }}>
+                <div style={{ flex: isMobileOrTablet ? 'none' : 1, width: isMobileOrTablet ? '100%' : 'auto', flexDirection: 'column' }}>
                     <div style={{
                         background: C.white, borderRadius: 18, padding: '24px 28px 12px',
                         border: `2px solid ${C.tealXL}`,
@@ -518,9 +524,12 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                         </div>
                     )}
                 </div>
+            </div>
 
             </div>
-        </div>
+
+            </div>
+
     );
 };
 

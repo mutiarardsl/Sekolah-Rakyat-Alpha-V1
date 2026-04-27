@@ -685,7 +685,8 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
   const ACTIVITY_LIMIT = 10;  // batas tampil aktivitas terbaru sebelum expand
 
   return (
-    <div style={{ overflowY: 'auto', height: '100%', width: '100%', padding: 'var(--content-py, 20px) var(--content-px, 22px)', background: C.bg }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: C.bg }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--content-py, 20px) var(--content-px, 22px)' }}>
 
       {/* ── HERO GABUNGAN (dengan Bell Notif di pojok kanan atas) ── */}
       <HeroWithInsight
@@ -893,6 +894,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
 
         </Card>
       </div>
+    </div>
     </div>
   );
 };

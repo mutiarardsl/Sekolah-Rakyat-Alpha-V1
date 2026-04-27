@@ -48,7 +48,7 @@ export const ModalKelas = ({ modalData, guruList, saveKelas, onClose }) => {
           background: C.white, borderRadius: 16, padding: 28, width: 460, maxHeight: '88vh',
           overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,.2)'
         }}>
-        <div style={{ fontFamily: FONTS.serif, fontSize: FS.h2, fontWeight: 600, color: C.dark, marginBottom: 4 }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 50, background: '#F7F9FA', borderBottom: '1px solid rgba(13,92,99,.07)', fontFamily: FONTS.serif, fontSize: FS.h2, fontWeight: 600, color: C.dark, marginBottom: 4 }}>
           {isEdit ? '✏️ Edit Kelas' : '📚 Tambah Kelas Baru'}
         </div>
         <div style={{ fontSize: FS.md, color: C.slate, marginBottom: 18 }}>SR Kota Malang</div>

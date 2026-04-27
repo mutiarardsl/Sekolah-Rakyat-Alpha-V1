@@ -1138,6 +1138,9 @@ const ChatSection = ({
   }, [camGranted, sessionStreamRef, sessionVideoRef]);
 
   const [leftPanelOpen, setLeftPanelOpen] = useState(false);
+  const [rightPanelMobileOpen, setRightPanelMobileOpen] = useState(false);
+  // rightPanelContent is a flag — actual content is always rendered in the right panel div
+  const rightPanelContent = confModal || confOverlay || quizHistoryModal || true;
 
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' }}>
@@ -1289,7 +1292,7 @@ const ChatSection = ({
               onClick={() => setLeftPanelOpen(p => !p)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}
             >
-              {[0, 1, 2].map(i => <div key={i} style={{ width: 16, height: 2, background: C.teal, borderRadius: 1 }} />)}
+              {[0,1,2].map(i => <div key={i} style={{ width: 16, height: 2, background: C.teal, borderRadius: 1 }} />)}
             </button>
           )}
 
@@ -1702,6 +1705,14 @@ const ChatSection = ({
             </div>
             <Btn variant="primary" onClick={sendMsg} disabled={!input.trim() && !chatAttachments.length}
               style={{ height: 38, paddingLeft: 12, paddingRight: 12, flexShrink: 0, fontSize: FS.md, alignSelf: 'flex-end' }}>Kirim →</Btn>
+            {/* Mobile: floating alat belajar button */}
+            {isMobile && (
+              <button
+                onClick={() => setRightPanelMobileOpen(p => !p)}
+                style={{ height: 38, padding: '0 10px', background: C.tealXL, border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 18, flexShrink: 0 }}
+                title="Alat Belajar"
+              >📚</button>
+            )}
           </div>
         </div>
       </div>
