@@ -529,7 +529,7 @@ const KelolaBelajarSection = () => {
     <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'auto', flexDirection: isSmall ? 'column' : 'row', background: C.bg }}>
 
       {/* ── Panel Kiri: Form Konfigurasi ── */}
-      <div style={{ width: isSmall ? '100%' : 340, minWidth: isSmall ? 'auto' : 300, background: C.white, borderRight: isSmall ? 'none' : `1px solid rgba(13,92,99,.1)`, borderBottom: isSmall ? `1px solid rgba(13,92,99,.1)` : 'none', overflowY: isSmall ? 'visible' : 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: isSmall ? '100%' : 340, minWidth: isSmall ? 'auto' : 300, maxHeight: isSmall ? 380 : 'none', background: C.white, borderRight: isSmall ? 'none' : `1px solid rgba(13,92,99,.1)`, borderBottom: isSmall ? `1px solid rgba(13,92,99,.1)` : 'none', overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid rgba(13,92,99,.08)` }}>
           <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>📐 Kelola Konten Belajar</div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 3 }}>Konfigurasi dan generate konten interaktif untuk siswa</div>
