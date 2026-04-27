@@ -624,7 +624,7 @@ const KelolaBelajarSection = () => {
       </div>
 
       {/* ── Panel Kanan: Preview / Loading / Result ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minWidth: 0 }}>
+      <div style={{ flex: 1, overflow: 'visible', padding: '20px 24px', minWidth: 0, backgroundColor: C.white }}>
 
         {phase === 'form' && (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
