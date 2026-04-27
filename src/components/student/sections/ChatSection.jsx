@@ -1167,7 +1167,7 @@ const ChatSection = ({
               <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.red }}>Kamera Aktif</div>
               <div style={{ fontSize: FS.xs, color: C.slate }}>Tap untuk cek kamera</div>
             </div>
-            <span style={{ fontSize: FS.xs, color: C.red, opacity: .7 }}>🔍</span>
+            <span style={{ fontSize: FS.xs, color: C.red, opacity: .7 }}>📸</span>
           </button>
 
           {/* Mapel info */}
@@ -2384,9 +2384,8 @@ const ChatSection = ({
               <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.dark, marginBottom: 8 }}>💡 Tips agar deteksi emosi akurat:</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {[
-                  '👤 Pastikan wajah berada di tengah & mengisi sekitar 50% frame',
-                  '💡 Pastikan cahaya cukup — hindari backlight dari jendela',
-                  '📏 Jarak ideal: 30–60 cm dari layar',
+                  '👤 Pastikan wajah berada di tengah',
+                  '💡 Pastikan cahaya cukup',
                   '😊 Usahakan ekspresi wajah terlihat natural',
                 ].map((tip, i) => (
                   <div key={i} style={{ fontSize: FS.xs, color: C.darkL, background: C.cream, borderRadius: 7, padding: '5px 10px' }}>
