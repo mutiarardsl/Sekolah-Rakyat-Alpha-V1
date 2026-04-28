@@ -9,6 +9,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { Card, EmptyState } from '../../shared/UI';
+import { getMentorInsight } from '../../../api/mentor'; // FIX ①: pakai api/mentor bukan fetch() langsung
 import {
   STUDENTS,
   ADMIN_MAPEL_LIST,
@@ -401,26 +402,26 @@ const HeroWithInsight = ({ adminData, totalSesiHours, avgQuiz, topMapel, dominan
     }, 18);
   };
 
+  // FIX ①: pakai getMentorInsight() dari api/mentor.js
+  //  - endpoint: POST /mentor/insight  (bukan /api/ai-insight)
+  //  - melewati apiClient → auto-attach JWT → diintersep MSW
+  //  - payload sesuai contract v2.1.0
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const prompt = `Kamu adalah mentor AI untuk siswa Sekolah Rakyat. Berikan insight singkat dan memotivasi (1-2 kalimat, maks 30 kata) untuk siswa bernama ${adminData?.nama} berdasarkan data berikut:\n- Topik paling sering dipelajari: ${topMapel || 'belum ada'}\n- Emosi dominan belajar: ${dominantEmosi || 'belum ada'}\n- Total belajar: ${totalSesiHours} jam\n- Rata-rata skor kuis: ${avgQuiz}%\n- Streak: ${streakDays} hari\nBahasa Indonesia, hangat & motivatif, 1 emoji di awal.`;
-        const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-        const token = localStorage.getItem('sr_access_token');
-        const res = await fetch(`${BASE_URL}/api/ai-insight`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ prompt }),
+        const result = await getMentorInsight({
+          siswa_id: CURRENT_STUDENT_ID,
+          nama: adminData?.nama || 'Siswa',
+          top_mapel: topMapel || null,
+          emosi_dominan: dominantEmosi || null,
+          total_jam: totalSesiHours,
+          rata_quiz: avgQuiz,
+          streak_hari: streakDays,
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const t = data.text || data.content?.find?.(c => c.type === 'text')?.text || '';
-        setAiInsight(t);
-        typeText(t);
+        const t = result?.text || '';
+        if (t) { setAiInsight(t); typeText(t); }
+        else throw new Error('empty response');
       } catch {
         const f = '🌟 Kamu sudah menunjukkan semangat yang luar biasa — terus pertahankan ritme belajarmu!';
         setAiInsight(f);

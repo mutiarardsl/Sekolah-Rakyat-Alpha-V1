@@ -19,6 +19,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { aktivasiAkun } from '../api/auth'; // FIX ⑤: import aktivasiAkun
 import { C, FONTS, FS } from '../styles/tokens';
 import { Btn, Spinner } from '../components/shared/UI';
 import { ADMIN_MAPEL_LIST, KURIKULUM_ELEMEN } from '../data/masterData';
@@ -69,6 +70,9 @@ export default function ActivasiPage() {
     });
 
     /* ── Step 1: Set Password ──────────────────────────────────── */
+    // FIX ⑤: implementasi aktivasiAkun() via POST /auth/aktivasi
+    //  - user_id diambil dari sesi login (user.id)
+    //  - setelah sukses baru update local state dan lanjut ke step 2
     const handleSetPassword = async () => {
         const e = {};
         if (pass.length < 8) e.pass = 'Password minimal 8 karakter';
@@ -77,12 +81,15 @@ export default function ActivasiPage() {
         if (Object.keys(e).length) { setErrors(e); return; }
 
         setLoading(true); setError('');
-        await new Promise(r => setTimeout(r, 900));
-
-        // TODO Fase 3: await aktivasiAkun({ newPassword: pass })
-        updateUser({ is_first_login: false, status: 'Aktif' });
-        setLoading(false);
-        setStep(2);
+        try {
+            await aktivasiAkun({ password: pass, user_id: user?.id });
+            updateUser({ is_first_login: false, status: 'Aktif' });
+            setStep(2);
+        } catch (err) {
+            setError(err?.response?.data?.message || 'Gagal mengaktifkan akun. Silakan coba lagi.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     /* ── Step 2: Pilih Mapel ───────────────────────────────────── */

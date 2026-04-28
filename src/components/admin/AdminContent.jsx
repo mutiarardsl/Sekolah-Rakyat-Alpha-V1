@@ -28,10 +28,10 @@ const AdminContent = () => {
   const {
     guruList, siswaList, kelasList, mapelList,
     setKelasList, setGuruList, setSiswaList, setMapelList,
-    saveGuru, deleteGuru,
-    saveSiswa, deleteSiswa,
+    saveGuru, deleteGuru, saveBulkGuru,
+    saveSiswa, deleteSiswa, saveBulkSiswa,
     saveKelas, deleteKelas,
-  } = useAdmin();
+  } = useAdmin(); // FIX C: saveBulkGuru/saveBulkSiswa dari context (bukan local)
 
   /* ── Navigation ───────────────────────────────────────────────── */
   const [activePage, setActivePage] = useState('kurikulum');
@@ -91,13 +91,15 @@ const AdminContent = () => {
     showToast(`🗑 Kelas ${k?.nama || ''} dihapus`, C.red);
   };
 
-  const saveBulkGuru = async (guruArr) => {
-    for (const guru of guruArr) await saveGuru(guru);
+  // FIX C: saveBulkGuru/saveBulkSiswa sudah di-handle AdminContext
+  // Wrapper di sini hanya untuk showToast setelah selesai
+  const handleBulkSaveGuru = async (guruArr) => {
+    await saveBulkGuru(guruArr);
     showToast(`✅ ${guruArr.length} guru berhasil ditambahkan`, C.teal);
   };
 
-  const saveBulkSiswa = async (siswaArr) => {
-    for (const siswa of siswaArr) await saveSiswa(siswa);
+  const handleBulkSaveSiswa = async (siswaArr) => {
+    await saveBulkSiswa(siswaArr);
     showToast(`✅ ${siswaArr.length} siswa berhasil ditambahkan`, C.teal);
   };
 
@@ -244,7 +246,7 @@ const AdminContent = () => {
             setSelectedGuru={setSelectedGuru}
             setModalData={setModalData}
             setModal={setModal}
-            saveBulkGuru={saveBulkGuru}
+            saveBulkGuru={handleBulkSaveGuru}
             onDeleteGuru={handleDeleteGuru}
           />
         )}
@@ -257,7 +259,7 @@ const AdminContent = () => {
             setSelectedSiswa={setSelectedSiswa}
             setModalData={setModalData}
             setModal={setModal}
-            saveBulkSiswa={saveBulkSiswa}
+            saveBulkSiswa={handleBulkSaveSiswa}
             onChangeStatus={handleChangeStatusSiswa}
             onResetPassword={handleResetPassword}
             onDeleteSiswa={handleDeleteSiswa}

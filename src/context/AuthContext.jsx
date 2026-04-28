@@ -28,16 +28,17 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('sr:unauthorized', onUnauth);
   }, []);
 
+  // FIX ③a: authApi.login() sudah memanggil _saveSession() → simpan sr_access_token + sr_user
+  //  AuthContext cukup update state React, tidak perlu setItem ulang.
   const login = useCallback(async (email, password) => {
     const res = await authApi.login({ email, password });
-    localStorage.setItem('sr_user', JSON.stringify(res.user));
     setUser(res.user);
     return res.user;
   }, []);
 
+  // FIX ③b: sama — loginWithGoogle juga sudah memanggil _saveSession()
   const loginWithGoogle = useCallback(async (email) => {
     const res = await authApi.loginWithGoogle(email);
-    localStorage.setItem('sr_user', JSON.stringify(res.user));
     setUser(res.user);
     return res.user;
   }, []);
@@ -46,8 +47,10 @@ export function AuthProvider({ children }) {
     return await authApi.forgotPassword(email);
   }, []);
 
+  // FIX ③c: logout harus hapus sr_access_token agar apiClient tidak kirim token basi
   const logout = useCallback(async () => {
-    await authApi.logout();
+    try { await authApi.logout(); } catch { /* abaikan error network saat logout */ }
+    localStorage.removeItem('sr_access_token');
     localStorage.removeItem('sr_user');
     setUser(null);
   }, []);

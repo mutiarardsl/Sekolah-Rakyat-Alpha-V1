@@ -197,6 +197,7 @@ const StudentView = () => {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { isMobile, isTablet } = useBreakpoint();
+  const isCompact = isMobile || isTablet;
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Ambil state dari navigation (dikirim oleh PretestPage)
@@ -480,7 +481,7 @@ const StudentView = () => {
         <div className={activePage !== 'chat' ? 'sr-main-content' : ''} style={{ flex: 1, display: 'flex', overflow: 'hidden', width: '100%', flexDirection: 'column' }}>
 
           {/* ── Top Bar with hamburger (mobile/tablet only, hidden during chat) ── */}
-          {activePage !== 'chat' && (
+          {activePage !== 'chat' && isCompact && (
             <div style={{
               display: 'flex',
               alignItems: 'center',

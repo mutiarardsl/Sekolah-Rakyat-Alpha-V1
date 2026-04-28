@@ -256,10 +256,40 @@ export const handlers = [
     return HttpResponse.json({ reply, session_id: 'sess_' + Date.now() });
   }),
 
-  // Catatan: POST /mentor/chat/stream (SSE) tidak di-handle MSW.
-  // openStream() di client.js menggunakan fetch() langsung → tidak diintersep MSW.
-  // Saat VITE_MENTOR_STREAM=true, pastikan backend menyediakan endpoint ini.
-
+  // FIX ⑤: POST /mentor/chat/stream — mock SSE via ReadableStream
+  // Intercept fetch() dari openStream() di client.js.
+  // Emit token 'data: <token>\n\n' tiap ~60ms, tutup dengan 'data: [DONE]\n\n'.
+  http.post(url('/mentor/chat/stream'), async ({ request }) => {
+    const body = await request.json().catch(() => ({}));
+    const topik = body.materi || body.materi_id || 'materi ini';
+    const hasTanya = (body.pesan || '').includes('?');
+    const baseTokens = [
+      '\u2728 Oke! ', 'Mari ', 'kita ', 'bahas ', topik + '. ',
+      hasTanya ? 'Pertanyaan ' : 'Topik ',
+      'yang ', 'bagus! ', 'Konsep ', 'utamanya: ',
+      'pemahaman ', 'bertahap. ',
+      'Mulai ', 'dari ', 'dasar ', 'dulu, ', 'ya? ', '\ud83d\udcda',
+    ];
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        for (const token of baseTokens) {
+          await new Promise(r => setTimeout(r, 55 + Math.random() * 45));
+          controller.enqueue(encoder.encode('data: ' + token + '\n\n'));
+        }
+        await new Promise(r => setTimeout(r, 80));
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+      },
+    });
+  }),
   // GET /mentor/chat/history
   // Params: { siswa_id, mapel_id, materi, materi_id }
   http.get(url('/mentor/chat/history'), async ({ request }) => {
@@ -415,11 +445,11 @@ export const handlers = [
     await d(300);
     return HttpResponse.json([
       { emosi: 'tidak_terdeteksi', confidence: 0.45, timestamp: new Date(now - 300000).toISOString() },
-      { emosi: 'bosan',            confidence: 0.72, timestamp: new Date(now - 240000).toISOString() },
-      { emosi: 'bingung',          confidence: 0.84, timestamp: new Date(now - 180000).toISOString() },
-      { emosi: 'bingung',          confidence: 0.79, timestamp: new Date(now - 120000).toISOString() },
-      { emosi: 'antusias',         confidence: 0.91, timestamp: new Date(now - 60000).toISOString() },
-      { emosi: 'antusias',         confidence: 0.88, timestamp: new Date(now - 10000).toISOString() },
+      { emosi: 'bosan', confidence: 0.72, timestamp: new Date(now - 240000).toISOString() },
+      { emosi: 'bingung', confidence: 0.84, timestamp: new Date(now - 180000).toISOString() },
+      { emosi: 'bingung', confidence: 0.79, timestamp: new Date(now - 120000).toISOString() },
+      { emosi: 'antusias', confidence: 0.91, timestamp: new Date(now - 60000).toISOString() },
+      { emosi: 'antusias', confidence: 0.88, timestamp: new Date(now - 10000).toISOString() },
     ]);
   }),
 

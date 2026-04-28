@@ -900,15 +900,39 @@ const ChatSection = ({
   const mapelKey = `mapel__${chatMateri.mapelId}`;
 
   /* ── Riwayat topik per mapel ── */
-  const getSessions = () =>
-    Object.keys(msgsByKey)
-      .filter(k => k.startsWith(chatMateri.mapelId + '__'))
-      .map(k => {
-        const sub = k.split('__').slice(1).join('__');
-        const done_ = progressData.sudahSelesai.find(m => m.mapelId === chatMateri.mapelId && m.materiId === sub);
-        const ong_ = progressData.belumSelesai.find(m => m.mapelId === chatMateri.mapelId && m.materiId === sub);
-        return { k, sub, score: done_?.quizScore ?? null, done: !!done_, ongoing: !!ong_ };
-      });
+  // FIX D: getSessions() menggabungkan dua sumber:
+  //  1. msgsByKey — topik yang SUDAH dibuka sesi ini (ada pesan chatnya)
+  //  2. progressData.sudahSelesai + belumSelesai — topik dari SEMUA sesi sebelumnya
+  //     yang tersimpan di store (persisten selama session browser tidak di-refresh)
+  // Gabungkan keduanya dan deduplikasi by materiId agar panel kiri menampilkan
+  // seluruh riwayat elemen/materi yang pernah dipelajari di mapel yang sama.
+  const getSessions = () => {
+    const prefix = chatMateri.mapelId + '__';
+
+    // Kumpulkan semua materiId dari msgsByKey (sesi aktif)
+    const keySet = new Set(
+      Object.keys(msgsByKey).filter(k => k.startsWith(prefix))
+    );
+
+    // Tambahkan materiId dari progressData (sesi sebelumnya di mapel yang sama)
+    const progressEntries = [
+      ...progressData.sudahSelesai,
+      ...progressData.belumSelesai,
+    ].filter(m => m.mapelId === chatMateri.mapelId && m.materiId);
+
+    progressEntries.forEach(m => keySet.add(prefix + m.materiId));
+
+    return [...keySet].map(k => {
+      const sub = k.split('__').slice(1).join('__');
+      const done_ = progressData.sudahSelesai.find(
+        m => m.mapelId === chatMateri.mapelId && m.materiId === sub
+      );
+      const ong_ = progressData.belumSelesai.find(
+        m => m.mapelId === chatMateri.mapelId && m.materiId === sub
+      );
+      return { k, sub, score: done_?.quizScore ?? null, done: !!done_, ongoing: !!ong_ };
+    });
+  };
 
   const sessions = getSessions();
 
@@ -1721,554 +1745,554 @@ const ChatSection = ({
 
       {/* ══ PANEL KANAN ══════════════════════════════════════════ */}
       {(!isMobile || showRightPanelMobile) && (
-      <div style={{
-        width: isMobile ? '100%' : rightPanelWidth,
-        minWidth: isMobile ? '100%' : rightPanelWidth,
-        transition: 'width .3s cubic-bezier(.4,0,.2,1), min-width .3s cubic-bezier(.4,0,.2,1)',
-        borderLeft: `1px solid rgba(13,92,99,.08)`,
-        background: C.white,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        ...(isMobile ? { position: 'absolute', inset: 0, zIndex: 50 } : {}),
-      }}>
+        <div style={{
+          width: isMobile ? '100%' : rightPanelWidth,
+          minWidth: isMobile ? '100%' : rightPanelWidth,
+          transition: 'width .3s cubic-bezier(.4,0,.2,1), min-width .3s cubic-bezier(.4,0,.2,1)',
+          borderLeft: `1px solid rgba(13,92,99,.08)`,
+          background: C.white,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          ...(isMobile ? { position: 'absolute', inset: 0, zIndex: 50 } : {}),
+        }}>
 
-        {/* Mobile close button */}
-        {isMobile && (
-          <div style={{ padding: '8px 12px', background: C.dark, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <button
-              onClick={() => setShowRightPanelMobile(false)}
-              style={{ background: 'none', border: 'none', color: C.white, fontWeight: 700, fontSize: FS.md, cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              ← Kembali ke Chat
-            </button>
-          </div>
-        )}
+          {/* Mobile close button */}
+          {isMobile && (
+            <div style={{ padding: '8px 12px', background: C.dark, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <button
+                onClick={() => setShowRightPanelMobile(false)}
+                style={{ background: 'none', border: 'none', color: C.white, fontWeight: 700, fontSize: FS.md, cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                ← Kembali ke Chat
+              </button>
+            </div>
+          )}
 
-        {/* ── Mode: Detail Riwayat Quiz (menimpa format konten & latihan soal) ── */}
-        {quizHistoryModal ? (() => {
-          const { result, index } = quizHistoryModal;
-          const isMcResult = result.type === 'mc' || !result.type;
-          const isEssayResult = result.type === 'essay';
-          const pass = isMcResult && result.score >= 70;
-          const attemptNumber = index + 1;
-          const headerColor = isMcResult ? chatMateri.mapelColor : C.purple;
-          // Pakai soalSnapshot dari riwayat jika ada, fallback ke quizSoal bank
-          const reviewSoal = result.soalSnapshot || (isMcResult ? quizSoal : []);
-          return (
-            <div style={{
-              display: 'flex', flexDirection: 'column',
-              height: '100%', overflow: 'hidden',
-              animation: 'fadeIn .2s ease both',
-            }}>
-              {/* Header */}
+          {/* ── Mode: Detail Riwayat Quiz (menimpa format konten & latihan soal) ── */}
+          {quizHistoryModal ? (() => {
+            const { result, index } = quizHistoryModal;
+            const isMcResult = result.type === 'mc' || !result.type;
+            const isEssayResult = result.type === 'essay';
+            const pass = isMcResult && result.score >= 70;
+            const attemptNumber = index + 1;
+            const headerColor = isMcResult ? chatMateri.mapelColor : C.purple;
+            // Pakai soalSnapshot dari riwayat jika ada, fallback ke quizSoal bank
+            const reviewSoal = result.soalSnapshot || (isMcResult ? quizSoal : []);
+            return (
               <div style={{
-                padding: '12px 14px',
-                background: headerColor,
-                display: 'flex', alignItems: 'center', gap: 8,
-                flexShrink: 0,
+                display: 'flex', flexDirection: 'column',
+                height: '100%', overflow: 'hidden',
+                animation: 'fadeIn .2s ease both',
               }}>
-                <span style={{ fontSize: 15 }}>{isMcResult ? '🔘' : '✍️'}</span>
-                <div style={{ flex: 1, color: C.white, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: FS.md, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {isMcResult ? 'Pilihan Ganda' : 'Essay'} #{attemptNumber}
-                  </div>
-                  <div style={{ fontSize: FS.xs, opacity: .8 }}>{materiId} · {result.ts}</div>
-                </div>
-                <button onClick={() => setQuizHistoryModal(null)}
-                  style={{
-                    background: 'rgba(255,255,255,.2)', border: 'none',
-                    borderRadius: 6, width: 26, height: 26, color: C.white,
-                    cursor: 'pointer', fontSize: FS.base, flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>✕</button>
-              </div>
-
-              {/* Skor ringkas — MC saja */}
-              {isMcResult && (
+                {/* Header */}
                 <div style={{
-                  padding: '12px 14px 8px', textAlign: 'center',
-                  borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0,
-                  background: pass ? `${C.green}08` : `${C.amber}08`,
+                  padding: '12px 14px',
+                  background: headerColor,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  flexShrink: 0,
                 }}>
-                  <div style={{ fontSize: 26, marginBottom: 2 }}>{pass ? '🌟' : '💪'}</div>
-                  <div style={{ fontWeight: 800, fontSize: 26, color: pass ? C.green : C.amber }}>
-                    {result.score}/100
-                  </div>
-                  <div style={{ fontSize: FS.xs, fontWeight: 700, color: pass ? C.green : C.orange, marginTop: 1 }}>
-                    {pass ? '⭐ Lulus!' : 'Perlu latihan lagi'}
-                  </div>
-                  <div style={{ fontSize: FS.xs, color: C.darkL }}>
-                    {result.correct} dari {result.total} soal benar
-                  </div>
-                </div>
-              )}
-
-              {/* Status Essay */}
-              {isEssayResult && (
-                <div style={{
-                  padding: '12px 14px 8px', textAlign: 'center',
-                  borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0,
-                  background: `${C.purple}08`,
-                }}>
-                  <div style={{ fontSize: 26, marginBottom: 2 }}>✅</div>
-                  <div style={{ fontWeight: 700, fontSize: FS.base, color: C.purple }}>
-                    Jawaban Essay Terkirim
-                  </div>
-                  <div style={{ fontSize: FS.xs, color: C.darkL, marginTop: 2 }}>
-                    Kak Nusa sudah memberi feedback di chat
-                  </div>
-                </div>
-              )}
-
-              {/* Review isi — scrollable */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
-
-                {/* Review MC */}
-                {isMcResult && reviewSoal.length > 0 && (
-                  <>
-                    <div style={{ fontWeight: 700, fontSize: FS.xs, color: C.dark, marginBottom: 8 }}>
-                      🔍 Review Jawaban
+                  <span style={{ fontSize: 15 }}>{isMcResult ? '🔘' : '✍️'}</span>
+                  <div style={{ flex: 1, color: C.white, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: FS.md, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {isMcResult ? 'Pilihan Ganda' : 'Essay'} #{attemptNumber}
                     </div>
-                    {reviewSoal.map((s, si) => {
-                      const userAns = result.answers?.[si];
-                      const correct = userAns === s.jawaban;
-                      return (
-                        <div key={si} style={{
-                          marginBottom: 7, paddingBottom: 7,
-                          borderBottom: si < reviewSoal.length - 1 ? `1px solid rgba(13,92,99,.06)` : 'none',
-                        }}>
-                          <div style={{ display: 'flex', gap: 5, alignItems: 'flex-start', marginBottom: 2 }}>
-                            <span style={{ fontSize: FS.sm, flexShrink: 0 }}>{correct ? '✅' : '❌'}</span>
-                            <div style={{ fontSize: FS.xs, color: C.dark, fontWeight: 600, lineHeight: 1.4 }}>
-                              {si + 1}. {s.soal}
+                    <div style={{ fontSize: FS.xs, opacity: .8 }}>{materiId} · {result.ts}</div>
+                  </div>
+                  <button onClick={() => setQuizHistoryModal(null)}
+                    style={{
+                      background: 'rgba(255,255,255,.2)', border: 'none',
+                      borderRadius: 6, width: 26, height: 26, color: C.white,
+                      cursor: 'pointer', fontSize: FS.base, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>✕</button>
+                </div>
+
+                {/* Skor ringkas — MC saja */}
+                {isMcResult && (
+                  <div style={{
+                    padding: '12px 14px 8px', textAlign: 'center',
+                    borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0,
+                    background: pass ? `${C.green}08` : `${C.amber}08`,
+                  }}>
+                    <div style={{ fontSize: 26, marginBottom: 2 }}>{pass ? '🌟' : '💪'}</div>
+                    <div style={{ fontWeight: 800, fontSize: 26, color: pass ? C.green : C.amber }}>
+                      {result.score}/100
+                    </div>
+                    <div style={{ fontSize: FS.xs, fontWeight: 700, color: pass ? C.green : C.orange, marginTop: 1 }}>
+                      {pass ? '⭐ Lulus!' : 'Perlu latihan lagi'}
+                    </div>
+                    <div style={{ fontSize: FS.xs, color: C.darkL }}>
+                      {result.correct} dari {result.total} soal benar
+                    </div>
+                  </div>
+                )}
+
+                {/* Status Essay */}
+                {isEssayResult && (
+                  <div style={{
+                    padding: '12px 14px 8px', textAlign: 'center',
+                    borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0,
+                    background: `${C.purple}08`,
+                  }}>
+                    <div style={{ fontSize: 26, marginBottom: 2 }}>✅</div>
+                    <div style={{ fontWeight: 700, fontSize: FS.base, color: C.purple }}>
+                      Jawaban Essay Terkirim
+                    </div>
+                    <div style={{ fontSize: FS.xs, color: C.darkL, marginTop: 2 }}>
+                      Kak Nusa sudah memberi feedback di chat
+                    </div>
+                  </div>
+                )}
+
+                {/* Review isi — scrollable */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+
+                  {/* Review MC */}
+                  {isMcResult && reviewSoal.length > 0 && (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: FS.xs, color: C.dark, marginBottom: 8 }}>
+                        🔍 Review Jawaban
+                      </div>
+                      {reviewSoal.map((s, si) => {
+                        const userAns = result.answers?.[si];
+                        const correct = userAns === s.jawaban;
+                        return (
+                          <div key={si} style={{
+                            marginBottom: 7, paddingBottom: 7,
+                            borderBottom: si < reviewSoal.length - 1 ? `1px solid rgba(13,92,99,.06)` : 'none',
+                          }}>
+                            <div style={{ display: 'flex', gap: 5, alignItems: 'flex-start', marginBottom: 2 }}>
+                              <span style={{ fontSize: FS.sm, flexShrink: 0 }}>{correct ? '✅' : '❌'}</span>
+                              <div style={{ fontSize: FS.xs, color: C.dark, fontWeight: 600, lineHeight: 1.4 }}>
+                                {si + 1}. {s.soal}
+                              </div>
+                            </div>
+                            <div style={{ marginLeft: 17, fontSize: 9 }}>
+                              <span style={{ color: correct ? C.green : C.red }}>
+                                Jawabanmu: {s.pilihan[userAns] ?? '(tidak dijawab)'}
+                              </span>
                             </div>
                           </div>
-                          <div style={{ marginLeft: 17, fontSize: 9 }}>
-                            <span style={{ color: correct ? C.green : C.red }}>
-                              Jawabanmu: {s.pilihan[userAns] ?? '(tidak dijawab)'}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
+                        );
+                      })}
+                    </>
+                  )}
 
-                {/* Review Essay */}
-                {isEssayResult && result.essayAnswers && (
-                  <>
-                    <div style={{ fontWeight: 700, fontSize: FS.xs, color: C.dark, marginBottom: 8 }}>
-                      📋 Jawaban Essay
-                    </div>
-                    {(result.soalSnapshot || []).map((s, si) => {
-                      const jawaban = result.essayAnswers?.[s.id] || '';
-                      const wc = jawaban.trim().split(/\s+/).filter(Boolean).length;
-                      return (
-                        <div key={s.id} style={{
-                          marginBottom: 10, paddingBottom: 10,
-                          borderBottom: si < (result.soalSnapshot?.length ?? 0) - 1 ? `1px solid ${C.purple}18` : 'none',
-                        }}>
-                          <div style={{ fontSize: FS.xs, fontWeight: 600, color: C.dark, marginBottom: 4, lineHeight: 1.4 }}>
-                            Essay {si + 1}: {s.soal.slice(0, 70)}{s.soal.length > 70 ? '…' : ''}
-                          </div>
-                          <div style={{
-                            fontSize: FS.xs, color: C.darkL, lineHeight: 1.6,
-                            background: `${C.purple}08`, borderRadius: 6,
-                            padding: '6px 8px',
-                            fontStyle: jawaban ? 'normal' : 'italic',
+                  {/* Review Essay */}
+                  {isEssayResult && result.essayAnswers && (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: FS.xs, color: C.dark, marginBottom: 8 }}>
+                        📋 Jawaban Essay
+                      </div>
+                      {(result.soalSnapshot || []).map((s, si) => {
+                        const jawaban = result.essayAnswers?.[s.id] || '';
+                        const wc = jawaban.trim().split(/\s+/).filter(Boolean).length;
+                        return (
+                          <div key={s.id} style={{
+                            marginBottom: 10, paddingBottom: 10,
+                            borderBottom: si < (result.soalSnapshot?.length ?? 0) - 1 ? `1px solid ${C.purple}18` : 'none',
                           }}>
-                            {jawaban || '(tidak dijawab)'}
+                            <div style={{ fontSize: FS.xs, fontWeight: 600, color: C.dark, marginBottom: 4, lineHeight: 1.4 }}>
+                              Essay {si + 1}: {s.soal.slice(0, 70)}{s.soal.length > 70 ? '…' : ''}
+                            </div>
+                            <div style={{
+                              fontSize: FS.xs, color: C.darkL, lineHeight: 1.6,
+                              background: `${C.purple}08`, borderRadius: 6,
+                              padding: '6px 8px',
+                              fontStyle: jawaban ? 'normal' : 'italic',
+                            }}>
+                              {jawaban || '(tidak dijawab)'}
+                            </div>
+                            <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 3 }}>
+                              {wc} kata ditulis
+                            </div>
                           </div>
-                          <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 3 }}>
-                            {wc} kata ditulis
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
 
-              {/* Footer: tombol Ulangi + Tanya Kak Nusa */}
-              <div style={{
-                padding: '8px 12px', borderTop: `1px solid rgba(13,92,99,.07)`,
-                flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 5,
-              }}>
-                {/* Tombol Ulangi Quiz — hanya tampil jika ini riwayat level AKTIF */}
-                {(() => {
-                  const currentLvl = levelMap[activeKey] || chatMateri?.level || 'low';
-                  const isActiveLevelRecord = (result.level || 'low') === currentLvl;
-                  if (!isActiveLevelRecord) return (
-                    <div style={{
-                      padding: '7px 10px', borderRadius: 8,
-                      background: 'rgba(0,0,0,.03)', border: `1px solid rgba(0,0,0,.07)`,
-                      fontSize: FS.xs, color: C.slate, textAlign: 'center', fontStyle: 'italic',
-                    }}>
-                      Riwayat level yang sudah dilampaui — tidak bisa diulang
-                    </div>
-                  );
-                  return (
+                {/* Footer: tombol Ulangi + Tanya Kak Nusa */}
+                <div style={{
+                  padding: '8px 12px', borderTop: `1px solid rgba(13,92,99,.07)`,
+                  flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 5,
+                }}>
+                  {/* Tombol Ulangi Quiz — hanya tampil jika ini riwayat level AKTIF */}
+                  {(() => {
+                    const currentLvl = levelMap[activeKey] || chatMateri?.level || 'low';
+                    const isActiveLevelRecord = (result.level || 'low') === currentLvl;
+                    if (!isActiveLevelRecord) return (
+                      <div style={{
+                        padding: '7px 10px', borderRadius: 8,
+                        background: 'rgba(0,0,0,.03)', border: `1px solid rgba(0,0,0,.07)`,
+                        fontSize: FS.xs, color: C.slate, textAlign: 'center', fontStyle: 'italic',
+                      }}>
+                        Riwayat level yang sudah dilampaui — tidak bisa diulang
+                      </div>
+                    );
+                    return (
+                      <button
+                        onClick={() => {
+                          setRetrySnapshot({ type: result.type || 'mc', soal: result.soalSnapshot || quizSoal });
+                          setQuizHistoryModal(null);
+                          if (isMcResult) setMcModal(true);
+                          else setEssayModal(true);
+                        }}
+                        style={{
+                          width: '100%', padding: '8px 10px', borderRadius: 8,
+                          border: `1.5px solid ${headerColor}`,
+                          background: `${headerColor}0F`,
+                          color: headerColor, fontWeight: 700, fontSize: FS.sm,
+                          cursor: 'pointer', fontFamily: 'inherit',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          transition: 'background .15s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = `${headerColor}20`}
+                        onMouseLeave={e => e.currentTarget.style.background = `${headerColor}0F`}
+                      >
+                        🔄 Ulangi Soal Ini
+                      </button>
+                    );
+                  })()}
+
+                  {/* Tanya Kak Nusa — berlaku untuk MC dan Essay */}
+                  <div style={{
+                    background: `${C.teal}0D`, borderRadius: 7, padding: '7px 9px',
+                    fontSize: FS.xs, color: C.teal, lineHeight: 1.5,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 7,
+                  }}>
+                    <span>💬 {isMcResult ? 'Bahas soal yang salah' : 'Minta feedback'} dengan <strong>Kak Nusa</strong></span>
                     <button
                       onClick={() => {
-                        setRetrySnapshot({ type: result.type || 'mc', soal: result.soalSnapshot || quizSoal });
+                        useStudentStore.getState().setQuizAnalysisNeeded({
+                          quizType: result.type || 'mc',
+                          score: result.score,
+                          correct: result.correct,
+                          total: result.total,
+                          materiId: materiId || chatMateri.mapelLabel,
+                          mapelLabel: chatMateri.mapelLabel,
+                          wrongItems: result.wrongItems || [],
+                          essayAnswers: result.essayAnswers || {},
+                          soalSnapshot: result.soalSnapshot || [],
+                        });
                         setQuizHistoryModal(null);
-                        if (isMcResult) setMcModal(true);
-                        else setEssayModal(true);
                       }}
                       style={{
-                        width: '100%', padding: '8px 10px', borderRadius: 8,
-                        border: `1.5px solid ${headerColor}`,
-                        background: `${headerColor}0F`,
-                        color: headerColor, fontWeight: 700, fontSize: FS.sm,
-                        cursor: 'pointer', fontFamily: 'inherit',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                        transition: 'background .15s',
+                        flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+                        background: headerColor, border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: FS.md, boxShadow: `0 2px 6px ${headerColor}55`,
+                        transition: 'transform .15s',
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = `${headerColor}20`}
-                      onMouseLeave={e => e.currentTarget.style.background = `${headerColor}0F`}
-                    >
-                      🔄 Ulangi Soal Ini
-                    </button>
-                  );
-                })()}
-
-                {/* Tanya Kak Nusa — berlaku untuk MC dan Essay */}
-                <div style={{
-                  background: `${C.teal}0D`, borderRadius: 7, padding: '7px 9px',
-                  fontSize: FS.xs, color: C.teal, lineHeight: 1.5,
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 7,
-                }}>
-                  <span>💬 {isMcResult ? 'Bahas soal yang salah' : 'Minta feedback'} dengan <strong>Kak Nusa</strong></span>
-                  <button
-                    onClick={() => {
-                      useStudentStore.getState().setQuizAnalysisNeeded({
-                        quizType: result.type || 'mc',
-                        score: result.score,
-                        correct: result.correct,
-                        total: result.total,
-                        materiId: materiId || chatMateri.mapelLabel,
-                        mapelLabel: chatMateri.mapelLabel,
-                        wrongItems: result.wrongItems || [],
-                        essayAnswers: result.essayAnswers || {},
-                        soalSnapshot: result.soalSnapshot || [],
-                      });
-                      setQuizHistoryModal(null);
-                    }}
-                    style={{
-                      flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
-                      background: headerColor, border: 'none', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: FS.md, boxShadow: `0 2px 6px ${headerColor}55`,
-                      transition: 'transform .15s',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.12)'}
-                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                  >💬</button>
+                      onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.12)'}
+                      onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >💬</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })() : confModal ? (() => {
-          /* ── Mode B: Format Konten (Mindmap / Flashcard) ── */
-          const ct = CONF_TYPES.find(t => t.type === confModal.type);
-          if (!ct) return null;
-          const data = kConf[ct.type];
-          return (
-            <div style={{
-              display: 'flex', flexDirection: 'column',
-              height: '100%', overflow: 'hidden',
-              animation: 'fadeIn .2s ease both',
-            }}>
-              {/* Header */}
+            );
+          })() : confModal ? (() => {
+            /* ── Mode B: Format Konten (Mindmap / Flashcard) ── */
+            const ct = CONF_TYPES.find(t => t.type === confModal.type);
+            if (!ct) return null;
+            const data = kConf[ct.type];
+            return (
               <div style={{
-                padding: '12px 14px',
-                background: ct.color,
-                display: 'flex', alignItems: 'center', gap: 8,
-                flexShrink: 0,
+                display: 'flex', flexDirection: 'column',
+                height: '100%', overflow: 'hidden',
+                animation: 'fadeIn .2s ease both',
               }}>
-                <span style={{ fontSize: 18 }}>{ct.icon}</span>
-                <div style={{ flex: 1, color: '#fff', minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: FS.base, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {ct.label}
+                {/* Header */}
+                <div style={{
+                  padding: '12px 14px',
+                  background: ct.color,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  flexShrink: 0,
+                }}>
+                  <span style={{ fontSize: 18 }}>{ct.icon}</span>
+                  <div style={{ flex: 1, color: '#fff', minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: FS.base, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ct.label}
+                    </div>
+                    <div style={{ fontSize: FS.xs, opacity: .8 }}>{materiId} · {chatMateri.mapelLabel}</div>
                   </div>
-                  <div style={{ fontSize: FS.xs, opacity: .8 }}>{materiId} · {chatMateri.mapelLabel}</div>
+                  <button onClick={() => setConfModal(null)}
+                    style={{
+                      background: 'rgba(255,255,255,.2)', border: 'none',
+                      borderRadius: 6, width: 26, height: 26, color: '#fff',
+                      cursor: 'pointer', fontSize: FS.lg, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>✕</button>
                 </div>
-                <button onClick={() => setConfModal(null)}
-                  style={{
-                    background: 'rgba(255,255,255,.2)', border: 'none',
-                    borderRadius: 6, width: 26, height: 26, color: '#fff',
-                    cursor: 'pointer', fontSize: FS.lg, flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>✕</button>
+
+                {/* Body — scrollable */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
+                  {confGenerating ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 16 }}>
+                      <div style={{ width: 36, height: 36, border: `4px solid ${ct.bgLight}`, borderTopColor: ct.color, borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
+                      <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark }}>Generating {ct.label}...</div>
+                      <div style={{ fontSize: FS.sm, color: C.slate }}>sedang menyusun konten</div>
+                    </div>
+                  ) : !data?.generated ? (
+                    <div style={{ textAlign: 'center', padding: '40px 0', color: C.slate }}>
+                      <div style={{ fontSize: 36, marginBottom: 10 }}>{ct.icon}</div>
+                      <div style={{ fontSize: 13 }}>Klik "Generate Ulang" untuk membuat {ct.label}</div>
+                    </div>
+                  ) : (
+                    <>
+                      {ct.type === 'mindmap' && (
+                        <MindMapView tree={data.tree} color={ct.color} bgLight={ct.bgLight} materiId={materiId} />
+                      )}
+                      {ct.type === 'flashcard' && data.cards && (
+                        <FlashcardView
+                          cards={data.cards} color={ct.color} bgLight={ct.bgLight} materiId={materiId}
+                          flashIdx={flashIdx} setFlashIdx={setFlashIdx}
+                          flashFlipped={flashFlipped} setFlashFlipped={setFlashFlipped}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })() : (
+            /* ── Mode: Normal — Format Konten + Latihan Soal ── */
+            <>
+              {/* Format Konten */}
+              <div style={{ padding: '12px 12px 8px', borderBottom: `1px solid rgba(13,92,99,.06)`, flexShrink: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: FS.md, color: C.dark, marginBottom: 3 }}>📦 Format Konten</div>
+                <div style={{ fontSize: FS.xs, color: C.slate, marginBottom: 8 }}>
+                  {materiId ? 'Pilih format konten belajar' : 'Pilih materi dulu'}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {CONF_TYPES.map(ct => {
+                    const done_ = kConf[ct.type]?.generated;
+                    return (
+                      <button key={ct.type}
+                        onClick={() => { if (!materiId) return; if (!done_) generateConf(ct.type); setConfModal({ type: ct.type }); }}
+                        disabled={!materiId}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${done_ ? ct.color : C.tealXL}`, cursor: materiId ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: done_ ? ct.bgLight : C.white, color: done_ ? ct.color : C.slate, fontSize: FS.md, fontWeight: 700, textAlign: 'left', transition: 'all .2s', opacity: materiId ? 1 : .5 }}>
+                        <span style={{ fontSize: 15 }}>{ct.icon}</span>
+                        <span style={{ flex: 1 }}>{ct.label}</span>
+                        {done_
+                          ? <span style={{ fontSize: FS.xs, opacity: .8 }}>Lihat</span>
+                          : <span style={{ fontSize: FS.xs, color: C.tealL }}>Buat</span>
+                        }
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Body — scrollable */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
-                {confGenerating ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 16 }}>
-                    <div style={{ width: 36, height: 36, border: `4px solid ${ct.bgLight}`, borderTopColor: ct.color, borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
-                    <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark }}>Generating {ct.label}...</div>
-                    <div style={{ fontSize: FS.sm, color: C.slate }}>sedang menyusun konten</div>
-                  </div>
-                ) : !data?.generated ? (
-                  <div style={{ textAlign: 'center', padding: '40px 0', color: C.slate }}>
-                    <div style={{ fontSize: 36, marginBottom: 10 }}>{ct.icon}</div>
-                    <div style={{ fontSize: 13 }}>Klik "Generate Ulang" untuk membuat {ct.label}</div>
+              {/* Tombol Game */}
+              <div style={{ padding: '8px 12px', borderBottom: `1px solid rgba(13,92,99,.06)`, flexShrink: 0 }}>
+                <button
+                  onClick={() => {
+                    if (materiId && openGame) openGame({
+                      mapelId: chatMateri.mapelId,
+                      mapelLabel: chatMateri.mapelLabel,
+                      mapelIcon: chatMateri.mapelIcon,
+                      mapelColor: chatMateri.mapelColor,
+                      elemenId: chatMateri.elemenId || null,
+                      elemenLabel: chatMateri.elemenLabel || null,
+                      materiId,
+                      level: chatMateri.level || 'Low',
+                      // game_id tidak diisi di sini — siswa pilih game dari getGameList
+                      // di produksi: buka modal pilih game, set game_id sebelum openGame
+                    });
+                  }}
+                  disabled={!materiId}
+                  style={{
+                    width: '100%', padding: '9px 0', borderRadius: 9,
+                    border: `1.5px solid ${materiId ? chatMateri.mapelColor : C.tealXL}`,
+                    background: materiId ? `${chatMateri.mapelColor}10` : C.bg,
+                    color: materiId ? chatMateri.mapelColor : C.slate,
+                    fontSize: FS.md, fontWeight: 700, cursor: materiId ? 'pointer' : 'not-allowed',
+                    fontFamily: 'inherit', transition: 'all .2s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    opacity: materiId ? 1 : .5,
+                  }}
+                  onMouseEnter={e => { if (materiId) { e.currentTarget.style.background = chatMateri.mapelColor; e.currentTarget.style.color = '#fff'; } }}
+                  onMouseLeave={e => { if (materiId) { e.currentTarget.style.background = `${chatMateri.mapelColor}10`; e.currentTarget.style.color = chatMateri.mapelColor; } }}
+                >
+                  <span style={{ fontSize: 15 }}>🎮</span>
+                  <span>Main Game</span>
+                </button>
+              </div>
+
+              {/* Quiz */}
+              <div style={{ padding: '10px 12px', flex: 1, overflowY: 'auto' }}>
+                {/* Header */}
+                <div style={{ fontWeight: 700, fontSize: FS.md, color: C.dark, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  📝 Latihan Soal
+                </div>
+
+                {!materiId ? (
+                  <div style={{ fontSize: FS.sm, color: C.slate, background: C.cream, borderRadius: 8, padding: '10px', textAlign: 'center' }}>
+                    Pilih materi dulu untuk mulai latihan soal
                   </div>
                 ) : (
                   <>
-                    {ct.type === 'mindmap' && (
-                      <MindMapView tree={data.tree} color={ct.color} bgLight={ct.bgLight} materiId={materiId} />
-                    )}
-                    {ct.type === 'flashcard' && data.cards && (
-                      <FlashcardView
-                        cards={data.cards} color={ct.color} bgLight={ct.bgLight} materiId={materiId}
-                        flashIdx={flashIdx} setFlashIdx={setFlashIdx}
-                        flashFlipped={flashFlipped} setFlashFlipped={setFlashFlipped}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })() : (
-          /* ── Mode: Normal — Format Konten + Latihan Soal ── */
-          <>
-            {/* Format Konten */}
-            <div style={{ padding: '12px 12px 8px', borderBottom: `1px solid rgba(13,92,99,.06)`, flexShrink: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: FS.md, color: C.dark, marginBottom: 3 }}>📦 Format Konten</div>
-              <div style={{ fontSize: FS.xs, color: C.slate, marginBottom: 8 }}>
-                {materiId ? 'Pilih format konten belajar' : 'Pilih materi dulu'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {CONF_TYPES.map(ct => {
-                  const done_ = kConf[ct.type]?.generated;
-                  return (
-                    <button key={ct.type}
-                      onClick={() => { if (!materiId) return; if (!done_) generateConf(ct.type); setConfModal({ type: ct.type }); }}
-                      disabled={!materiId}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${done_ ? ct.color : C.tealXL}`, cursor: materiId ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: done_ ? ct.bgLight : C.white, color: done_ ? ct.color : C.slate, fontSize: FS.md, fontWeight: 700, textAlign: 'left', transition: 'all .2s', opacity: materiId ? 1 : .5 }}>
-                      <span style={{ fontSize: 15 }}>{ct.icon}</span>
-                      <span style={{ flex: 1 }}>{ct.label}</span>
-                      {done_
-                        ? <span style={{ fontSize: FS.xs, opacity: .8 }}>Lihat</span>
-                        : <span style={{ fontSize: FS.xs, color: C.tealL }}>Buat</span>
-                      }
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Tombol Game */}
-            <div style={{ padding: '8px 12px', borderBottom: `1px solid rgba(13,92,99,.06)`, flexShrink: 0 }}>
-              <button
-                onClick={() => {
-                  if (materiId && openGame) openGame({
-                    mapelId: chatMateri.mapelId,
-                    mapelLabel: chatMateri.mapelLabel,
-                    mapelIcon: chatMateri.mapelIcon,
-                    mapelColor: chatMateri.mapelColor,
-                    elemenId: chatMateri.elemenId || null,
-                    elemenLabel: chatMateri.elemenLabel || null,
-                    materiId,
-                    level: chatMateri.level || 'Low',
-                    // game_id tidak diisi di sini — siswa pilih game dari getGameList
-                    // di produksi: buka modal pilih game, set game_id sebelum openGame
-                  });
-                }}
-                disabled={!materiId}
-                style={{
-                  width: '100%', padding: '9px 0', borderRadius: 9,
-                  border: `1.5px solid ${materiId ? chatMateri.mapelColor : C.tealXL}`,
-                  background: materiId ? `${chatMateri.mapelColor}10` : C.bg,
-                  color: materiId ? chatMateri.mapelColor : C.slate,
-                  fontSize: FS.md, fontWeight: 700, cursor: materiId ? 'pointer' : 'not-allowed',
-                  fontFamily: 'inherit', transition: 'all .2s',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  opacity: materiId ? 1 : .5,
-                }}
-                onMouseEnter={e => { if (materiId) { e.currentTarget.style.background = chatMateri.mapelColor; e.currentTarget.style.color = '#fff'; } }}
-                onMouseLeave={e => { if (materiId) { e.currentTarget.style.background = `${chatMateri.mapelColor}10`; e.currentTarget.style.color = chatMateri.mapelColor; } }}
-              >
-                <span style={{ fontSize: 15 }}>🎮</span>
-                <span>Main Game</span>
-              </button>
-            </div>
-
-            {/* Quiz */}
-            <div style={{ padding: '10px 12px', flex: 1, overflowY: 'auto' }}>
-              {/* Header */}
-              <div style={{ fontWeight: 700, fontSize: FS.md, color: C.dark, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                📝 Latihan Soal
-              </div>
-
-              {!materiId ? (
-                <div style={{ fontSize: FS.sm, color: C.slate, background: C.cream, borderRadius: 8, padding: '10px', textAlign: 'center' }}>
-                  Pilih materi dulu untuk mulai latihan soal
-                </div>
-              ) : (
-                <>
-                  {/* ── 2 Tombol Sejajar ── */}
-                  {(() => {
-                    const currentLvl = levelMap[activeKey] || chatMateri?.level || 'low';
-                    const isHighLevel = currentLvl === 'high';
-                    const mcDoneAtHigh = isHighLevel && allHistory.some(r => (r.type === 'mc' || !r.type) && (r.level || 'low') === 'high');
-                    const essayDoneAtHigh = isHighLevel && allHistory.some(r => r.type === 'essay' && (r.level || 'low') === 'high');
-                    return (
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                        {/* Tombol Pilihan Ganda */}
-                        <button
-                          onClick={() => { if (!mcDoneAtHigh) { setRetrySnapshot(null); setMcModal(true); } }}
-                          disabled={mcDoneAtHigh}
-                          title={mcDoneAtHigh ? 'Sudah dikerjakan di level High. Gunakan tombol Ulangi di riwayat.' : undefined}
-                          style={{
-                            flex: 1, padding: '9px 4px', borderRadius: 8,
-                            border: `1.5px solid ${mcDoneAtHigh ? '#CBD5E0' : chatMateri.mapelColor}`,
-                            background: mcDoneAtHigh ? '#F7FAFC' : `${chatMateri.mapelColor}0F`,
-                            color: mcDoneAtHigh ? '#A0AEC0' : chatMateri.mapelColor,
-                            fontWeight: 700, fontSize: FS.xs,
-                            cursor: mcDoneAtHigh ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                            display: 'flex', flexDirection: 'column',
-                            alignItems: 'center', gap: 3,
-                            transition: 'all .15s',
-                            opacity: mcDoneAtHigh ? .65 : 1,
-                          }}
-                          onMouseEnter={e => { if (!mcDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}20`; }}
-                          onMouseLeave={e => { if (!mcDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}0F`; }}
-                        >
-                          <span style={{ fontSize: 14 }}>{mcDoneAtHigh ? '🔒' : '🔘'}</span>
-                          <span>Pilihan Ganda</span>
-                          {mcHistory.length > 0 && (
-                            <span style={{ fontSize: FS.xs, opacity: .7 }}>{mcDoneAtHigh ? 'Sudah dikerjakan' : `${mcHistory.length}x dikerjakan`}</span>
-                          )}
-                        </button>
-
-                        {/* Tombol Essay */}
-                        <button
-                          onClick={() => { if (!essayDoneAtHigh) { setRetrySnapshot(null); setEssayModal(true); } }}
-                          disabled={essayDoneAtHigh}
-                          title={essayDoneAtHigh ? 'Sudah dikerjakan di level High. Gunakan tombol Ulangi di riwayat.' : undefined}
-                          style={{
-                            flex: 1, padding: '9px 4px', borderRadius: 8,
-                            border: `1.5px solid ${essayDoneAtHigh ? '#CBD5E0' : chatMateri.mapelColor}`,
-                            background: essayDoneAtHigh ? '#F7FAFC' : `${chatMateri.mapelColor}0F`,
-                            color: essayDoneAtHigh ? '#A0AEC0' : chatMateri.mapelColor,
-                            fontWeight: 700, fontSize: FS.xs,
-                            cursor: essayDoneAtHigh ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                            display: 'flex', flexDirection: 'column',
-                            alignItems: 'center', gap: 3,
-                            transition: 'all .15s',
-                            opacity: essayDoneAtHigh ? .65 : 1,
-                          }}
-                          onMouseEnter={e => { if (!essayDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}20`; }}
-                          onMouseLeave={e => { if (!essayDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}0F`; }}
-                        >
-                          <span style={{ fontSize: 14 }}>{essayDoneAtHigh ? '🔒' : '✍️'}</span>
-                          <span>Essay</span>
-                          {essayHistory.length > 0 && (
-                            <span style={{ fontSize: FS.xs, opacity: .7 }}>{essayDoneAtHigh ? 'Sudah dikerjakan' : `${essayHistory.length}x dikerjakan`}</span>
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Info KKM dan nilai terakhir */}
-                  <div style={{ fontSize: FS.xs, color: C.slate, textAlign: 'center', marginBottom: 10, lineHeight: 1.6 }}>
+                    {/* ── 2 Tombol Sejajar ── */}
                     {(() => {
                       const currentLvl = levelMap[activeKey] || chatMateri?.level || 'low';
                       const isHighLevel = currentLvl === 'high';
-                      const hasDoneAtHigh = isHighLevel && allHistory.some(r => (r.level || 'low') === 'high');
-                      if (hasDoneAtHigh) return (
-                        <span style={{ color: '#9B2C2C', background: '#FFF5F5', border: '1px solid #FEB2B2', padding: '3px 8px', borderRadius: 6, display: 'inline-block', lineHeight: 1.5 }}>
-                          🔒 Level High sudah diselesaikan · Gunakan <strong>Ulangi</strong> di riwayat
-                        </span>
-                      );
-                      return <>
-                        Quiz ≥ 80 → otomatis naik level
-                        {mcLatestScore != null && (
-                          <span style={{ marginLeft: 5, fontWeight: 700, color: mcLatestScore >= 80 ? C.green : C.orange }}>
-                            · Terakhir: {mcLatestScore}/100
-                          </span>
-                        )}
-                      </>;
-                    })()}
-                  </div>
+                      const mcDoneAtHigh = isHighLevel && allHistory.some(r => (r.type === 'mc' || !r.type) && (r.level || 'low') === 'high');
+                      const essayDoneAtHigh = isHighLevel && allHistory.some(r => r.type === 'essay' && (r.level || 'low') === 'high');
+                      return (
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                          {/* Tombol Pilihan Ganda */}
+                          <button
+                            onClick={() => { if (!mcDoneAtHigh) { setRetrySnapshot(null); setMcModal(true); } }}
+                            disabled={mcDoneAtHigh}
+                            title={mcDoneAtHigh ? 'Sudah dikerjakan di level High. Gunakan tombol Ulangi di riwayat.' : undefined}
+                            style={{
+                              flex: 1, padding: '9px 4px', borderRadius: 8,
+                              border: `1.5px solid ${mcDoneAtHigh ? '#CBD5E0' : chatMateri.mapelColor}`,
+                              background: mcDoneAtHigh ? '#F7FAFC' : `${chatMateri.mapelColor}0F`,
+                              color: mcDoneAtHigh ? '#A0AEC0' : chatMateri.mapelColor,
+                              fontWeight: 700, fontSize: FS.xs,
+                              cursor: mcDoneAtHigh ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                              display: 'flex', flexDirection: 'column',
+                              alignItems: 'center', gap: 3,
+                              transition: 'all .15s',
+                              opacity: mcDoneAtHigh ? .65 : 1,
+                            }}
+                            onMouseEnter={e => { if (!mcDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}20`; }}
+                            onMouseLeave={e => { if (!mcDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}0F`; }}
+                          >
+                            <span style={{ fontSize: 14 }}>{mcDoneAtHigh ? '🔒' : '🔘'}</span>
+                            <span>Pilihan Ganda</span>
+                            {mcHistory.length > 0 && (
+                              <span style={{ fontSize: FS.xs, opacity: .7 }}>{mcDoneAtHigh ? 'Sudah dikerjakan' : `${mcHistory.length}x dikerjakan`}</span>
+                            )}
+                          </button>
 
-                  {/* ── Riwayat Quiz (1 per level, dikelompokkan per level) ── */}
-                  {allHistory.length > 0 && (() => {
-                    const LEVEL_ORDER_DISP = ['low', 'mid', 'high'];
-                    const LEVEL_LBL_DISP = { low: 'Low', mid: 'Mid', high: 'High' };
-                    const LEVEL_CLR_DISP = {
-                      low: { color: '#276749', bg: '#F0FFF4', border: '#9AE6B4' },
-                      mid: { color: '#B7791F', bg: '#FFFBF0', border: '#F6AD55' },
-                      high: { color: '#9B2C2C', bg: '#FFF5F5', border: '#FEB2B2' },
-                    };
-                    const currentLvl = levelMap[activeKey] || chatMateri?.level || 'low';
-                    return (
-                      <div>
-                        <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, marginBottom: 8 }}>Riwayat Quiz</div>
-                        {/* Tampilkan level dari tinggi ke rendah — level aktif di atas */}
-                        {[...LEVEL_ORDER_DISP].reverse().map(lv => {
-                          const lvRecs = allHistory.filter(r => (r.level || 'low') === lv);
-                          if (lvRecs.length === 0) return null;
-                          const lvMeta = LEVEL_CLR_DISP[lv];
-                          const isPast = LEVEL_ORDER_DISP.indexOf(lv) < LEVEL_ORDER_DISP.indexOf(currentLvl);
-                          return (
-                            <div key={lv} style={{ marginBottom: 10 }}>
-                              {/* Level header */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, padding: '3px 8px', borderRadius: 6, background: lvMeta.bg, border: `1px solid ${lvMeta.border}` }}>
-                                <span style={{ fontSize: FS.xs, fontWeight: 800, color: lvMeta.color }}>Level {LEVEL_LBL_DISP[lv]}</span>
-                                {isPast && <span style={{ fontSize: FS.xs, color: C.slate, fontStyle: 'italic' }}>· Sudah dilampaui — hanya lihat</span>}
-                                {lv === currentLvl && <span style={{ fontSize: FS.xs, color: lvMeta.color, fontWeight: 700 }}>· Level aktif</span>}
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                {lvRecs.map((r, i) => {
-                                  const originalIndex = allHistory.indexOf(r);
-                                  const isActiveItem = quizHistoryModal?.index === originalIndex;
-                                  const isMcItem = r.type === 'mc' || !r.type;
-                                  const itemColor = isMcItem ? chatMateri.mapelColor : C.purple;
-                                  return (
-                                    <button key={i}
-                                      onClick={() => setQuizHistoryModal(isActiveItem ? null : { result: r, index: originalIndex })}
-                                      style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 8, border: `1px solid ${isActiveItem ? itemColor : 'transparent'}`, background: isActiveItem ? `${itemColor}12` : C.cream, cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all .15s' }}>
-                                      <div style={{ width: 28, height: 28, borderRadius: 7, flexShrink: 0, background: isActiveItem ? `${itemColor}22` : `${itemColor}18`, border: `1px solid ${itemColor}44`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <span style={{ fontSize: 11 }}>{isMcItem ? '🔘' : '✍️'}</span>
-                                      </div>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.dark, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                                          {isMcItem ? 'Pilihan Ganda' : 'Essay'}
-                                          {isMcItem && r.score != null && (
-                                            <span style={{ fontSize: FS.xs, padding: '1px 5px', borderRadius: 99, fontWeight: 800, background: r.score >= 80 ? C.greenL : C.amberL, color: r.score >= 80 ? C.green : C.orange }}>
-                                              {r.score}/100
-                                            </span>
-                                          )}
+                          {/* Tombol Essay */}
+                          <button
+                            onClick={() => { if (!essayDoneAtHigh) { setRetrySnapshot(null); setEssayModal(true); } }}
+                            disabled={essayDoneAtHigh}
+                            title={essayDoneAtHigh ? 'Sudah dikerjakan di level High. Gunakan tombol Ulangi di riwayat.' : undefined}
+                            style={{
+                              flex: 1, padding: '9px 4px', borderRadius: 8,
+                              border: `1.5px solid ${essayDoneAtHigh ? '#CBD5E0' : chatMateri.mapelColor}`,
+                              background: essayDoneAtHigh ? '#F7FAFC' : `${chatMateri.mapelColor}0F`,
+                              color: essayDoneAtHigh ? '#A0AEC0' : chatMateri.mapelColor,
+                              fontWeight: 700, fontSize: FS.xs,
+                              cursor: essayDoneAtHigh ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                              display: 'flex', flexDirection: 'column',
+                              alignItems: 'center', gap: 3,
+                              transition: 'all .15s',
+                              opacity: essayDoneAtHigh ? .65 : 1,
+                            }}
+                            onMouseEnter={e => { if (!essayDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}20`; }}
+                            onMouseLeave={e => { if (!essayDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}0F`; }}
+                          >
+                            <span style={{ fontSize: 14 }}>{essayDoneAtHigh ? '🔒' : '✍️'}</span>
+                            <span>Essay</span>
+                            {essayHistory.length > 0 && (
+                              <span style={{ fontSize: FS.xs, opacity: .7 }}>{essayDoneAtHigh ? 'Sudah dikerjakan' : `${essayHistory.length}x dikerjakan`}</span>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Info KKM dan nilai terakhir */}
+                    <div style={{ fontSize: FS.xs, color: C.slate, textAlign: 'center', marginBottom: 10, lineHeight: 1.6 }}>
+                      {(() => {
+                        const currentLvl = levelMap[activeKey] || chatMateri?.level || 'low';
+                        const isHighLevel = currentLvl === 'high';
+                        const hasDoneAtHigh = isHighLevel && allHistory.some(r => (r.level || 'low') === 'high');
+                        if (hasDoneAtHigh) return (
+                          <span style={{ color: '#9B2C2C', background: '#FFF5F5', border: '1px solid #FEB2B2', padding: '3px 8px', borderRadius: 6, display: 'inline-block', lineHeight: 1.5 }}>
+                            🔒 Level High sudah diselesaikan · Gunakan <strong>Ulangi</strong> di riwayat
+                          </span>
+                        );
+                        return <>
+                          Quiz ≥ 80 → otomatis naik level
+                          {mcLatestScore != null && (
+                            <span style={{ marginLeft: 5, fontWeight: 700, color: mcLatestScore >= 80 ? C.green : C.orange }}>
+                              · Terakhir: {mcLatestScore}/100
+                            </span>
+                          )}
+                        </>;
+                      })()}
+                    </div>
+
+                    {/* ── Riwayat Quiz (1 per level, dikelompokkan per level) ── */}
+                    {allHistory.length > 0 && (() => {
+                      const LEVEL_ORDER_DISP = ['low', 'mid', 'high'];
+                      const LEVEL_LBL_DISP = { low: 'Low', mid: 'Mid', high: 'High' };
+                      const LEVEL_CLR_DISP = {
+                        low: { color: '#276749', bg: '#F0FFF4', border: '#9AE6B4' },
+                        mid: { color: '#B7791F', bg: '#FFFBF0', border: '#F6AD55' },
+                        high: { color: '#9B2C2C', bg: '#FFF5F5', border: '#FEB2B2' },
+                      };
+                      const currentLvl = levelMap[activeKey] || chatMateri?.level || 'low';
+                      return (
+                        <div>
+                          <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, marginBottom: 8 }}>Riwayat Quiz</div>
+                          {/* Tampilkan level dari tinggi ke rendah — level aktif di atas */}
+                          {[...LEVEL_ORDER_DISP].reverse().map(lv => {
+                            const lvRecs = allHistory.filter(r => (r.level || 'low') === lv);
+                            if (lvRecs.length === 0) return null;
+                            const lvMeta = LEVEL_CLR_DISP[lv];
+                            const isPast = LEVEL_ORDER_DISP.indexOf(lv) < LEVEL_ORDER_DISP.indexOf(currentLvl);
+                            return (
+                              <div key={lv} style={{ marginBottom: 10 }}>
+                                {/* Level header */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, padding: '3px 8px', borderRadius: 6, background: lvMeta.bg, border: `1px solid ${lvMeta.border}` }}>
+                                  <span style={{ fontSize: FS.xs, fontWeight: 800, color: lvMeta.color }}>Level {LEVEL_LBL_DISP[lv]}</span>
+                                  {isPast && <span style={{ fontSize: FS.xs, color: C.slate, fontStyle: 'italic' }}>· Sudah dilampaui — hanya lihat</span>}
+                                  {lv === currentLvl && <span style={{ fontSize: FS.xs, color: lvMeta.color, fontWeight: 700 }}>· Level aktif</span>}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {lvRecs.map((r, i) => {
+                                    const originalIndex = allHistory.indexOf(r);
+                                    const isActiveItem = quizHistoryModal?.index === originalIndex;
+                                    const isMcItem = r.type === 'mc' || !r.type;
+                                    const itemColor = isMcItem ? chatMateri.mapelColor : C.purple;
+                                    return (
+                                      <button key={i}
+                                        onClick={() => setQuizHistoryModal(isActiveItem ? null : { result: r, index: originalIndex })}
+                                        style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 8, border: `1px solid ${isActiveItem ? itemColor : 'transparent'}`, background: isActiveItem ? `${itemColor}12` : C.cream, cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left', transition: 'all .15s' }}>
+                                        <div style={{ width: 28, height: 28, borderRadius: 7, flexShrink: 0, background: isActiveItem ? `${itemColor}22` : `${itemColor}18`, border: `1px solid ${itemColor}44`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                          <span style={{ fontSize: 11 }}>{isMcItem ? '🔘' : '✍️'}</span>
                                         </div>
-                                        <div style={{ fontSize: FS.xs, color: isActiveItem ? itemColor : C.teal, fontWeight: 600 }}>
-                                          {isPast ? '👁 Hanya lihat' : isActiveItem ? 'Sedang dilihat ●' : 'Lihat detail →'}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.dark, display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                                            {isMcItem ? 'Pilihan Ganda' : 'Essay'}
+                                            {isMcItem && r.score != null && (
+                                              <span style={{ fontSize: FS.xs, padding: '1px 5px', borderRadius: 99, fontWeight: 800, background: r.score >= 80 ? C.greenL : C.amberL, color: r.score >= 80 ? C.green : C.orange }}>
+                                                {r.score}/100
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div style={{ fontSize: FS.xs, color: isActiveItem ? itemColor : C.teal, fontWeight: 600 }}>
+                                            {isPast ? '👁 Hanya lihat' : isActiveItem ? 'Sedang dilihat ●' : 'Lihat detail →'}
+                                          </div>
+                                          <div style={{ fontSize: FS.xs, color: C.slate }}>{r.ts}</div>
                                         </div>
-                                        <div style={{ fontSize: FS.xs, color: C.slate }}>{r.ts}</div>
-                                      </div>
-                                      <span style={{ fontSize: 10 }}>{isMcItem ? (r.score >= 80 ? '⭐' : '💪') : '📋'}</span>
-                                    </button>
-                                  );
-                                })}
+                                        <span style={{ fontSize: 10 }}>{isMcItem ? (r.score >= 80 ? '⭐' : '💪') : '📋'}</span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-                </>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       )} {/* end mobile right panel conditional */}
 
       {/* ══ Modal Pilihan Ganda ══════════════════════════════════ */}
