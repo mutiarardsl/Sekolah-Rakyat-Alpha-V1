@@ -265,6 +265,18 @@ const StudentView = () => {
   const [gameContext, setGameContext] = useState(null);
   const [gameData, setGameData] = useState(null);   // null | GameItem
   const [gameLoading, setGameLoading] = useState(false);
+  // FIX P1: ref untuk cleanup polling interval game "generating"
+  const gamePollRef = useRef(null);
+
+  // Cleanup polling saat komponen unmount atau game context berubah ke null
+  useEffect(() => {
+    if (!gameContext) {
+      if (gamePollRef.current) { clearInterval(gamePollRef.current); gamePollRef.current = null; }
+    }
+    return () => {
+      if (gamePollRef.current) { clearInterval(gamePollRef.current); gamePollRef.current = null; }
+    };
+  }, [gameContext]);
 
   /* ── Camera (inside ChatSection) ────────────────────────────── */
   const [camGranted, setCamGranted] = useState(false);
@@ -393,12 +405,35 @@ const StudentView = () => {
       // ctx: { mapelId, mapelLabel, mapelIcon, mapelColor, elemenId, elemenLabel, materiId?, level, game_id? }
       setGameContext(ctx);
       setGameData(null);
-      // Jika ada game_id → fetch detail (html_url) dari Tim 4
+      // FIX P1: fetch game detail + polling jika status masih "generating"
       if (ctx.game_id) {
         setGameLoading(true);
-        getGame(ctx.game_id)
-          .then(data => { setGameData(data); setGameLoading(false); })
-          .catch(() => setGameLoading(false));
+        let pollInterval = null;
+
+        const fetchGame = async () => {
+          try {
+            const data = await getGame(ctx.game_id);
+            setGameData(data);
+            if (data.status !== 'generating') {
+              // Status final (ready/failed) — hentikan polling
+              setGameLoading(false);
+              if (pollInterval) clearInterval(pollInterval);
+            }
+            // Jika masih "generating", biarkan interval lanjut
+          } catch {
+            setGameLoading(false);
+            if (pollInterval) clearInterval(pollInterval);
+          }
+        };
+
+        // Fetch pertama langsung
+        fetchGame();
+        // Mulai polling tiap 3 detik — akan dihentikan sendiri saat status final
+        pollInterval = setInterval(fetchGame, 3000);
+
+        // Simpan cleanup function ke ref agar bisa dibersihkan saat game context berubah
+        if (gamePollRef.current) clearInterval(gamePollRef.current);
+        gamePollRef.current = pollInterval;
       }
     },
   };

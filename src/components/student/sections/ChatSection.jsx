@@ -21,6 +21,14 @@ import { useWebSocket } from '../../../hooks/useWebSocket';
 import { useStudentStore } from '../../../stores/studentStore';
 import QuizModal, { getQuizV2 } from './QuizModal';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
+// FIX P0: sambungkan ke API Mentor (Tim 5) dan Content (Tim 3)
+import { sendMessage, streamMessage, getChatHistory, resetSession } from '../../../api/mentor';
+import { generateContent } from '../../../api/content';
+
+// Flag dari .env:
+//   VITE_MENTOR_STREAM : true → stream token-per-token, false → tunggu full response
+// VITE_USE_MSW mengcover semua skenario dev — tidak perlu flag gate API terpisah.
+const USE_STREAM = import.meta.env.VITE_MENTOR_STREAM === 'true';
 
 
 /* ─────────────────────────────────────────────────────────────────── */
@@ -968,21 +976,48 @@ const ChatSection = ({
     if (chatMateri.materiId) {
       const topikKey = makeKey(chatMateri.mapelId, chatMateri.materiId);
 
-      // Inisialisasi 1 pesan pembuka AI jika topik ini belum pernah dibuka
+      // Coba load history dari API (MSW intercept jika VITE_USE_MSW=true).
+      // Jika topik belum pernah dibuka sesi ini, fetch history untuk restore percakapan lama.
       if (!msgsByKey[topikKey]) {
-        const sess = Object.keys(msgsByKey)
-          .filter(k => k.startsWith(chatMateri.mapelId + '__'))
-          .map(k => ({ k, sub: k.split('__').slice(1).join('__') }));
+        const buildOpening = () => {
+          const sess = Object.keys(msgsByKey)
+            .filter(k => k.startsWith(chatMateri.mapelId + '__'))
+            .map(k => ({ k, sub: k.split('__').slice(1).join('__') }));
+          setMsgsByKey(p => ({
+            ...p,
+            [topikKey]: getOpeningMessage(
+              chatMateri.mapelId, chatMateri.mapelLabel,
+              chatMateri.materiId, sess, chatMateri.source || null
+            ),
+          }));
+        };
 
-        setMsgsByKey(p => ({
-          ...p,
-          [topikKey]: getOpeningMessage(
-            chatMateri.mapelId, chatMateri.mapelLabel,
-            chatMateri.materiId,
-            sess,
-            chatMateri.source || null
-          )
-        }));
+        // FIX 3: selalu panggil getChatHistory — MSW intercept jika VITE_USE_MSW=true
+        (async () => {
+          try {
+            const history = await getChatHistory({
+              siswa_id: chatMateri.siswaId || 'usr_001',
+              mapel_id: chatMateri.mapelId || '',
+              materi: chatMateri.mapelLabel || chatMateri.materiId || '',
+              materi_id: chatMateri.materiId || '',
+            });
+            // Hanya pakai history jika ada percakapan nyata (ada role 'user')
+            const hasRealConversation = Array.isArray(history) &&
+              history.some(m => m.role === 'user');
+            if (hasRealConversation) {
+              const converted = history.map((m, i) => ({
+                id: i + 1, role: m.role, text: m.text,
+                time: new Date(m.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                team: m.team || undefined,
+              }));
+              setMsgsByKey(p => ({ ...p, [topikKey]: converted }));
+            } else {
+              buildOpening();
+            }
+          } catch {
+            buildOpening();
+          }
+        })();
       }
       setSubMateri(chatMateri.materiId);
     }
@@ -1011,35 +1046,156 @@ const ChatSection = ({
   const mcLatestRecord = mcHistory.length > 0 ? mcHistory[mcHistory.length - 1] : null;
   const mcLatestScore = mcLatestRecord?.score ?? null;
 
-  /* ── Send message ── */
-  const sendMsg = () => {
+  /* ── Send message — FIX P0: pakai api/mentor sendMessage/streamMessage ── */
+  const cancelStreamRef = useRef(null);
+  const sendMsg = async () => {
     if (!input.trim() && !chatAttachments.length) return;
-    const userMsg = { id: Date.now(), role: 'user', text: input, time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) };
+
+    const userMsg = {
+      id: Date.now(), role: 'user', text: input,
+      time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+    };
     setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), userMsg] }));
-    setInput(''); setTyping(true); if (textareaRef.current) { textareaRef.current.style.height = '38px'; }
-    setTimeout(() => {
-      const topikCtx = materiId || chatMateri.mapelLabel;
+    const sentText = input;
+    setInput(''); setTyping(true);
+    if (textareaRef.current) textareaRef.current.style.height = '38px';
+
+    // Bangun payload sesuai MentorChatPayload contract v2.1.0
+    const siswaId = chatMateri?.siswaId || 'usr_001';
+    const currentEmosi = useStudentStore.getState().currentEmosi || null;
+    const payload = {
+      siswa_id: siswaId,
+      mapel_id: chatMateri?.mapelId || '',
+      materi: chatMateri?.mapelLabel || materiId || '',
+      materi_id: materiId || chatMateri?.mapelId || '',
+      message: sentText,
+      context: {
+        emosi: currentEmosi,
+        progress: null,
+        rekomendasi_guru: null,
+      },
+    };
+
+    try {
+      // FIX 4: hapus gate USE_MENTOR_API — selalu panggil API (MSW intercept jika aktif)
+      if (USE_STREAM) {
+        // Streaming mode — token demi token
+        if (cancelStreamRef.current) cancelStreamRef.current();
+        let accumulated = '';
+        const streamingMsgId = Date.now() + 1;
+        // Tambahkan placeholder pesan AI untuk diisi stream
+        setMsgsByKey(p => ({
+          ...p,
+          [activeKey]: [...(p[activeKey] || []), {
+            id: streamingMsgId, role: 'ai', text: '', time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }), team: 'Tim 5',
+          }],
+        }));
+        setTyping(false);
+        cancelStreamRef.current = streamMessage(
+          payload,
+          (chunk) => {
+            accumulated += chunk;
+            setMsgsByKey(p => {
+              const msgs = p[activeKey] || [];
+              return {
+                ...p,
+                [activeKey]: msgs.map(m => m.id === streamingMsgId ? { ...m, text: accumulated } : m),
+              };
+            });
+          },
+          () => {
+            // onDone
+            cancelStreamRef.current = null;
+            setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+          },
+          () => {
+            // onError — tampilkan pesan fallback
+            cancelStreamRef.current = null;
+            setMsgsByKey(p => {
+              const msgs = p[activeKey] || [];
+              return {
+                ...p,
+                [activeKey]: msgs.map(m => m.id === streamingMsgId
+                  ? { ...m, text: accumulated || '⚠️ Koneksi terputus. Coba kirim ulang pesanmu.' }
+                  : m),
+              };
+            });
+          },
+        );
+      } else {
+        // Non-streaming — tunggu full response (atau MSW mock response)
+        const res = await sendMessage(payload);
+        const aiReply = {
+          id: Date.now() + 1,
+          role: 'ai',
+          text: res.reply || '😊 Mentor sedang memproses jawabanmu...',
+          time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          team: 'Tim 5',
+        };
+        setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), aiReply] }));
+        setTyping(false);
+        setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+      }
+    } catch {
+      // Fallback lokal jika API tidak tersedia
+      const topikCtx = materiId || chatMateri?.mapelLabel;
       const aiReply = {
-        id: Date.now() + 1,
-        role: 'ai',
+        id: Date.now() + 1, role: 'ai',
         text: `Pertanyaan bagus tentang **${topikCtx}**! 😊\n\nMari kita telaah lebih dalam. Konsep kunci yang perlu dipahami:\n\n1. Pahami definisi dasarnya terlebih dahulu\n2. Lihat contoh nyata di sekitar kita\n3. Coba kerjakan soal latihan untuk memastikan pemahamanmu\n\nApa yang masih membingungkan?`,
-        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        team: 'Tim 5'
+        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }), team: 'Tim 5',
       };
       setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), aiReply] }));
       setTyping(false);
       setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-    }, 1100);
+    }
   };
 
-  /* ── Generate Format Konten ── */
-  const generateConf = (type) => {
+  /* ── Generate Format Konten — selalu panggil generateContent (MSW intercept jika aktif) ── */
+  const generateConf = async (type) => {
     setConfGenerating(true);
-    setTimeout(() => {
-      const content = getConfContent(materiId || chatMateri.mapelLabel, chatMateri.mapelLabel);
-      setConfContent(p => ({ ...p, [activeKey]: { ...(p[activeKey] || {}), [type]: content[type] } }));
+    // FIX: selalu panggil generateContent — MSW intercept jika VITE_USE_MSW=true
+    // Struktur lokal sebagai base, API hanya override text/cards jika ada & tidak kosong
+    // sehingga mindmap tidak pernah kosong meskipun API kembalikan konten parsial.
+    try {
+      const siswaId = chatMateri?.siswaId || 'usr_001';
+      const currentEmosi = useStudentStore.getState().currentEmosi || null;
+      const currentLevel = levelMap[activeKey] || chatMateri?.level || 'Low';
+      const levelCapitalized = currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1);
+
+      const res = await generateContent({
+        siswa_id: siswaId,
+        mapel_id: chatMateri?.mapelId || '',
+        materi: chatMateri?.mapelLabel || materiId || '',
+        materi_id: materiId || chatMateri?.mapelId || '',
+        tipe: type,
+        level: levelCapitalized,
+        emosi: currentEmosi,
+      });
+
+      const localFallback = getConfContent(materiId || chatMateri?.mapelLabel, chatMateri?.mapelLabel);
+      const localBase = localFallback[type] || {};
+      const apiContent = res?.content || {};
+
+      setConfContent(p => ({
+        ...p,
+        [activeKey]: {
+          ...(p[activeKey] || {}),
+          [type]: {
+            ...localBase,
+            generated: true,
+            ...(type === 'mindmap' && apiContent.content ? { text: apiContent.content } : {}),
+            ...(type === 'flashcard' && Array.isArray(apiContent.cards) && apiContent.cards.length > 0
+              ? { cards: apiContent.cards } : {}),
+          },
+        },
+      }));
+    } catch {
+      // Fallback ke konten lokal jika API Tim 3 belum siap
+      const fallback = getConfContent(materiId || chatMateri?.mapelLabel, chatMateri?.mapelLabel);
+      setConfContent(p => ({ ...p, [activeKey]: { ...(p[activeKey] || {}), [type]: fallback[type] } }));
+    } finally {
       setConfGenerating(false);
-    }, 1500);
+    }
   };
 
   /* ── Submit Quiz (dipanggil oleh QuizModal via prop onSubmit) ── */
@@ -2246,7 +2402,6 @@ const ChatSection = ({
                                 {/* Level header */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, padding: '3px 8px', borderRadius: 6, background: lvMeta.bg, border: `1px solid ${lvMeta.border}` }}>
                                   <span style={{ fontSize: FS.xs, fontWeight: 800, color: lvMeta.color }}>Level {LEVEL_LBL_DISP[lv]}</span>
-                                  {isPast && <span style={{ fontSize: FS.xs, color: C.slate, fontStyle: 'italic' }}>· Sudah dilampaui — hanya lihat</span>}
                                   {lv === currentLvl && <span style={{ fontSize: FS.xs, color: lvMeta.color, fontWeight: 700 }}>· Level aktif</span>}
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

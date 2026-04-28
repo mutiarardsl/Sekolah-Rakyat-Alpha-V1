@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { Btn } from './UI';
+import { changePassword } from '../../api/auth'; // FIX: sambungkan ke PUT /auth/change-password
 
 const calcStr = (p) => {
     let s = 0;
@@ -68,15 +69,22 @@ export default function ForceChangePasswordModal({ userName = '', role = 'guru',
         return e;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         const e = validate();
         if (Object.keys(e).length) { setErrors(e); return; }
         setLoading(true);
-        setTimeout(() => {
-            setLoading(false);
+        try {
+            // FIX: guru first-login tidak punya old_password field di modal ini.
+            // Backend menerima empty string sebagai sinyal first-login change.
+            await changePassword({ old_password: '', new_password: newPass });
             setDone(true);
             setTimeout(() => onSuccess?.(), 1400);
-        }, 1200);
+        } catch (err) {
+            const msg = err?.response?.data?.message || 'Gagal mengganti password. Silakan coba lagi.';
+            setErrors(p => ({ ...p, new: msg }));
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (

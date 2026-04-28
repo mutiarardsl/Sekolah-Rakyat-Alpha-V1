@@ -12,6 +12,8 @@ import { useState, useEffect, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { EmptyState } from '../../shared/UI';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
+// FIX P3: load progress + konten real dari backend
+import { getLearningProgress, getKontenSiswa } from '../../../api/content';
 import {
   ADMIN_MAPEL_LIST,
   KURIKULUM_ELEMEN,
@@ -384,6 +386,21 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
 
   // Modal state
   const [pretestGateData, setPretestGateData] = useState(null);  // { mapel, elemen, materiData }
+
+  // FIX P3: augment progressData dengan data real dari backend
+  const [apiLearningProgress, setApiLearningProgress] = useState(null);
+  const [publishedKonten, setPublishedKonten] = useState([]);
+  useEffect(() => {
+    const siswaId = 'usr_001'; // TODO: ambil dari useAuth saat disambungkan ke AuthContext
+    // Fetch progress real
+    getLearningProgress({ siswa_id: siswaId })
+      .then(data => setApiLearningProgress(data))
+      .catch(() => { /* silent — pakai progressData lokal */ });
+    // Fetch konten yang sudah dipublish guru untuk siswa ini
+    getKontenSiswa({ siswa_id: siswaId })
+      .then(data => { if (Array.isArray(data) && data.length > 0) setPublishedKonten(data); })
+      .catch(() => { /* silent */ });
+  }, []);
 
   const { isPretestElemenDone, isPretestMateriDone, getElemenLevel, getMateriLevel } = useStudentStore(s => ({
     isPretestElemenDone: s.isPretestElemenDone,

@@ -23,6 +23,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Btn } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
+import { submitQuiz } from '../../../api/content'; // FIX P1: simpan hasil quiz ke backend
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -372,7 +373,7 @@ const QuizModal = ({
   const KKM = 80; // KKM quiz untuk naik level
   const passed = mcScore >= KKM;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (isMC) {
       const wrongItems = mcSoal
         .map((s, i) => ({
@@ -383,6 +384,22 @@ const QuizModal = ({
         .filter((_, i) => mcAnswers[i] !== mcSoal[i].jawaban);
 
       setSubmitted(true);
+
+      // FIX P1: kirim skor MC ke backend via POST /content/quiz/submit
+      // Fire-and-forget — tidak block UI jika API gagal
+      const siswaId = chatMateri?.siswaId || 'usr_001';
+      const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
+      submitQuiz({
+        siswa_id: siswaId,
+        mapel_id: chatMateri?.mapelId || '',
+        materi: chatMateri?.mapelLabel || materiId || '',
+        materi_id: materiId || chatMateri?.mapelId || '',
+        quiz_type: 'mc',
+        level: levelCapitalized,
+        answers: { ...mcAnswers },
+        score: mcScore,
+      }).catch(() => { /* silent — progress lokal tetap tersimpan di store */ });
+
       onSubmit?.({
         type: 'mc',
         score: mcScore,
@@ -392,10 +409,25 @@ const QuizModal = ({
         mapelLabel: chatMateri?.mapelLabel,
         wrongItems,
         answers: { ...mcAnswers },
-        soalSnapshot: mcSoal, // simpan snapshot soal untuk "ulangi quiz"
+        soalSnapshot: mcSoal,
       });
     } else {
       setSubmitted(true);
+
+      // FIX P1: kirim essay ke backend — skor null (dinilai manual)
+      const siswaId = chatMateri?.siswaId || 'usr_001';
+      const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
+      submitQuiz({
+        siswa_id: siswaId,
+        mapel_id: chatMateri?.mapelId || '',
+        materi: chatMateri?.mapelLabel || materiId || '',
+        materi_id: materiId || chatMateri?.mapelId || '',
+        quiz_type: 'essay',
+        level: levelCapitalized,
+        answers: { ...essayAnswers },
+        score: 0,
+      }).catch(() => { /* silent */ });
+
       onSubmit?.({
         type: 'essay',
         score: null,

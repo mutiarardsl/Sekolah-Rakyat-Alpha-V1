@@ -96,23 +96,18 @@ export function AdminProvider({ initialData, children }) {
     setKelasList(p => p.map(k => k.waliKelasId === id ? { ...k, waliKelasId: '' } : k));
   }), [withLoading]);
 
-  // FIX C: saveBulkGuru via guruApi.bulk() — kirim File langsung ke endpoint
-  // Dipanggil dari AdminContent.saveBulkGuru yang menerima (file, guruArr)
-  // Jika API bulk gagal, fallback ke loop saveGuru satu per satu
+  // FIX 13: saveBulkGuru — BulkUploadGuru sudah parse file ke array object di sisi client.
+  // guruApi.bulk(file) hanya untuk raw File upload — tidak relevan di flow ini.
+  // Gunakan Promise.all agar semua create berjalan paralel, bukan sequential.
   const saveBulkGuru = useCallback((guruArr) => withLoading(async () => {
-    // guruArr adalah array objek hasil parse BulkUploadGuru (sudah diparsing client-side)
-    // Karena BulkUpload melakukan parsing mandiri, kita kirim satu-per-satu ke API
-    // (guruApi.bulk() hanya untuk raw File upload — tidak relevan di flow ini)
-    const results = [];
-    for (const guru of guruArr) {
-      try {
-        const created = await guruApi.create(guru);
-        results.push(created);
-      } catch {
-        // FIX B: fallback local jika API gagal
-        results.push({ ...guru, id: 'g_local_' + Date.now() + Math.random() });
-      }
-    }
+    const settled = await Promise.allSettled(
+      guruArr.map(guru => guruApi.create(guru))
+    );
+    const results = settled.map((res, i) =>
+      res.status === 'fulfilled'
+        ? res.value
+        : { ...guruArr[i], id: 'g_local_' + Date.now() + '_' + i } // fallback lokal jika satu item gagal
+    );
     setGuruList(p => [...p, ...results]);
     return results;
   }), [withLoading]);
@@ -168,21 +163,31 @@ export function AdminProvider({ initialData, children }) {
     }
   }), [withLoading, siswaList]);
 
-  // FIX C: saveBulkSiswa — sama dengan saveBulkGuru
+  // FIX 13: saveBulkSiswa — sama dengan saveBulkGuru: Promise.all untuk parallelisme
   const saveBulkSiswa = useCallback((siswaArr) => withLoading(async () => {
-    const results = [];
-    for (const siswa of siswaArr) {
-      try {
-        const created = await siswaApi.create(siswa);
-        results.push(normalizeSiswa(created));
-      } catch {
-        results.push(normalizeSiswa({
-          ...siswa,
-          id: 's_local_' + Date.now() + Math.random(),
-        }));
-      }
-    }
+    const settled = await Promise.allSettled(
+      siswaArr.map(siswa => siswaApi.create(normalizeSiswa(siswa)))
+    );
+    const results = settled.map((res, i) => {
+      if (res.status === 'fulfilled') return normalizeSiswa(res.value);
+      // Fallback lokal jika satu item gagal
+      return normalizeSiswa({
+        ...siswaArr[i],
+        id: 's_local_' + Date.now() + '_' + i,
+        avatar: (siswaArr[i].nama || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+        status: 'Belum Aktif',
+        is_first_login: true,
+      });
+    });
     setSiswaList(p => [...p, ...results]);
+    // Update kelasList untuk setiap siswa yang punya kelasId
+    results.forEach(s => {
+      if (s.kelasId) {
+        setKelasList(p => p.map(k =>
+          k.id === s.kelasId ? { ...k, siswaIds: [...(k.siswaIds || []), s.id] } : k
+        ));
+      }
+    });
     return results;
   }), [withLoading]);
 

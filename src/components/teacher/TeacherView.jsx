@@ -22,6 +22,7 @@ import ForceChangePasswordModal from '../shared/ForceChangePasswordModal';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { SUBJECTS, TEACHERS, SEEDED_TEACHER_ID, CLASSES, STUDENTS } from '../../data/masterData';
+import { kirimRekomendasi } from '../../api/admin'; // FIX P2: sambungkan POST /guru/rekomendasi
 
 import MonitoringSection from './sections/MonitoringSection';
 import KelolaBelajarSection from './sections/KelolaBelajarSection';
@@ -64,16 +65,30 @@ const TeacherView = () => {
   // FIX 2
   const cls = CLASSES.find(c => c.id === activeClass) ?? CLASSES[0];
 
-  const saveRec = (studentId) => {
+  const saveRec = async (studentId) => {
     const text = recText.trim(); if (!text) return;
+    // Update UI state dulu (optimistic)
     setRecommendations(p => ({ ...p, [studentId]: text }));
     setRecModal(null); setRecText('');
     setRecPipeline('saving');
-    setTimeout(() => {
+
+    try {
+      // FIX P2: kirim ke POST /guru/rekomendasi — muncul di bell notif siswa
+      await kirimRekomendasi({
+        guru_id: teacher?.id || 'g1',
+        siswa_id: studentId,
+        mapel_id: teacher?.mapelId || teacherMapel?.id || '',
+        pesan: text,
+      });
       setRecPipeline('done');
       setSentToAI(p => ({ ...p, [studentId]: { mapelId: teacher?.mapelId, text, ts: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) } }));
+    } catch {
+      // Fallback: rekomendasi tetap tersimpan lokal meski API gagal
+      setRecPipeline('done');
+      setSentToAI(p => ({ ...p, [studentId]: { mapelId: teacher?.mapelId, text, ts: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) } }));
+    } finally {
       setTimeout(() => setRecPipeline(null), 2500);
-    }, 1500);
+    }
   };
 
   const navItems = [

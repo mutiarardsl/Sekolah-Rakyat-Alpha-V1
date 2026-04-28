@@ -605,289 +605,289 @@ const MonitoringSection = ({
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
-      {/* ══ CENTER ══ */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 20px', background: C.white, borderBottom: `3px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
-          <div>
-            <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>{cls?.label}</div>
-            <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 1 }}>
-              {teacherMapel?.icon} <strong style={{ color: teacherMapel?.color }}>{teacherMapel?.label}</strong>
-              {' · '}{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </div>
-          </div>
-          <div style={{ flex: 1 }} />
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, background: C.bg }}>
-
-          {/* KPI */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
-            {[
-              { icon: '👥', label: 'Total Siswa', value: classStudents.length, sub: `Di ${cls?.label || 'kelas ini'}`, color: C.teal },
-              { icon: '🟢', label: 'Aktif Hari Ini', value: aktifHariIni.length, sub: `${Math.round(aktifHariIni.length / (classStudents.length || 1) * 100)}% dari total`, color: C.green },
-              { icon: '📊', label: 'Rata-rata Progress', value: `${avgProgress}%`, sub: aktifHariIni.length > 0 ? `${aktifHariIni.length} siswa aktif` : 'Belum ada aktivitas', color: C.purple },
-              { icon: '🚨', label: 'Smart Alert', value: visibleAlerts.length, sub: visibleAlerts.length > 0 ? 'Perlu tindak lanjut' : 'Semua aman ✓', color: visibleAlerts.length > 0 ? C.red : C.green },
-            ].map(s => (
-              <Card key={s.label} style={{ padding: '14px' }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>{s.icon}</div>
-                <div style={{ fontSize: FS.xs, color: C.slate, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .7 }}>{s.label}</div>
-                <div style={{ fontSize: s.value?.toString().length > 4 ? 20 : 26, fontWeight: 800, color: C.dark, margin: '3px 0' }}>{s.value}</div>
-                <div style={{ fontSize: FS.xs, color: s.color, fontWeight: 600, lineHeight: 1.3 }}>{s.sub}</div>
-              </Card>
-            ))}
-          </div>
-
-          {/* Tabel Aktivitas Siswa */}
-          <Card style={{ overflow: 'visible' }}>
-            <div style={{ padding: '12px 16px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: FS.lg, color: C.dark }}>Aktivitas Siswa Hari Ini</div>
-                <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>Klik baris atau tombol Detail untuk melihat riwayat lengkap</div>
+        {/* ══ CENTER ══ */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '12px 20px', background: C.white, borderBottom: `3px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+            <div>
+              <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>{cls?.label}</div>
+              <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 1 }}>
+                {teacherMapel?.icon} <strong style={{ color: teacherMapel?.color }}>{teacherMapel?.label}</strong>
+                {' · '}{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </div>
-              <div style={{ flex: 1 }} />
-              <button onClick={() => setDownloadModal(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, border: 'none', borderRadius: 99, cursor: 'pointer', fontFamily: 'inherit', color: C.white, fontSize: FS.sm, fontWeight: 700 }}>
-                📥 Unduh Laporan
-              </button>
             </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: C.teal }}>
-                    {[
-                      { label: 'Nama Siswa', align: 'left' },
-                      { label: 'Materi/Elemen', align: 'left' },
-                      { label: 'Level', align: 'center' },
-                      { label: 'Nilai Quiz', align: 'center' },
-                      { label: 'Durasi', align: 'center' },
-                      { label: 'Evaluasi', align: 'center' },
-                      { label: 'Aksi', align: 'center' },
-                    ].map(h => (
-                      <th key={h.label} style={{ padding: '9px 12px', textAlign: h.align, fontSize: FS.xs, fontWeight: 700, color: C.white, textTransform: 'uppercase', letterSpacing: .7, whiteSpace: 'nowrap' }}>{h.label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedStudents.length === 0 ? (
-                    <tr><td colSpan={6}><EmptyState icon="👥" title="Belum ada siswa" sub="Tambahkan siswa melalui menu Manajemen Kelas" /></td></tr>
-                  ) : sortedStudents.map(st => {
-                    const isActive = st.todayActive;
-                    const hasViolation = st.hasViolation && isActive;
-                    const rowBg = hasViolation ? 'rgba(197,48,48,.04)' : (!isActive ? 'rgba(0,0,0,.012)' : 'transparent');
-                    return (
-                      <tr key={st.id}
-                        style={{ borderTop: `1px solid rgba(13,92,99,.05)`, background: rowBg, transition: 'background .15s', ...(hasViolation ? { boxShadow: 'inset 3px 0 0 #C53030' } : {}) }}
-                        onMouseEnter={e => e.currentTarget.style.background = hasViolation ? 'rgba(197,48,48,.07)' : 'rgba(13,92,99,.03)'}
-                        onMouseLeave={e => e.currentTarget.style.background = rowBg}>
+            <div style={{ flex: 1 }} />
+          </div>
 
-                        {/* Nama */}
-                        <td style={{ padding: '10px 12px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ position: 'relative' }}>
-                              <div style={{ width: 30, height: 30, borderRadius: '50%', background: isActive ? st.avatarBg : '#CBD5E0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 10 }}>{st.avatar}</div>
-                              {isActive && <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: C.green, border: '1px solid white' }} />}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14, background: C.bg }}>
+
+            {/* KPI */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+              {[
+                { icon: '👥', label: 'Total Siswa', value: classStudents.length, sub: `Di ${cls?.label || 'kelas ini'}`, color: C.teal },
+                { icon: '🟢', label: 'Aktif Hari Ini', value: aktifHariIni.length, sub: `${Math.round(aktifHariIni.length / (classStudents.length || 1) * 100)}% dari total`, color: C.green },
+                { icon: '📊', label: 'Rata-rata Progress', value: `${avgProgress}%`, sub: aktifHariIni.length > 0 ? `${aktifHariIni.length} siswa aktif` : 'Belum ada aktivitas', color: C.purple },
+                { icon: '🚨', label: 'Smart Alert', value: visibleAlerts.length, sub: visibleAlerts.length > 0 ? 'Perlu tindak lanjut' : 'Semua aman ✓', color: visibleAlerts.length > 0 ? C.red : C.green },
+              ].map(s => (
+                <Card key={s.label} style={{ padding: '14px' }}>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{s.icon}</div>
+                  <div style={{ fontSize: FS.xs, color: C.slate, fontWeight: 600, textTransform: 'uppercase', letterSpacing: .7 }}>{s.label}</div>
+                  <div style={{ fontSize: s.value?.toString().length > 4 ? 20 : 26, fontWeight: 800, color: C.dark, margin: '3px 0' }}>{s.value}</div>
+                  <div style={{ fontSize: FS.xs, color: s.color, fontWeight: 600, lineHeight: 1.3 }}>{s.sub}</div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Tabel Aktivitas Siswa */}
+            <Card style={{ overflow: 'visible' }}>
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: FS.lg, color: C.dark }}>Aktivitas Siswa Hari Ini</div>
+                  <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>Klik baris atau tombol Detail untuk melihat riwayat lengkap</div>
+                </div>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => setDownloadModal(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, border: 'none', borderRadius: 99, cursor: 'pointer', fontFamily: 'inherit', color: C.white, fontSize: FS.sm, fontWeight: 700 }}>
+                  📥 Unduh Laporan
+                </button>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: C.teal }}>
+                      {[
+                        { label: 'Nama Siswa', align: 'left' },
+                        { label: 'Materi/Elemen', align: 'left' },
+                        { label: 'Level', align: 'center' },
+                        { label: 'Nilai Quiz', align: 'center' },
+                        { label: 'Durasi', align: 'center' },
+                        { label: 'Evaluasi', align: 'center' },
+                        { label: 'Aksi', align: 'center' },
+                      ].map(h => (
+                        <th key={h.label} style={{ padding: '9px 12px', textAlign: h.align, fontSize: FS.xs, fontWeight: 700, color: C.white, textTransform: 'uppercase', letterSpacing: .7, whiteSpace: 'nowrap' }}>{h.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedStudents.length === 0 ? (
+                      <tr><td colSpan={6}><EmptyState icon="👥" title="Belum ada siswa" sub="Tambahkan siswa melalui menu Manajemen Kelas" /></td></tr>
+                    ) : sortedStudents.map(st => {
+                      const isActive = st.todayActive;
+                      const hasViolation = st.hasViolation && isActive;
+                      const rowBg = hasViolation ? 'rgba(197,48,48,.04)' : (!isActive ? 'rgba(0,0,0,.012)' : 'transparent');
+                      return (
+                        <tr key={st.id}
+                          style={{ borderTop: `1px solid rgba(13,92,99,.05)`, background: rowBg, transition: 'background .15s', ...(hasViolation ? { boxShadow: 'inset 3px 0 0 #C53030' } : {}) }}
+                          onMouseEnter={e => e.currentTarget.style.background = hasViolation ? 'rgba(197,48,48,.07)' : 'rgba(13,92,99,.03)'}
+                          onMouseLeave={e => e.currentTarget.style.background = rowBg}>
+
+                          {/* Nama */}
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ position: 'relative' }}>
+                                <div style={{ width: 30, height: 30, borderRadius: '50%', background: isActive ? st.avatarBg : '#CBD5E0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 10 }}>{st.avatar}</div>
+                                {isActive && <span style={{ position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%', background: C.green, border: '1px solid white' }} />}
+                              </div>
+                              <div style={{ fontWeight: 600, fontSize: FS.md, color: hasViolation ? '#C53030' : isActive ? C.dark : C.slate }}>{st.name}</div>
                             </div>
-                            <div style={{ fontWeight: 600, fontSize: FS.md, color: hasViolation ? '#C53030' : isActive ? C.dark : C.slate }}>{st.name}</div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Materi */}
-                        <td style={{ padding: '10px 12px' }}>
-                          {isActive && st.todayMateriId
-                            ? <span style={{ fontSize: FS.md, color: C.dark, fontWeight: 600 }}>{st.todayMateriId}</span>
-                            : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
-                        </td>
+                          {/* Materi */}
+                          <td style={{ padding: '10px 12px' }}>
+                            {isActive && st.todayMateriId
+                              ? <span style={{ fontSize: FS.md, color: C.dark, fontWeight: 600 }}>{st.todayMateriId}</span>
+                              : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
+                          </td>
 
-                        {/* level*/}
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          {isActive && st.todayLevel ? (() => {
-                            const LEVEL_COLOR = {
-                              low: { label: 'Low', color: '#276749', bg: '#F0FFF4' },
-                              mid: { label: 'Mid', color: '#B7791F', bg: '#FFFBF0' },
-                              high: { label: 'High', color: '#9B2C2C', bg: '#FFF5F5' },
-                            };
-                            const lv = LEVEL_COLOR[st.todayLevel] || LEVEL_COLOR.low;
-                            return (
-                              <span style={{
-                                fontSize: 11, fontWeight: 700, padding: '2px 8px',
-                                borderRadius: 99, background: lv.bg, color: lv.color,
-                                border: `1px solid ${lv.color}40`,
-                              }}>{lv.label}</span>
-                            );
-                          })() : <span style={{ color: C.slate }}>—</span>}
-                        </td>
+                          {/* level*/}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            {isActive && st.todayLevel ? (() => {
+                              const LEVEL_COLOR = {
+                                low: { label: 'Low', color: '#276749', bg: '#F0FFF4' },
+                                mid: { label: 'Mid', color: '#B7791F', bg: '#FFFBF0' },
+                                high: { label: 'High', color: '#9B2C2C', bg: '#FFF5F5' },
+                              };
+                              const lv = LEVEL_COLOR[st.todayLevel] || LEVEL_COLOR.low;
+                              return (
+                                <span style={{
+                                  fontSize: 11, fontWeight: 700, padding: '2px 8px',
+                                  borderRadius: 99, background: lv.bg, color: lv.color,
+                                  border: `1px solid ${lv.color}40`,
+                                }}>{lv.label}</span>
+                              );
+                            })() : <span style={{ color: C.slate }}>—</span>}
+                          </td>
 
-                        {/* Nilai Quiz */}
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          {isActive && st.todayQuizScore != null
-                            ? <span style={{ fontSize: FS.md, fontWeight: 600, color: C.dark }}>{Math.round((st.todayQuizScore / st.todayQuizTotal) * 100)}</span>
-                            : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
-                        </td>
+                          {/* Nilai Quiz */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            {isActive && st.todayQuizScore != null
+                              ? <span style={{ fontSize: FS.md, fontWeight: 600, color: C.dark }}>{Math.round((st.todayQuizScore / st.todayQuizTotal) * 100)}</span>
+                              : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
+                          </td>
 
-                        {/* Durasi */}
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          {isActive && st.todayStudyHours != null
-                            ? <span style={{ fontSize: FS.md, color: C.darkL, fontWeight: 600 }}>{st.todayStudyHours.toFixed(1)} jam</span>
-                            : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
-                        </td>
+                          {/* Durasi */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            {isActive && st.todayStudyHours != null
+                              ? <span style={{ fontSize: FS.md, color: C.darkL, fontWeight: 600 }}>{st.todayStudyHours.toFixed(1)} jam</span>
+                              : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
+                          </td>
 
-                        {/* Evaluasi */}
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          {(() => {
-                            const evaluasi = generateAIEvaluasi(st);
-                            if (!evaluasi) return <span style={{ fontSize: FS.base, color: C.slate }}>—</span>;
-                            return <EvaluasiDropdown text={evaluasi} color={C.teal} bg={C.white} />;
-                          })()}
-                        </td>
+                          {/* Evaluasi */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            {(() => {
+                              const evaluasi = generateAIEvaluasi(st);
+                              if (!evaluasi) return <span style={{ fontSize: FS.base, color: C.slate }}>—</span>;
+                              return <EvaluasiDropdown text={evaluasi} color={C.teal} bg={C.white} />;
+                            })()}
+                          </td>
 
-                        {/* Aksi */}
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          <button onClick={() => setSelectedStudent(st)}
-                            style={{ background: isActive ? C.tealXL : '#EDF2F7', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: FS.sm, color: isActive ? C.teal : C.slate, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                            Detail
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          {/* Aksi */}
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                            <button onClick={() => setSelectedStudent(st)}
+                              style={{ background: isActive ? C.tealXL : '#EDF2F7', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: FS.sm, color: isActive ? C.teal : C.slate, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                              Detail
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        {/* ══ RIGHT PANEL — Smart Info + Alert ══ */}
+        {(!isCompact || smartInfoOpen) && (
+          <div style={{
+            width: isCompact ? '100%' : 272,
+            background: C.white,
+            borderLeft: isCompact ? 'none' : `1px solid rgba(13,92,99,.1)`,
+            borderTop: isCompact ? `1px solid rgba(13,92,99,.1)` : 'none',
+            overflowY: 'auto',
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            ...(isCompact ? { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 50, maxHeight: '65%', boxShadow: '0 -4px 24px rgba(0,0,0,.12)' } : {}),
+          }}>
+            <div style={{ padding: '13px 13px 10px', borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0 }}>
+              <div style={{ fontSize: FS.md, fontWeight: 700, color: C.dark }}>ℹ️ Smart Info</div>
+              <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 2 }}>Ringkasan aktivitas kelas hari ini</div>
             </div>
-          </Card>
-        </div>
-      </div>
 
-      {/* ══ RIGHT PANEL — Smart Info + Alert ══ */}
-      {(!isCompact || smartInfoOpen) && (
-      <div style={{
-        width: isCompact ? '100%' : 272,
-        background: C.white,
-        borderLeft: isCompact ? 'none' : `1px solid rgba(13,92,99,.1)`,
-        borderTop: isCompact ? `1px solid rgba(13,92,99,.1)` : 'none',
-        overflowY: 'auto',
-        flexShrink: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        ...(isCompact ? { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 50, maxHeight: '65%', boxShadow: '0 -4px 24px rgba(0,0,0,.12)' } : {}),
-      }}>
-        <div style={{ padding: '13px 13px 10px', borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0 }}>
-          <div style={{ fontSize: FS.md, fontWeight: 700, color: C.dark }}>ℹ️ Smart Info</div>
-          <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 2 }}>Ringkasan aktivitas kelas hari ini</div>
-        </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 13px', display: 'flex', flexDirection: 'column', gap: 7 }}>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 13px', display: 'flex', flexDirection: 'column', gap: 7 }}>
-
-          {/* ── Kategori Pelanggaran (merah) ── */}
-          {(() => {
-            const siswaLanggaran = studentsWithLive.filter(s => s.hasViolation && s.todayActive && !dismissedViolations.has(s.id));
-            return (
-              <div>
-                <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#C53030', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
-                  🚫 Pelanggaran
-                </div>
-                {siswaLanggaran.length === 0 ? (
-                  <div style={{ background: '#F0FFF4', borderRadius: 9, padding: '9px 11px', border: '1px solid #9AE6B4', fontSize: FS.sm, color: C.green, fontWeight: 600 }}>
-                    ✅ Tidak ada pelanggaran
-                  </div>
-                ) : siswaLanggaran.map(st => (
-                  <div key={st.id}
-                    onClick={() => { setSelectedStudent(st); setDismissedViolations(prev => new Set([...prev, st.id])); }}
-                    style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', marginBottom: 5, cursor: 'pointer', boxShadow: 'inset 3px 0 0 #C53030', transition: 'filter .15s' }}
-                    onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
-                    onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#C53030', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.xs, flexShrink: 0 }}>
-                        {st.avatar}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#C53030', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.name}</div>
-                        <div style={{ fontSize: FS.xs, color: '#718096' }}>{st.violationCount}x pelanggaran · klik detail</div>
-                      </div>
+              {/* ── Kategori Pelanggaran (merah) ── */}
+              {(() => {
+                const siswaLanggaran = studentsWithLive.filter(s => s.hasViolation && s.todayActive && !dismissedViolations.has(s.id));
+                return (
+                  <div>
+                    <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#C53030', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
+                      🚫 Pelanggaran
                     </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-
-          {/* Divider */}
-          <div style={{ height: 1, background: 'rgba(13,92,99,.06)', margin: '3px 0' }} />
-
-          {/* ── Kategori Emosi Negatif (oranye) — frustrasi/bingung >10 menit ── */}
-          {(() => {
-            const siswaEmosiNegatif = visibleAlerts.filter(a => a.id.startsWith('emosi-'));
-            return (
-              <div>
-                <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#C05621', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
-                  😣 Emosi Negatif &gt;15 menit
-                </div>
-                {siswaEmosiNegatif.length === 0 ? (
-                  <div style={{ background: '#FFFBF0', borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', fontSize: FS.sm, color: '#744210', fontWeight: 600 }}>
-                    Tidak ada emosi negatif berkepanjangan
-                  </div>
-                ) : siswaEmosiNegatif.map(alert => (
-                  <div key={alert.id}
-                    onClick={() => { setSelectedStudent(alert.student); setDismissedAlerts(prev => new Set([...prev, alert.id])); }}
-                    style={{ background: '#FFFBF0', borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', marginBottom: 5, cursor: 'pointer', boxShadow: 'inset 3px 0 0 #C05621', transition: 'filter .15s' }}
-                    onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
-                    onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: FS.xl, flexShrink: 0 }}>{alert.icon}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#C05621', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{alert.student?.name}</div>
-                        <div style={{ fontSize: FS.xs, color: '#718096', lineHeight: 1.4 }}>{alert.text.replace(`${alert.student?.name} `, '')}</div>
+                    {siswaLanggaran.length === 0 ? (
+                      <div style={{ background: '#F0FFF4', borderRadius: 9, padding: '9px 11px', border: '1px solid #9AE6B4', fontSize: FS.sm, color: C.green, fontWeight: 600 }}>
+                        ✅ Tidak ada pelanggaran
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-
-          {/* Divider */}
-          <div style={{ height: 1, background: 'rgba(13,92,99,.06)', margin: '3px 0' }} />
-
-          {/* ── Kategori Quiz <50% (merah muda) ── */}
-          {(() => {
-            const siswaQuizRendah = studentsWithLive.filter(s =>
-              s.todayActive && s.todayQuizScore != null && s.todayQuizTotal != null &&
-              (s.todayQuizScore / s.todayQuizTotal) < 0.5 && !dismissedQuiz.has(s.id)
-            );
-            return (
-              <div>
-                <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#9B2C2C', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
-                  📝 Nilai Quiz &lt; 50%
-                </div>
-                {siswaQuizRendah.length === 0 ? (
-                  <div style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', fontSize: FS.sm, color: '#9B2C2C', fontWeight: 600 }}>
-                    Tidak ada nilai kritis
-                  </div>
-                ) : siswaQuizRendah.map(st => {
-                  const pct = Math.round((st.todayQuizScore / st.todayQuizTotal) * 100);
-                  return (
-                    <div key={st.id}
-                      onClick={() => { setSelectedStudent(st); setDismissedQuiz(prev => new Set([...prev, st.id])); }}
-                      style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', marginBottom: 5, cursor: 'pointer', transition: 'filter .15s' }}
-                      onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
-                      onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                        <div style={{ width: 24, height: 24, borderRadius: '50%', background: st.avatarBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.xs, flexShrink: 0 }}>
-                          {st.avatar}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#9B2C2C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.name}</div>
-                          <div style={{ fontSize: FS.xs, color: '#718096' }}>Quiz: {pct}/100 · klik detail</div>
+                    ) : siswaLanggaran.map(st => (
+                      <div key={st.id}
+                        onClick={() => { setSelectedStudent(st); setDismissedViolations(prev => new Set([...prev, st.id])); }}
+                        style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', marginBottom: 5, cursor: 'pointer', boxShadow: 'inset 3px 0 0 #C53030', transition: 'filter .15s' }}
+                        onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
+                        onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#C53030', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.xs, flexShrink: 0 }}>
+                            {st.avatar}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#C53030', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.name}</div>
+                            <div style={{ fontSize: FS.xs, color: '#718096' }}>{st.violationCount}x pelanggaran · klik detail</div>
+                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Divider */}
+              <div style={{ height: 1, background: 'rgba(13,92,99,.06)', margin: '3px 0' }} />
+
+              {/* ── Kategori Emosi Negatif (oranye) — frustrasi/bingung >10 menit ── */}
+              {(() => {
+                const siswaEmosiNegatif = visibleAlerts.filter(a => a.id.startsWith('emosi-'));
+                return (
+                  <div>
+                    <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#C05621', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
+                      😣 Emosi Negatif &gt;15 menit
                     </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-        </div>
-      </div>
-      )} {/* end smart info conditional */}
+                    {siswaEmosiNegatif.length === 0 ? (
+                      <div style={{ background: '#FFFBF0', borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', fontSize: FS.sm, color: '#744210', fontWeight: 600 }}>
+                        Tidak ada emosi negatif berkepanjangan
+                      </div>
+                    ) : siswaEmosiNegatif.map(alert => (
+                      <div key={alert.id}
+                        onClick={() => { setSelectedStudent(alert.student); setDismissedAlerts(prev => new Set([...prev, alert.id])); }}
+                        style={{ background: '#FFFBF0', borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', marginBottom: 5, cursor: 'pointer', boxShadow: 'inset 3px 0 0 #C05621', transition: 'filter .15s' }}
+                        onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
+                        onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ fontSize: FS.xl, flexShrink: 0 }}>{alert.icon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#C05621', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{alert.student?.name}</div>
+                            <div style={{ fontSize: FS.xs, color: '#718096', lineHeight: 1.4 }}>{alert.text.replace(`${alert.student?.name} `, '')}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Divider */}
+              <div style={{ height: 1, background: 'rgba(13,92,99,.06)', margin: '3px 0' }} />
+
+              {/* ── Kategori Quiz <50% (merah muda) ── */}
+              {(() => {
+                const siswaQuizRendah = studentsWithLive.filter(s =>
+                  s.todayActive && s.todayQuizScore != null && s.todayQuizTotal != null &&
+                  (s.todayQuizScore / s.todayQuizTotal) < 0.5 && !dismissedQuiz.has(s.id)
+                );
+                return (
+                  <div>
+                    <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#9B2C2C', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
+                      📝 Nilai Quiz &lt; 50%
+                    </div>
+                    {siswaQuizRendah.length === 0 ? (
+                      <div style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', fontSize: FS.sm, color: '#9B2C2C', fontWeight: 600 }}>
+                        Tidak ada nilai kritis
+                      </div>
+                    ) : siswaQuizRendah.map(st => {
+                      const pct = Math.round((st.todayQuizScore / st.todayQuizTotal) * 100);
+                      return (
+                        <div key={st.id}
+                          onClick={() => { setSelectedStudent(st); setDismissedQuiz(prev => new Set([...prev, st.id])); }}
+                          style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', marginBottom: 5, cursor: 'pointer', transition: 'filter .15s' }}
+                          onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
+                          onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: st.avatarBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.xs, flexShrink: 0 }}>
+                              {st.avatar}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#9B2C2C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.name}</div>
+                              <div style={{ fontSize: FS.xs, color: '#718096' }}>Quiz: {pct}/100 · klik detail</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )} {/* end smart info conditional */}
 
       </div> {/* end inner flex row */}
 

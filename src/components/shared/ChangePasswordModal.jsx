@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { Btn } from './UI';
+import { changePassword } from '../../api/auth'; // FIX: sambungkan ke PUT /auth/change-password
 
 /* ── Field diangkat ke level modul agar tidak di-recreate tiap render ── */
 const Field = ({ k, label, placeholder, value, showPwd, error, onChange, onToggleShow }) => (
@@ -66,9 +67,20 @@ const ChangePasswordModal = ({ role = "siswa", userName = "", onClose, onSuccess
     else if (form.confirm !== form.next) e.confirm = "Tidak cocok.";
     return e;
   };
-  const submit = () => {
+  const submit = async () => {
     const e = validate(); if (Object.keys(e).length) { setErrors(e); return; }
-    setLoading(true); setTimeout(() => { setLoading(false); setSuccess(true); setTimeout(() => { onSuccess?.(); onClose(); }, 1500); }, 1200);
+    setLoading(true);
+    try {
+      // FIX: panggil PUT /auth/change-password — bukan setTimeout dummy
+      await changePassword({ old_password: form.current, new_password: form.next });
+      setSuccess(true);
+      setTimeout(() => { onSuccess?.(); onClose(); }, 1500);
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Gagal mengganti password. Periksa password lama Anda.';
+      setErrors(p => ({ ...p, current: msg }));
+    } finally {
+      setLoading(false);
+    }
   };
   const toggleShow = (k) => setShow(p => ({ ...p, [k]: !p[k] }));
   return (

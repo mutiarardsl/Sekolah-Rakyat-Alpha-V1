@@ -7,9 +7,12 @@
  * Poin 4: "Lihat Konten" menampilkan isi lengkap + level tabs, sama seperti review di KelolaBelajarSection.
  * Game: guru bisa preview fullscreen (container Tim 4) dan lihat siswa yang selesai.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, Btn, Avatar } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
+// FIX P2: load riwayat konten real dari backend
+import { getGameList } from '../../../api/game';
+import { getLearningProgress } from '../../../api/content';
 import {
   ADMIN_MAPEL_LIST,
   ADMIN_KELAS_INIT,
@@ -351,7 +354,35 @@ const RiwayatKontenSection = () => {
   const [filterKelas, setFilterKelas] = useState('semua');
   const [search, setSearch] = useState('');
 
-  const filtered = RIWAYAT_KONTEN.filter(r => {
+  // FIX P2: augment RIWAYAT_KONTEN dengan data game real dari backend
+  // API getGameList() mengembalikan game yang sudah di-generate Tim 4 + status + siswa selesai
+  const [apiGames, setApiGames] = useState([]);
+  const [apiLoading, setApiLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getGameList();
+        if (Array.isArray(data) && data.length > 0) setApiGames(data);
+      } catch { /* silent — pakai RIWAYAT_KONTEN dummy */ }
+      finally { setApiLoading(false); }
+    })();
+  }, []);
+
+  // Merge: API games override entry dummy yang sama (match by mapelId+elemenId)
+  const mergedRiwayat = RIWAYAT_KONTEN.map(r => {
+    const match = apiGames.find(g => g.mapel_id === r.mapelId && g.elemen_id === r.elemenId);
+    if (!match) return r;
+    return {
+      ...r,
+      konten: r.konten.map(k =>
+        k.type === 'game'
+          ? { ...k, html_url: match.html_url, status: match.status, siswaSelesai: match.siswa_selesai || k.siswaSelesai || [] }
+          : k
+      ),
+    };
+  });
+
+  const filtered = mergedRiwayat.filter(r => {
     const matchKelas = filterKelas === 'semua' || r.kelasId === filterKelas;
     const matchSearch = !search
       || r.mapelLabel.toLowerCase().includes(search.toLowerCase())
@@ -360,7 +391,7 @@ const RiwayatKontenSection = () => {
     return matchKelas && matchSearch;
   });
 
-  const totalGame = RIWAYAT_KONTEN.reduce((acc, r) => {
+  const totalGame = mergedRiwayat.reduce((acc, r) => {
     const g = r.konten.find(k => k.type === 'game');
     return acc + (g?.siswaSelesai?.length || 0);
   }, 0);
@@ -372,7 +403,7 @@ const RiwayatKontenSection = () => {
         <div style={{ flex: 1, minWidth: 160 }}>
           <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>📚 Riwayat Konten</div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>
-            {RIWAYAT_KONTEN.length} konten dipublish
+            {mergedRiwayat.length} konten dipublish{apiLoading ? ' · memuat...' : ''}
           </div>
         </div>
 

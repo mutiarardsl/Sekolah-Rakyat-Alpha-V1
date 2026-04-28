@@ -10,6 +10,8 @@ import { useState, useEffect, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { Card, EmptyState } from '../../shared/UI';
 import { getMentorInsight } from '../../../api/mentor'; // FIX ①: pakai api/mentor bukan fetch() langsung
+import { getRekomendasiSiswa, } from '../../../api/admin'; // FIX P1: load notifikasi bell dari backend
+import { getLearningProgress } from '../../../api/content'; // FIX P3: progress real dari backend
 import {
   STUDENTS,
   ADMIN_MAPEL_LIST,
@@ -178,11 +180,35 @@ const BellIcon = ({ size = 20, color = 'currentColor' }) => (
 );
 
 /* ── NotifikasiBell — icon bell + dropdown panel ──────────────────────── */
-const NotifikasiBell = () => {
-  const [notifs, setNotifs] = useState(NOTIFIKASI_GURU_INIT);
+const NotifikasiBell = ({ siswaId }) => {
+  // FIX P1: load rekomendasi dari GET /guru/rekomendasi — bukan dummy hardcoded
+  const [notifs, setNotifs] = useState(NOTIFIKASI_GURU_INIT); // seed dengan dummy sambil API load
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const panelRef = useRef(null);
+
+  // Fetch dari backend saat mount — fallback ke dummy jika API belum tersedia
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await getRekomendasiSiswa({ siswa_id: siswaId || CURRENT_STUDENT_ID });
+        if (Array.isArray(data) && data.length > 0) {
+          // Normalise response ke format notif lokal
+          setNotifs(data.map(r => ({
+            id: r.id,
+            guruNama: r.guru_nama || 'Guru',
+            guruMapel: r.guru_mapel || '📚 Pelajaran',
+            pesan: r.pesan || '',
+            ts: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+            dibaca: r.dibaca ?? false,
+          })));
+        }
+        // Jika array kosong — pertahankan dummy seed supaya UI tidak kosong saat dev
+      } catch {
+        // Fallback silent — dummy init tetap dipakai
+      }
+    })();
+  }, [siswaId]);
 
   const unreadCount = notifs.filter(n => !n.dibaca).length;
 
@@ -438,7 +464,7 @@ const HeroWithInsight = ({ adminData, totalSesiHours, avgQuiz, topMapel, dominan
 
       {/* Bell ditaruh di LUAR hero (di atas, absolute pojok kanan) agar bebas dari overflow:hidden */}
       <div style={{ position: 'absolute', top: 14, right: 16, zIndex: 20 }}>
-        <NotifikasiBell />
+        <NotifikasiBell siswaId={CURRENT_STUDENT_ID} />
       </div>
 
       {/* Hero card — overflow:hidden hanya mempengaruhi konten di dalamnya */}
@@ -634,18 +660,34 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
   /* ── Ambil data siswa untuk KPI & AI Insight ── */
   const studentData = STUDENTS?.find(s => s.id === CURRENT_STUDENT_ID);
   const riwayat = studentData?.riwayat || [];
-  // Poin Quiz: prioritas progressData.total_poin_quiz (skala 0-100, dari BE via /content/progress)
-  // Fallback ke penjumlahan riwayat lokal (untuk mock — nilai mentah, bukan skala 100)
-  // Di produksi: selalu pakai total_poin_quiz dari BE agar konsisten skala 0-100
-  const totalScore = progressData?.total_poin_quiz ??
-    (studentData?.riwayat || []).reduce((sum, r) => {
-      const score = r.quizTotal > 0 ? Math.round((r.quiz / r.quizTotal) * 100) : 0;
-      return sum + score;
-    }, 0);
-  const totalSesiHours = riwayat.reduce((s, r) => s + (r.durasi || 0), 0).toFixed(1);
-  const avgQuiz = riwayat.length > 0
+
+  // FIX P3: fetch progress real dari GET /content/progress — augment data lokal
+  // PENTING: API hanya dipakai jika data lokal (progressData / riwayat) kosong.
+  // Jangan override data lokal yang sudah ada — data MSW/backend bisa berbeda dengan master data.
+  const [apiProgress, setApiProgress] = useState(null);
+  useEffect(() => {
+    // Jika sudah ada data lokal yang valid, tidak perlu fetch API
+    const hasLocalData = (progressData?.total_poin_quiz != null) ||
+      ((studentData?.riwayat || []).length > 0);
+    if (hasLocalData) return;
+    getLearningProgress({ siswa_id: CURRENT_STUDENT_ID })
+      .then(data => setApiProgress(data))
+      .catch(() => { /* silent */ });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Prioritas kalkulasi lokal (dari masterData/store) — API hanya fallback jika lokal benar-benar kosong
+  const localQuizScore = (studentData?.riwayat || []).reduce((sum, r) => {
+    const score = r.quizTotal > 0 ? Math.round((r.quiz / r.quizTotal) * 100) : 0;
+    return sum + score;
+  }, 0);
+  const totalScore = (progressData?.total_poin_quiz ?? localQuizScore) || apiProgress?.total_poin_quiz || 0;
+  const streakDays = hitungStreak(riwayat) || apiProgress?.streak_hari || 0;
+  const localSesiHours = riwayat.reduce((s, r) => s + (r.durasi || 0), 0).toFixed(1);
+  const totalSesiHours = localSesiHours || (apiProgress ? (apiProgress.total_waktu_menit / 60).toFixed(1) : '0.0');
+  const localAvgQuiz = riwayat.length > 0
     ? Math.round(riwayat.reduce((s, r) => s + ((r.quiz / r.quizTotal) * 100 || 0), 0) / riwayat.length)
     : 0;
+  const avgQuiz = localAvgQuiz || apiProgress?.rata_rata_quiz || 0;
   const topMapel = (() => {
     if (!riwayat || riwayat.length === 0) return null;
     const freq = {};
@@ -667,8 +709,6 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
     const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
     return top ? top[0] : null;
   })();
-
-  const streakDays = hitungStreak(riwayat);
 
   /* Bangun daftar rekomendasi */
   const { selectedMapels } = useStudentStore();

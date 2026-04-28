@@ -215,6 +215,20 @@ export const handlers = [
     });
   }),
 
+  // PUT /auth/change-password
+  // Body: { old_password, new_password }
+  // FIX: handler baru — ChangePasswordModal & ForceChangePasswordModal butuh endpoint ini
+  http.put(url('/auth/change-password'), async ({ request }) => {
+    const { old_password } = await request.json();
+    await d(600);
+    // Validasi: old_password harus cocok dengan salah satu akun dummy yang login
+    // Di mock, kita toleransi semua password lama asalkan bukan string kosong
+    if (!old_password || old_password.length < 1) {
+      return HttpResponse.json({ message: 'Password lama salah.' }, { status: 401 });
+    }
+    return HttpResponse.json({ message: 'Password berhasil diubah.' });
+  }),
+
   // GET /auth/me
   http.get(url('/auth/me'), async () => {
     await d(200);
@@ -292,15 +306,11 @@ export const handlers = [
   }),
   // GET /mentor/chat/history
   // Params: { siswa_id, mapel_id, materi, materi_id }
-  http.get(url('/mentor/chat/history'), async ({ request }) => {
-    const p = new URL(request.url).searchParams;
-    const topik = p.get('materi') || p.get('materi_id') || 'materi ini';
+  // FIX: kembalikan [] untuk sesi baru — hasRealConversation = false
+  // sehingga ChatSection memanggil buildOpening() dan opening message materi tampil normal.
+  http.get(url('/mentor/chat/history'), async () => {
     await d(400);
-    return HttpResponse.json([
-      { role: 'ai', text: `Halo! Kita belajar **${topik}** ya. Siap?`, timestamp: new Date(Date.now() - 600000).toISOString(), team: 'Tim 5' },
-      { role: 'user', text: 'Siap kak!', timestamp: new Date(Date.now() - 540000).toISOString() },
-      { role: 'ai', text: 'Bagus! Mari mulai dari konsep dasar dulu...', timestamp: new Date(Date.now() - 480000).toISOString(), team: 'Tim 5' },
-    ]);
+    return HttpResponse.json([]);
   }),
 
   // DELETE /mentor/chat/session
@@ -335,17 +345,12 @@ export const handlers = [
     await d(2000);
     const nama = materi || materi_id || 'Materi';
     const upper = nama.toUpperCase();
+    // FIX: kembalikan konten kosong agar ChatSection fallback ke getConfContent() lokal
+    // yang menghasilkan kartu/mindmap kontekstual (nama materi spesifik).
+    // Saat backend Tim 3 live, konten akan diisi hasil RAG yang sesungguhnya.
     const contentMap = {
-      flashcard: {
-        cards: [
-          { depan: `Apa itu ${nama}?`, belakang: 'Konsep fundamental yang penting dipahami dalam konteks pembelajaran.' },
-          { depan: `Rumus/prinsip utama ${nama}`, belakang: 'Lihat buku referensi untuk rumus lengkapnya.' },
-          { depan: `Contoh penerapan ${nama}`, belakang: 'Dapat ditemukan dalam kehidupan sehari-hari di sekitar kita.' },
-        ],
-      },
-      mindmap: {
-        content: [`🔑 ${upper}`, '├─ Konsep Utama', '│  ├─ Definisi', '│  └─ Contoh', '└─ Aplikasi', '   ├─ Di sekolah', '   └─ Di kehidupan nyata'].join('\n'),
-      },
+      flashcard: { cards: [] },
+      mindmap: { content: '' },
     };
     return HttpResponse.json({ tipe, content: contentMap[tipe] ?? {}, generated_at: nowISO() });
   }),
