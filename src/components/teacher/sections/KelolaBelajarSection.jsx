@@ -8,8 +8,7 @@
  *               flashcard, mindmap, game)
  *
  * PERBEDAAN LEVEL PER KONTEN:
- *  - Konten Bacaan : TIDAK ada level — hanya 1 versi konten (sama untuk semua level).
- *                    Perbedaan level ada pada CARA PENYAMPAIAN AI ke siswa, bukan isi teks.
+ *  - Konten Bacaan : Level Low/Mid/High — teks bacaan dibedakan kedalaman & kompleksitasnya per level
  *  - Quiz PG/Essay : Level Low/Mid/High — soal dibedakan kesulitannya per level
  *  - Flashcard     : Level Low/Mid/High — kartu dibedakan kedalaman materinya
  *  - Mindmap       : Tidak berlevel (satu mindmap keseluruhan)
@@ -44,7 +43,7 @@ const JENJANG_LIST = [
 ];
 
 const KONTEN_TYPES = [
-  { id: 'bacaan', label: 'Konten Bacaan', hasLevel: false }, // Konten sama untuk semua level; penyampaian disesuaikan AI per level siswa
+  { id: 'bacaan', label: 'Konten Bacaan', hasLevel: true }, // Level Low/Mid/High — kedalaman & kompleksitas teks disesuaikan per level siswa
   { id: 'quiz_pg', label: 'Kuiz Pilihan Ganda', hasLevel: true },
   { id: 'quiz_essay', label: 'Kuiz Essay', hasLevel: true },
   { id: 'flashcard', label: 'Flashcard', hasLevel: true },
@@ -66,7 +65,12 @@ const generatePlaceholderKonten = (type, level, config) => {
   const materi = config.materi || elemenLabel;
 
   const texts = {
-    bacaan: `Teks bacaan tentang ${materi} dalam konteks ${mapelLabel}.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.`,
+    bacaan: `[Konten Bacaan – ${level}]\nTeks bacaan tentang ${materi} dalam konteks ${mapelLabel}.\n\n${level === 'Low'
+      ? 'Pengantar sederhana dengan bahasa lugas dan contoh sehari-hari. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
+      : level === 'Mid'
+        ? 'Pembahasan dengan konsep yang lebih mendalam disertai analogi kontekstual. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore, dengan pendalaman materi yang relevan.'
+        : 'Analisis tingkat lanjut mencakup aspek kritis, komparasi, dan implikasi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.'
+      }`,
     quiz_pg: `[Quiz Pilihan Ganda – ${level}]\n1. Pertanyaan tentang ${materi}?\n   a) Pilihan A\n   b) Pilihan B ✓\n   c) Pilihan C\n   d) Pilihan D\n\n2. Soal lanjutan tentang ${elemenLabel}?\n   a) Pilihan A\n   b) Pilihan B\n   c) Pilihan C ✓\n   d) Pilihan D`,
     quiz_essay: `[Quiz Essay – ${level}]\nJelaskan konsep ${materi} dalam konteks ${elemenLabel}! Berikan contoh konkret dari kehidupan sehari-hari dan analisis implikasinya.`,
     flashcard: `[Flashcard – ${level}]\nDepan: Apa yang dimaksud dengan ${materi}?\nBelakang: ${materi} adalah konsep dalam ${mapelLabel} yang berkaitan dengan ${elemenLabel}.`,
@@ -366,7 +370,7 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                 {/* Judul level */}
                 {type.hasLevel
                   ? <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Placeholder — Level {activeLevel}</div>
-                  : <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Konten Bacaan</div>
+                  : <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Konten</div>
                 }
 
                 {isRegen ? (
@@ -456,7 +460,7 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
 };
 
 /* ════════════════════════════════════════════════════════════════════ */
-const KelolaBelajarSection = () => {
+const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   // SEEDED_TEACHER_ID merujuk ke array TEACHERS (id: t1–t4).
   // ADMIN_GURU_INIT memakai id g1–g10. Guru yang sama (Bpk. Hendra) ada di keduanya.
   // Mapping: cari dulu di TEACHERS untuk dapat email/nama, lalu match ke ADMIN_GURU_INIT via email.
@@ -475,10 +479,11 @@ const KelolaBelajarSection = () => {
 
   const [phase, setPhase] = useState('form'); // 'form' | 'loading' | 'result'
   const [approvedMap, setApprovedMap] = useState({});
-  const [published, setPublished] = useState(false);
   const [publishing, setPublishing] = useState(false);
   // kontenMap di-lift ke parent agar handlePublish bisa membaca isi konten saat guru Publish.
   const [kontenMap, setKontenMap] = useState({});
+  // publishToast: tampilkan banner sukses singkat setelah publish berhasil
+  const [publishToast, setPublishToast] = useState(null); // null | { mapelLabel, elemenLabel, publishedAt }
 
   const kelasList = ADMIN_KELAS_INIT.filter(k => k.tingkat === jenjang);
   const mapelList = ADMIN_MAPEL_LIST.filter(m => guruMapelIds.includes(m.id));
@@ -504,7 +509,6 @@ const KelolaBelajarSection = () => {
     if (!mapelId || !elemenId) return;
     setPhase('loading');
     setApprovedMap({});
-    setPublished(false);
 
     // Init kontenMap dengan placeholder dulu — semua tipe + level
     const initMap = {};
@@ -529,15 +533,19 @@ const KelolaBelajarSection = () => {
       kelas_id: kelasId || null,
     };
 
-    // POST /content/generate untuk bacaan (tanpa level)
-    generateContent({
-      ...basePayload,
-      tipe: 'bacaan',
-    }).then(res => {
-      if (res?.content) {
-        setKontenMap(prev => ({ ...prev, 'bacaan__': res.content?.text || prev['bacaan__'] }));
-      }
-    }).catch(() => {/* silent — tetap pakai placeholder */ });
+    // POST /content/generate untuk bacaan — per level (Low/Mid/High)
+    LEVELS.forEach(level => {
+      generateContent({
+        ...basePayload,
+        tipe: 'bacaan',
+        level,
+      }).then(res => {
+        if (res?.content) {
+          const key = `bacaan__${level}`;
+          setKontenMap(prev => ({ ...prev, [key]: res.content?.text || prev[key] }));
+        }
+      }).catch(() => {/* silent — tetap pakai placeholder */ });
+    });
 
     // POST /content/generate untuk mindmap (tanpa level)
     generateContent({
@@ -584,15 +592,20 @@ const KelolaBelajarSection = () => {
   const handleBatal = () => {
     setPhase('form');
     setApprovedMap({});
-    setPublished(false);
     setPublishing(false);
+    setKontenMap({});
+  };
+
+  const handleReset = () => {
+    setPhase('form');
+    setApprovedMap({});
+    setKontenMap({});
   };
 
   const handlePublish = async () => {
     if (!allApproved || publishing) return;
     setPublishing(true);
     try {
-      // FIX P2: kirim ke POST /content/publish — guru publish konten ke siswa
       // Bangun konten_list dari semua KONTEN_TYPES yang disetujui
       const kontenList = KONTEN_TYPES.flatMap(type => {
         const levels = type.hasLevel ? LEVELS : [''];
@@ -615,15 +628,20 @@ const KelolaBelajarSection = () => {
         atp: config.atp,
         konten_list: kontenList,
       });
-      setPublished(true);
-      setTimeout(() => { setPhase('form'); setApprovedMap({}); setPublished(false); }, 2800);
     } catch {
-      // Fallback: tampilkan success UI meski API gagal (dev mode tanpa backend)
-      setPublished(true);
-      setTimeout(() => { setPhase('form'); setApprovedMap({}); setPublished(false); }, 2800);
+      // Fallback: tetap anggap berhasil meski API gagal (dev mode)
     } finally {
       setPublishing(false);
     }
+    // Tampilkan toast sukses, lalu reset ke form
+    setPublishToast({
+      mapelLabel: config.mapelLabel,
+      elemenLabel: config.elemenLabel,
+      publishedAt: new Date().toLocaleString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    });
+    handleReset();
+    // Auto-dismiss toast setelah 5 detik
+    setTimeout(() => setPublishToast(null), 5000);
   };
 
   const { isMobile } = useBreakpoint();
@@ -635,8 +653,12 @@ const KelolaBelajarSection = () => {
       {/* ── Panel Kiri: Form Konfigurasi ── */}
       <div style={{ width: isSmall ? '100%' : 340, minWidth: isSmall ? 'auto' : 300, maxHeight: isSmall ? 380 : 'none', background: C.white, borderRight: isSmall ? 'none' : `1px solid rgba(13,92,99,.1)`, borderBottom: isSmall ? `1px solid rgba(13,92,99,.1)` : 'none', overflowY: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid rgba(13,92,99,.08)` }}>
-          <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>📐 Buat Konten Belajar</div>
-          <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 3 }}>Konfigurasi dan generate konten interaktif untuk siswa</div>
+          <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>
+            📐 Buat Konten Belajar
+          </div>
+          <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 3 }}>
+            Konfigurasi dan generate konten interaktif untuk siswa
+          </div>
         </div>
 
         <div style={{ flex: 1, padding: '18px 20px', overflowY: 'auto' }}>
@@ -721,7 +743,7 @@ const KelolaBelajarSection = () => {
                 fontWeight: 700, fontSize: FS.base, cursor: (mapelId && elemenId && phase !== 'result') ? 'pointer' : 'not-allowed',
                 fontFamily: 'inherit',
               }}>
-              {phase === 'result' ? 'Submit' : 'Submit'}
+              {phase === 'result' ? 'Konten Digenerate' : 'Generate Konten'}
             </button>
           </div>
         </div>
@@ -735,7 +757,7 @@ const KelolaBelajarSection = () => {
             <div style={{ textAlign: 'center', color: C.slate }}>
               <div style={{ fontSize: 40, marginBottom: 12, opacity: .3 }}>📐</div>
               <div style={{ fontSize: FS.lg, fontWeight: 600, color: C.darkL }}>Preview konten belajar akan muncul disini</div>
-              <div style={{ fontSize: FS.md, marginTop: 4 }}>Isi form dan klik generate</div>
+              <div style={{ fontSize: FS.md, marginTop: 4 }}>Isi form dan klik Generate Konten</div>
             </div>
           </div>
         )}
@@ -744,41 +766,14 @@ const KelolaBelajarSection = () => {
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ width: 52, height: 52, border: `4px solid ${C.tealXL}`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .9s linear infinite', margin: '0 auto 16px' }} />
-              <div style={{ fontSize: FS.lg, fontWeight: 600, color: C.dark }}>Sedang Menyiapkan Konten…</div>
-              <div style={{ fontSize: FS.md, color: C.slate, marginTop: 4 }}>Menggenerate konten berdasarkan ATP dan elemen yang dipilih</div>
+              <div style={{ fontSize: FS.lg, fontWeight: 600, color: C.dark }}>Sedang Generate Konten…</div>
+              <div style={{ fontSize: FS.md, color: C.slate, marginTop: 4 }}>AI sedang membuat konten berdasarkan ATP dan elemen yang dipilih</div>
             </div>
           </div>
         )}
 
         {phase === 'result' && (
           <div>
-            {/* Published success */}
-            {published && (
-              <div style={{ background: '#F0FFF4', border: '1.5px solid #9AE6B4', borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 24 }}>🎉</span>
-                <div>
-                  <div style={{ fontWeight: 700, color: C.green, fontSize: 14 }}>Konten berhasil dipublish!</div>
-                  {config.kelasId === '__semua__' ? (
-                    <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 4 }}>
-                      <div style={{ marginBottom: 4 }}>Konten dikirim ke <strong>{kelasList.length} kelas</strong> jenjang {config.jenjang}:</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        {kelasList.map(k => (
-                          <span key={k.id} style={{ background: '#D1FAE5', color: '#065F46', borderRadius: 6, padding: '2px 8px', fontSize: FS.xs, fontWeight: 700 }}>
-                            {k.nama}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>
-                      Konten belajar telah dikirim ke siswa{' '}
-                      {config.kelasId ? ADMIN_KELAS_INIT.find(k => k.id === config.kelasId)?.nama || config.kelasId : 'terpilih'}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Konteks Konten */}
             <Card style={{ padding: 16, marginBottom: 14 }}>
               <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark, marginBottom: 12 }}>Konteks Konten</div>
@@ -834,9 +829,61 @@ const KelolaBelajarSection = () => {
             </div>
           </div>
         )}
+
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* ── Toast Sukses Publish — muncul setelah publish berhasil ── */}
+      {publishToast && (
+        <div style={{
+          position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9999, minWidth: 320, maxWidth: 480,
+          background: 'linear-gradient(135deg, #0D5C63 0%, #1A8C8C 100%)',
+          borderRadius: 14, padding: '14px 18px',
+          boxShadow: '0 8px 32px rgba(13,92,99,.35)',
+          display: 'flex', alignItems: 'center', gap: 14,
+          animation: 'slideUp .25s ease-out',
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: '50%',
+            background: 'rgba(255,255,255,.2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 20, flexShrink: 0,
+          }}>🚀</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: C.white, fontWeight: 800, fontSize: FS.base }}>
+              Konten berhasil dipublish!
+            </div>
+            <div style={{ color: 'rgba(255,255,255,.75)', fontSize: FS.sm, marginTop: 2 }}>
+              {publishToast.mapelLabel} · {publishToast.elemenLabel || '—'}
+            </div>
+          </div>
+          <button
+            onClick={() => { setPublishToast(null); onGoToRiwayat?.(); }}
+            style={{
+              padding: '6px 12px', borderRadius: 8,
+              border: '1.5px solid rgba(255,255,255,.4)',
+              background: 'rgba(255,255,255,.15)',
+              color: C.white, fontSize: FS.sm, fontWeight: 700,
+              cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+              whiteSpace: 'nowrap',
+            }}>
+            Lihat Riwayat
+          </button>
+          <button
+            onClick={() => setPublishToast(null)}
+            style={{
+              background: 'rgba(255,255,255,.15)', border: 'none', borderRadius: 6,
+              width: 26, height: 26, color: C.white, cursor: 'pointer',
+              fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>✕</button>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(16px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+      `}</style>
     </div>
   );
 };

@@ -26,7 +26,12 @@ const getPlaceholderText = (type, level, riwayat) => {
   const elemen = riwayat.elemenLabel;
   const materi = riwayat.materi || elemen;
   const t = {
-    bacaan: `Teks bacaan tentang ${materi} dalam konteks ${mapel}.\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.`,
+    bacaan: `[Konten Bacaan – ${level}]\nTeks bacaan tentang ${materi} dalam konteks ${mapel}.\n\n${level === 'Low'
+        ? 'Pengantar sederhana dengan bahasa lugas dan contoh sehari-hari. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
+        : level === 'Mid'
+          ? 'Pembahasan dengan konsep lebih mendalam disertai analogi kontekstual. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore, dengan pendalaman materi yang relevan.'
+          : 'Analisis tingkat lanjut mencakup aspek kritis, komparasi, dan implikasi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.'
+      }`,
     quiz_pg: `[Quiz Pilihan Ganda – ${level}]\n1. Pertanyaan tentang ${materi}?\n   a) Pilihan A\n   b) Pilihan B ✓\n   c) Pilihan C\n   d) Pilihan D\n\n2. Soal lanjutan tentang ${elemen}?\n   a) Pilihan A\n   b) Pilihan B\n   c) Pilihan C ✓\n   d) Pilihan D`,
     quiz_essay: `[Quiz Essay – ${level}]\nJelaskan konsep ${materi} dalam konteks ${elemen}! Berikan contoh konkret dari kehidupan sehari-hari.`,
     flashcard: `[Flashcard – ${level}]\nDepan: Apa yang dimaksud dengan ${materi}?\nBelakang: ${materi} adalah konsep dalam ${mapel} yang berkaitan dengan ${elemen}.`,
@@ -79,7 +84,6 @@ const GamePreviewRiwayat = ({ riwayat, level, onClose }) => {
 
 /* ── KontenReviewInline — tampilkan isi konten seperti di KelolaBelajar ── */
 const KontenReviewInline = ({ k, riwayat }) => {
-  const isBacaan = k.type === 'bacaan';
   const [activeLevel, setActiveLevel] = useState(k.levels?.[0] || '');
   const [gamePreview, setGamePreview] = useState(null);
 
@@ -99,13 +103,13 @@ const KontenReviewInline = ({ k, riwayat }) => {
       <div style={{ padding: '12px 13px' }}>
 
         {/* Label judul */}
-        {isBacaan
-          ? <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Konten Bacaan</div>
-          : k.levels?.length > 0 && <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Placeholder — Level {activeLevel}</div>
+        {k.levels?.length > 0
+          ? <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Placeholder — Level {activeLevel}</div>
+          : <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Konten</div>
         }
 
-        {/* Level tabs — hanya untuk konten NON-bacaan */}
-        {!isBacaan && k.levels?.length > 0 && (
+        {/* Level tabs — untuk semua konten yang memiliki levels */}
+        {k.levels?.length > 0 && (
           <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
             {k.levels.map(lv => (
               <button key={lv} onClick={() => setActiveLevel(lv)}
@@ -119,7 +123,7 @@ const KontenReviewInline = ({ k, riwayat }) => {
         {/* Isi konten */}
         <div style={{ background: '#FAFEFF', borderRadius: 8, padding: '10px 12px', border: `1px solid ${C.tealXL}`, marginBottom: 8 }}>
           <pre style={{ fontFamily: 'inherit', fontSize: FS.sm, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
-            {getPlaceholderText(k.type, isBacaan ? '' : activeLevel, riwayat)}
+            {getPlaceholderText(k.type, activeLevel, riwayat)}
           </pre>
         </div>
 
@@ -147,11 +151,7 @@ const RIWAYAT_KONTEN = [
     materi: 'Persamaan Linear',
     publishedAt: 'Senin, 14 Apr 2026 · 09:32',
     konten: [
-      { type: 'bacaan', label: 'Konten Bacaan', levels: [] },
-      { type: 'quiz_pg', label: 'Kuiz Pilihan Ganda', levels: ['Low', 'Mid', 'High'] },
-      { type: 'quiz_essay', label: 'Kuiz Essay', levels: ['Low', 'Mid', 'High'] },
-      { type: 'flashcard', label: 'Flashcard', levels: ['Low', 'Mid', 'High'] },
-      { type: 'mindmap', label: 'Mindmap', levels: [] },
+      { type: 'bacaan', label: 'Konten Bacaan', levels: ['Low', 'Mid', 'High'] },
       {
         type: 'game', label: 'Game', levels: ['Low', 'Mid', 'High'],
         siswaSelesai: [

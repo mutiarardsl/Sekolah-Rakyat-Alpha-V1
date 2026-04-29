@@ -285,7 +285,7 @@ const TeacherView = () => {
               /* FIX 3: key={activeClass} → MonitoringSection remount saat kelas berubah */
               <MonitoringSection key={activeClass} {...sharedMonitoring} />
             )}
-            {activePage === 'kelola' && <KelolaBelajarSection />}
+            {activePage === 'kelola' && <KelolaBelajarSection onGoToRiwayat={() => setActivePage('riwayat')} />}
             {activePage === 'riwayat' && <RiwayatKontenSection />}
             {activePage === 'profile' && (
               <TeacherProfileSection
