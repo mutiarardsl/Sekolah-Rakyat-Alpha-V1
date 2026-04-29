@@ -459,6 +459,75 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
   );
 };
 
+/* ── AtpPointInput — input ATP per poin seperti admin tambah elemen ── */
+const AtpPointInput = ({ poinList, onChange }) => {
+  const addPoin = () => onChange([...poinList, '']);
+  const updatePoin = (i, val) => {
+    const next = [...poinList];
+    next[i] = val;
+    onChange(next);
+  };
+  const removePoin = (i) => {
+    if (poinList.length === 1) return; // minimal 1 baris
+    onChange(poinList.filter((_, idx) => idx !== i));
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {poinList.map((poin, i) => (
+        <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* Nomor poin */}
+          <div style={{
+            width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+            background: `${C.teal}18`, color: C.teal,
+            fontSize: FS.xs, fontWeight: 800,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>{i + 1}</div>
+
+          {/* Input teks poin */}
+          <input
+            value={poin}
+            onChange={e => updatePoin(i, e.target.value)}
+            placeholder={`Poin ATP ${i + 1}…`}
+            style={{ ...INP, flex: 1, padding: '7px 10px' }}
+            onFocus={e => e.target.style.borderColor = C.teal}
+            onBlur={e => e.target.style.borderColor = C.tealXL}
+          />
+
+          {/* Hapus poin */}
+          <button
+            onClick={() => removePoin(i)}
+            disabled={poinList.length === 1}
+            style={{
+              width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+              border: `1px solid ${C.tealXL}`, background: C.white,
+              color: poinList.length === 1 ? C.slate + '60' : '#E53E3E',
+              cursor: poinList.length === 1 ? 'not-allowed' : 'pointer',
+              fontSize: 14, fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >✕</button>
+        </div>
+      ))}
+
+      {/* Tambah poin */}
+      <button
+        onClick={addPoin}
+        style={{
+          padding: '6px 10px', borderRadius: 8, marginTop: 2,
+          border: `1.5px dashed ${C.tealXL}`,
+          background: 'transparent', color: C.teal,
+          fontSize: FS.sm, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'inherit',
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}
+      >
+        <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Tambah Poin ATP
+      </button>
+    </div>
+  );
+};
+
 /* ════════════════════════════════════════════════════════════════════ */
 const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   // SEEDED_TEACHER_ID merujuk ke array TEACHERS (id: t1–t4).
@@ -475,7 +544,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   const [mapelId, setMapelId] = useState('');
   const [elemenId, setElemenId] = useState('');
   const [materi, setMateri] = useState('');
-  const [atp, setAtp] = useState('');
+  const [atpPoin, setAtpPoin] = useState(['']);
 
   const [phase, setPhase] = useState('form'); // 'form' | 'loading' | 'result'
   const [approvedMap, setApprovedMap] = useState({});
@@ -496,7 +565,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     mapelLabel: selectedMapel?.label || '',
     elemenId, elemenLabel: selectedElemen?.label || elemenId,
     materi: materi || selectedElemen?.label || '',
-    atp,
+    atp: atpPoin.filter(p => p.trim()).join('\n'),
   };
 
   // Semua konten disetujui = bisa publish
@@ -594,12 +663,14 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     setApprovedMap({});
     setPublishing(false);
     setKontenMap({});
+    setAtpPoin(['']);
   };
 
   const handleReset = () => {
     setPhase('form');
     setApprovedMap({});
     setKontenMap({});
+    setAtpPoin(['']);
   };
 
   const handlePublish = async () => {
@@ -729,10 +800,10 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
 
             {/* ATP */}
             <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, display: 'block', marginBottom: 7 }}>Alur Tujuan Pembelajaran (ATP)</label>
-              <textarea value={atp} onChange={e => setAtp(e.target.value)} placeholder="Alur tujuan pembelajaran" rows={4}
-                style={{ ...INP, resize: 'vertical', lineHeight: 1.6 }}
-                onFocus={e => e.target.style.borderColor = C.teal} onBlur={e => e.target.style.borderColor = C.tealXL} />
+              <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, display: 'block', marginBottom: 7 }}>
+                Alur Tujuan Pembelajaran (ATP)
+              </label>
+              <AtpPointInput poinList={atpPoin} onChange={setAtpPoin} />
             </div>
 
             <button onClick={handleSubmit} disabled={!mapelId || !elemenId || phase === 'result'}

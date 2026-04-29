@@ -13,7 +13,7 @@
  *
  * ── Handler Index ────────────────────────────────────────────────────
  *  AUTH (5 endpoint — tidak ada register, akun dibuat admin)
- *    POST /auth/login, /auth/google, /auth/logout, /auth/refresh
+ *    POST /auth/login, /auth/logout, /auth/refresh
  *    POST /auth/forgot-password, /auth/aktivasi
  *    GET  /auth/me
  *
@@ -71,7 +71,7 @@
  *    PUT    /admin/mapel/:id
  *    DELETE /admin/mapel/:id
  *
- *  GURU — Rekomendasi (2 endpoint — fitur guru, bukan admin)
+ *  GURU — Rekomendasi (2 endpoint — fitur guru)
  *    POST /guru/rekomendasi
  *    GET  /guru/rekomendasi
  */
@@ -134,8 +134,6 @@ export const handlers = [
       },
     });
   }),
-
-  // POST /auth/google — DIHAPUS (Google login tidak digunakan)
 
   // POST /auth/logout
   http.post(url('/auth/logout'), async () => {
@@ -316,64 +314,89 @@ export const handlers = [
   // ════════════════════════════════════════════════════════════════════
 
   // POST /content/generate
-  // Body: { siswa_id, mapel_id, materi, materi_id, tipe, level?, emosi?, profil_minat? }
+  // Body: { guru_id, mapel_id, elemen_id, elemen_label, materi?, materi_id?, jenjang, atp?, tipe, level? }
+  // dipanggil 13× paralel dari KelolaBelajarSection saat guru klik "Generate Konten":
+  //   bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1
+  // game TIDAK lewat sini — via POST /game/generate Tim 4
   http.post(url('/content/generate'), async ({ request }) => {
-    const { tipe, materi, materi_id } = await request.json();
-    await d(2000);
-    const nama = materi || materi_id || 'Materi';
-    const upper = nama.toUpperCase();
-    // FIX: kembalikan konten kosong agar ChatSection fallback ke getConfContent() lokal
-    // yang menghasilkan kartu/mindmap kontekstual (nama materi spesifik).
-    // Saat backend Tim 3 live, konten akan diisi hasil RAG yang sesungguhnya.
-    const contentMap = {
+    const { tipe, level, elemen_label, materi } = await request.json();
+    await d(1500 + Math.random() * 1000);
+    const topik = materi || elemen_label || 'Materi';
+    // Mock mengembalikan content kosong/minimal — frontend tetap pakai placeholder lokal.
+    // Saat backend Tim 3 live, content diisi hasil RAG sesungguhnya.
+    const contentByTipe = {
+      bacaan: { text: '' },
+      quiz_pg: { soal: [] },
+      quiz_essay: { pertanyaan: [] },
       flashcard: { cards: [] },
       mindmap: { content: '' },
     };
-    return HttpResponse.json({ tipe, content: contentMap[tipe] ?? {}, generated_at: nowISO() });
+    return HttpResponse.json({
+      tipe,
+      level: level || null,
+      content: contentByTipe[tipe] ?? {},
+      generated_at: nowISO(),
+    });
   }),
 
   // POST /content/publish
-  // Body: PublishPayload (dari admin.js / KelolaBelajarSection)
+  // Body: PublishPayload { mapel_id, elemen_id, elemen_label, materi?, materi_id?,
+  //                        kelas_id, jenjang, guru_id, atp, konten_list: KontenItem[] }
+  // KontenItem: { tipe, level, content, approved }  (field "tipe" bukan "type")
   http.post(url('/content/publish'), async ({ request }) => {
     const body = await request.json();
     await d(1200);
+    const kelasIds = body.kelas_id === '__semua__'
+      ? store.kelas.filter(k => k.tingkat === body.jenjang).map(k => k.id)
+      : [body.kelas_id].filter(Boolean);
     return HttpResponse.json(
-      { publish_id: 'pub_' + Date.now(), kelas_ids: [body.kelas_id].filter(Boolean), published_at: nowISO() },
+      { publish_id: 'pub_' + Date.now(), kelas_ids: kelasIds, published_at: nowISO() },
       { status: 201 }
     );
   }),
 
   // GET /content/siswa
-  // Params: { siswa_id, mapel_id?, materi_id?, elemen_id? }
-  // FIX 4: kembalikan bank konten yang sudah dipublish guru
-  // Setiap paket berisi konten_list per tipe — siswa tidak perlu generating saat klik
+  // Params: { siswa_id, mapel_id?, elemen_id?, materi_id? }
+  // Response: PaketKonten[] — satu paket per publish yang relevan untuk siswa ini
+  // PaketKonten: { publish_id, mapel_id, elemen_id, elemen_label, materi, materi_id,
+  //                kelas_id, jenjang, published_at, konten_list: KontenItem[] }
+  // KontenItem: { tipe, level, content, approved }  (field "tipe" bukan "type")
+  //
+  // Struktur konten_list dalam SATU paket (satu guru-publish):
+  //   bacaan×3 (Low/Mid/High) + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 = 13 item
+  //   game TIDAK ada di sini — diambil via GET /game/list Tim 4
   http.get(url('/content/siswa'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const mapelId = p.get('mapel_id') || 'mat';
     const elemenId = p.get('elemen_id') || p.get('materi_id') || 'bil_aljabar';
-    const materi = p.get('materi_id') || 'Bilangan dan Aljabar';
+    const materiIdParam = p.get('materi_id') || null;
+    const elemenLabel = elemenId === 'bil_aljabar' ? 'Bilangan dan Aljabar'
+      : elemenId === 'data_statistika' ? 'Data dan Statistika'
+        : elemenId;
     await d(500);
-    // Simulasi bank konten yang sudah dipublish guru untuk semua level
-    const LEVELS = ['Low', 'Mid', 'High'];
-    return HttpResponse.json(LEVELS.map(lv => ({
-      publish_id: `pub_${mapelId}_${elemenId}_${lv}_mock`,
+    const LVLS = ['Low', 'Mid', 'High'];
+    // Satu paket publish berisi seluruh konten_list (semua tipe × semua level)
+    // Mock mengembalikan konten kosong — frontend tetap pakai placeholder lokal.
+    // Saat backend Tim 3 live, content diisi hasil generate sesungguhnya.
+    const kontenList = [
+      ...LVLS.map(lv => ({ tipe: 'bacaan', level: lv, content: { text: '' }, approved: true })),
+      ...LVLS.map(lv => ({ tipe: 'quiz_pg', level: lv, content: { soal: [] }, approved: true })),
+      ...LVLS.map(lv => ({ tipe: 'quiz_essay', level: lv, content: { pertanyaan: [] }, approved: true })),
+      ...LVLS.map(lv => ({ tipe: 'flashcard', level: lv, content: { cards: [] }, approved: true })),
+      { tipe: 'mindmap', level: null, content: { content: '' }, approved: true },
+    ];
+    return HttpResponse.json([{
+      publish_id: `pub_${mapelId}_${elemenId}_mock`,
       mapel_id: mapelId,
       elemen_id: elemenId,
-      elemen_label: materi,
-      materi: materi,
-      level: lv,
+      elemen_label: elemenLabel,
+      materi: materiIdParam,
+      materi_id: materiIdParam,
+      kelas_id: 'x1',
+      jenjang: 'X',
       published_at: new Date(Date.now() - 86400000).toISOString(),
-      konten_list: [
-        // Flashcard — cards kosong → ChatSection pakai getConfContent() lokal
-        { tipe: 'flashcard', level: lv, content: { cards: [] } },
-        // Mindmap — content kosong → ChatSection pakai getConfContent() lokal
-        { tipe: 'mindmap', level: lv, content: { content: '' } },
-        // Bacaan — semua tipe tersedia, langsung 'generated: true'
-        { tipe: 'bacaan', level: lv, content: { content: '' } },
-        { tipe: 'quiz_pg', level: lv, content: { content: '' } },
-        { tipe: 'quiz_essay', level: lv, content: { content: '' } },
-      ],
-    })));
+      konten_list: kontenList,
+    }]);
   }),
 
   // GET /content/progress
@@ -400,15 +423,18 @@ export const handlers = [
   }),
 
   // POST /content/quiz/submit
-  // Body: { siswa_id, mapel_id, materi, materi_id, quiz_type, level, answers, score }
-  // FIX 2c: quiz_type 'pretest' juga didukung — backend Tim 3 catat untuk RAG
+  // Body: { siswa_id, publish_id, mapel_id, elemen_id, elemen_label,
+  //          materi?, materi_id?, quiz_type, level, answers, score }
+  // elemen_id WAJIB — backend pakai ini untuk update progress per elemen
+  // publish_id WAJIB — backend pakai ini untuk tracing ke paket konten asal
   http.post(url('/content/quiz/submit'), async ({ request }) => {
-    const { score, quiz_type, materi_id } = await request.json();
+    const { score, quiz_type, elemen_id } = await request.json();
     await d(300);
     return HttpResponse.json({
-      submitted: true, score: score ?? 0,
+      submitted: true,
+      score: score ?? 0,
       quiz_type: quiz_type || 'mc',
-      materi_id: materi_id || '',
+      elemen_id: elemen_id || '',
       recorded_at: nowISO(),
     });
   }),

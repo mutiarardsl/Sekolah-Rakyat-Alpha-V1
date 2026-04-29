@@ -391,9 +391,12 @@ const QuizModal = ({
       const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
       submitQuiz({
         siswa_id: siswaId,
+        publish_id: chatMateri?.publishId || '',      // ID paket konten asal (dari PaketKonten)
         mapel_id: chatMateri?.mapelId || '',
-        materi: chatMateri?.mapelLabel || materiId || '',
-        materi_id: materiId || chatMateri?.mapelId || '',
+        elemen_id: chatMateri?.elemenId || '',       // WAJIB — selalu ada
+        elemen_label: chatMateri?.mapelLabel || '',
+        materi: chatMateri?.materiLabel || null,
+        materi_id: materiId || null,
         quiz_type: 'mc',
         level: levelCapitalized,
         answers: { ...mcAnswers },

@@ -27,10 +27,10 @@ const getPlaceholderText = (type, level, riwayat) => {
   const materi = riwayat.materi || elemen;
   const t = {
     bacaan: `[Konten Bacaan – ${level}]\nTeks bacaan tentang ${materi} dalam konteks ${mapel}.\n\n${level === 'Low'
-        ? 'Pengantar sederhana dengan bahasa lugas dan contoh sehari-hari. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
-        : level === 'Mid'
-          ? 'Pembahasan dengan konsep lebih mendalam disertai analogi kontekstual. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore, dengan pendalaman materi yang relevan.'
-          : 'Analisis tingkat lanjut mencakup aspek kritis, komparasi, dan implikasi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.'
+      ? 'Pengantar sederhana dengan bahasa lugas dan contoh sehari-hari. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
+      : level === 'Mid'
+        ? 'Pembahasan dengan konsep lebih mendalam disertai analogi kontekstual. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore, dengan pendalaman materi yang relevan.'
+        : 'Analisis tingkat lanjut mencakup aspek kritis, komparasi, dan implikasi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.'
       }`,
     quiz_pg: `[Quiz Pilihan Ganda – ${level}]\n1. Pertanyaan tentang ${materi}?\n   a) Pilihan A\n   b) Pilihan B ✓\n   c) Pilihan C\n   d) Pilihan D\n\n2. Soal lanjutan tentang ${elemen}?\n   a) Pilihan A\n   b) Pilihan B\n   c) Pilihan C ✓\n   d) Pilihan D`,
     quiz_essay: `[Quiz Essay – ${level}]\nJelaskan konsep ${materi} dalam konteks ${elemen}! Berikan contoh konkret dari kehidupan sehari-hari.`,
@@ -150,6 +150,11 @@ const RIWAYAT_KONTEN = [
     elemenLabel: 'Bilangan dan Aljabar',
     materi: 'Persamaan Linear',
     publishedAt: 'Senin, 14 Apr 2026 · 09:32',
+    atp: [
+      'Siswa mampu menjelaskan konsep {materi}',
+      'Siswa dapat menyelesaikan {materi} dengan satu langkah',
+      'Siswa dapat mengaplikasikan {materi} pada soal cerita sederhana',
+    ],
     konten: [
       { type: 'bacaan', label: 'Konten Bacaan', levels: ['Low', 'Mid', 'High'] },
       {
@@ -170,6 +175,11 @@ const RIWAYAT_KONTEN = [
     elemenLabel: 'Data dan Statistika',
     materi: 'Statistika Dasar',
     publishedAt: 'Rabu, 9 Apr 2026 · 14:15',
+    atp: [
+      'Siswa mampu menjelaskan konsep {materi}',
+      'Siswa dapat menyelesaikan {materi} dengan satu langkah',
+      'Siswa dapat mengaplikasikan {materi} pada soal cerita sederhana',
+    ],
     konten: [
       { type: 'bacaan', label: 'Konten Bacaan', levels: ['Low', 'Mid', 'High'] },
       { type: 'quiz_pg', label: 'Kuiz Pilihan Ganda', levels: ['Low', 'Mid', 'High'] },
@@ -191,6 +201,11 @@ const RIWAYAT_KONTEN = [
     elemenLabel: 'Geometri dan Pengukuran',
     materi: 'Fungsi Kuadrat',
     publishedAt: 'Jumat, 4 Apr 2026 · 11:00',
+    atp: [
+      'Siswa mampu menjelaskan konsep {materi}',
+      'Siswa dapat menyelesaikan {materi} dengan satu langkah',
+      'Siswa dapat mengaplikasikan {materi} pada soal cerita sederhana',
+    ],
     konten: [
       { type: 'bacaan', label: 'Konten Bacaan', levels: ['Low', 'Mid', 'High'] },
       { type: 'quiz_pg', label: 'Kuiz Pilihan Ganda', levels: ['Low', 'Mid', 'High'] },
@@ -335,6 +350,32 @@ const RiwayatCard = ({ riwayat }) => {
         const cp = CAPAIAN_PEMBELAJARAN[riwayat.mapelId];
         return (
           <div style={{ padding: '14px 16px 16px', borderTop: `1px solid rgba(13,92,99,.07)`, background: '#FAFEFF' }}>
+
+            {riwayat.atp?.length > 0 && (
+              <div style={{
+                marginBottom: 14, padding: '12px 14px',
+                borderRadius: 10, border: `1.5px solid ${C.tealXL}`,
+                background: C.white,
+              }}>
+                <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>
+                  📋 Alur Tujuan Pembelajaran (ATP)
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {riwayat.atp.map((poin, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      <span style={{
+                        width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                        background: `${C.teal}18`, color: C.teal,
+                        fontSize: FS.xs, fontWeight: 800,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        marginTop: 1,
+                      }}>{i + 1}</span>
+                      <span style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.6 }}>{poin}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, marginBottom: 12 }}>Isi Konten Terpublish</div>
             {riwayat.konten.map(k => (

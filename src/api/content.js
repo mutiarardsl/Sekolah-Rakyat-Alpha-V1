@@ -2,56 +2,86 @@
  * SR MVP — Content API (Tim 3 RAG + Agentic)
  * Tim 6 | src/api/content.js
  *
- * Antarmuka ke Agentic RAG Tim 3.
- * Tim 3 query VectorDB (kurikulum/silabus) + Tim 2 LLM → konten terstruktur.
- *
  * ── Endpoint Index ──────────────────────────────────────────────────
- *  POST /content/generate       → generate mindmap / flashcard
+ *  POST /content/generate       → guru generate satu tipe konten (13× paralel saat generate)
  *  POST /content/publish        → guru publish paket konten ke siswa
- *  GET  /content/siswa          → ambil konten yang dipublish untuk siswa ini
- *  GET  /content/progress       → progress belajar siswa (dipakai dashboard + monitoring guru)
- *  POST /content/quiz/submit    → simpan hasil quiz siswa
- *  GET  /content/recommend      → rekomendasi topik berikutnya
+ *  GET  /content/siswa          → siswa ambil paket konten yang dipublish untuknya
+ *  GET  /content/progress       → progress belajar siswa
+ *  POST /content/quiz/submit    → siswa simpan hasil quiz
+ *  GET  /content/recommend      → rekomendasi topik berikutnya untuk siswa
  *
- * ── Catatan Kurikulum ────────────────────────────────────────────────
- *  Kurikulum (mapel → elemen) sudah tersedia di DB dan di masterData.js.
- *  Admin mengelola struktur kurikulum via /admin/mapel dan CRUD elemen.
- *  Tidak ada endpoint upload kurikulum dari FE — Tim 3 mengelola VectorDB
- *  secara internal di sisi backend.
+ * ── Hirarki Kurikulum (BERLAKU DI SEMUA ENDPOINT) ────────────────────
  *
- * ── Auth Requirement ────────────────────────────────────────────────
- *  Bearer token required semua endpoint.
- *  generate, progress, quiz/submit, recommend  → role: siswa, guru
- *  publish                                     → role: guru
- *  curriculum                                  → role: admin
- *  siswa                                       → role: siswa
+ *  mapel_id     : WAJIB di semua payload/params
+ *  elemen_id    : WAJIB di semua payload/params — tidak ada konten tanpa elemen
+ *  elemen_label : WAJIB di payload mutasi (generate, publish) — untuk konteks LLM & display
+ *  materi       : OPSIONAL — diisi jika guru turun ke level sub-materi
+ *  materi_id    : OPSIONAL — format "{mapel_id}__{nama_snake_case}", misal "mat__persamaan_linear"
+ *                 Frontend membangunnya jika materi diisi: materi_id = `${mapel_id}__${snake(materi)}`
+ *
+ *  RULE PENTING: elemen_id SELALU ada. materi/materi_id hanya ada jika guru mengisinya.
+ *  Backend Tim 3 TIDAK boleh menerima payload yang punya mapel_id tapi tidak punya elemen_id.
  *
  * ── Tipe Konten & Level ─────────────────────────────────────────────
- *  Konten Bacaan : tidak berlevel (1 versi, penyampaian AI disesuaikan per level siswa)
- *  Quiz PG/Essay : berlevel Low / Mid / High — kesulitan soal berbeda
- *  Flashcard     : berlevel Low / Mid / High — kedalaman berbeda
- *  Mindmap       : tidak berlevel (1 mindmap keseluruhan elemen)
- *  Game          : berlevel Low / Mid / High — kesulitan gameplay berbeda
+ *  bacaan     : Low / Mid / High  — kedalaman & kompleksitas teks bacaan per level
+ *  quiz_pg    : Low / Mid / High  — kesulitan soal pilihan ganda per level
+ *  quiz_essay : Low / Mid / High  — kompleksitas pertanyaan essay per level
+ *  flashcard  : Low / Mid / High  — kedalaman kartu per level
+ *  mindmap    : TIDAK berlevel    — satu mindmap untuk keseluruhan elemen
+ *  game       : Low / Mid / High  — via /game/generate Tim 4, BUKAN endpoint ini
+ *
+ * ── Field Name Convention ────────────────────────────────────────────
+ *  Gunakan "tipe" (bukan "type") di semua KontenItem — konsisten bahasa Indonesia.
+ *  Gunakan "content" sebagai field isi konten di semua tipe.
+ *
+ * ── Auth ─────────────────────────────────────────────────────────────
+ *  generate, publish  → role: guru
+ *  siswa, recommend   → role: siswa
+ *  progress           → role: siswa, guru
+ *  quiz/submit        → role: siswa
  */
 
 import { apiClient } from "./client";
 
 // ─── Types ────────────────────────────────────────────────────────────
 /**
- * @typedef {"antusias"|"bosan"|"bingung"|"frustrasi"|"tidak_terdeteksi"} Emosi
- * @typedef {"mindmap"|"flashcard"} ContentTipe
  * @typedef {"Low"|"Mid"|"High"} Level
+ * @typedef {"bacaan"|"quiz_pg"|"quiz_essay"|"flashcard"|"mindmap"} KontenTipe
  *
- * @typedef {Object} FlashcardContent
- * @property {Array<{ depan: string, belakang: string }>} cards
+ * @typedef {Object} KontenItem
+ * @property {KontenTipe} tipe    - Tipe konten ("tipe" bukan "type")
+ * @property {Level|null} level   - null hanya untuk tipe "mindmap"
+ * @property {Object}     content - Struktur isi per tipe:
+ *   bacaan    → { text: string }
+ *   quiz_pg   → { soal: Array<{ pertanyaan: string, pilihan: string[], jawaban: string }> }
+ *   quiz_essay→ { pertanyaan: string[] }
+ *   flashcard → { cards: Array<{ depan: string, belakang: string }> }
+ *   mindmap   → { content: string }
+ * @property {boolean}    approved - true jika guru sudah approve
  *
- * @typedef {Object} MindmapContent
- * @property {string} content  - Teks terstruktur representasi mindmap
+ * @typedef {Object} PublishPayload
+ * @property {string}       mapel_id
+ * @property {string}       elemen_id      - WAJIB SELALU ADA
+ * @property {string}       elemen_label   - WAJIB SELALU ADA
+ * @property {string|null}  materi         - null jika tidak diisi guru
+ * @property {string|null}  materi_id      - null jika tidak diisi guru
+ * @property {string}       kelas_id       - atau "__semua__" untuk semua kelas jenjang ini
+ * @property {string}       jenjang        - "X" | "XI" | "XII"
+ * @property {string}       guru_id        - ID guru yang publish
+ * @property {string}       atp            - Alur Tujuan Pembelajaran (boleh string kosong)
+ * @property {KontenItem[]} konten_list    - Max 14 item (5 tipe × 3 level, minus mindmap × 2)
  *
- * @typedef {Object} ContentResponse
- * @property {ContentTipe}               tipe
- * @property {FlashcardContent|MindmapContent} content
- * @property {string}                    generated_at  - ISO8601
+ * @typedef {Object} PaketKonten
+ * @property {string}       publish_id
+ * @property {string}       mapel_id
+ * @property {string}       elemen_id      - SELALU ADA
+ * @property {string}       elemen_label   - SELALU ADA
+ * @property {string|null}  materi
+ * @property {string|null}  materi_id
+ * @property {string}       kelas_id
+ * @property {string}       jenjang
+ * @property {string}       published_at   - ISO8601
+ * @property {KontenItem[]} konten_list    - Semua item konten yang dipublish guru
  *
  * @typedef {Object} LearningProgress
  * @property {string}   siswa_id
@@ -62,46 +92,34 @@ import { apiClient } from "./client";
  * @property {number}   streak_hari
  * @property {number}   total_poin_quiz
  * @property {number}   total_waktu_menit
- * @property {number}   rata_rata_quiz     - 0-100, untuk monitoring guru
+ * @property {number}   rata_rata_quiz
  * @property {Array<{ mapel_id: string, selesai: number, progress_avg: number }>} by_mapel
- *
- * @typedef {Object} KontenItem
- * @property {string}  type    - "bacaan"|"quiz_pg"|"quiz_essay"|"flashcard"|"mindmap"|"game"
- * @property {Level|null} level
- * @property {string}  content - Teks konten (atau JSON string untuk game)
- * @property {boolean} approved
- *
- * @typedef {Object} PublishPayload
- * @property {string}       mapel_id
- * @property {string}       elemen_id
- * @property {string}       elemen_label
- * @property {string|null}  materi        - Nama sub-materi jika ada
- * @property {string}       kelas_id      - "__semua__" untuk semua kelas di jenjang
- * @property {string}       jenjang       - "X"|"XI"|"XII"
- * @property {string}       atp           - Alur Tujuan Pembelajaran
- * @property {KontenItem[]} konten_list   - Semua item konten yang sudah disetujui guru
  */
 
 // ─── POST /content/generate ───────────────────────────────────────────
 /**
- * Generate konten belajar terpersonalisasi (mindmap / flashcard).
- * Agent Tim 3 query VectorDB → Tim 2 LLM → output terstruktur.
- * Dipanggil dari ChatSection saat siswa klik tombol "Buat Mindmap" / "Buat Flashcard".
+ * Guru generate satu tipe konten untuk satu level.
+ * Dipanggil dari KelolaBelajarSection secara paralel (13 calls sekaligus):
+ *   bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 = 13 calls
+ *   (game TIDAK lewat sini — via POST /game/generate Tim 4)
  *
- * Success 200 → ContentResponse
- * Error   422 → materi_id tidak dikenal di VectorDB
+ * Success 200 → { tipe, level, content, generated_at }
+ * Error   403 → role bukan guru
+ * Error   422 → mapel_id / elemen_id tidak dikenal di VectorDB
  *
  * @param {{
- *   siswa_id: string,
- *   mapel_id: string,
- *   materi: string,
- *   materi_id: string,
- *   tipe: ContentTipe,
- *   level?: Level,
- *   emosi?: Emosi,
- *   profil_minat?: string
+ *   guru_id:       string,
+ *   mapel_id:      string,
+ *   elemen_id:     string,
+ *   elemen_label:  string,
+ *   materi?:       string,
+ *   materi_id?:    string,
+ *   jenjang:       "X"|"XI"|"XII",
+ *   atp?:          string,
+ *   tipe:          KontenTipe,
+ *   level?:        Level,   - wajib kecuali tipe "mindmap"
  * }} payload
- * @returns {Promise<ContentResponse>}
+ * @returns {Promise<{ tipe: KontenTipe, level: Level|null, content: object, generated_at: string }>}
  */
 export async function generateContent(payload) {
   const { data } = await apiClient.post("/content/generate", payload);
@@ -110,13 +128,13 @@ export async function generateContent(payload) {
 
 // ─── POST /content/publish ────────────────────────────────────────────
 /**
- * Guru publish paket konten belajar ke siswa.
- * Dipanggil dari KelolaBelajarSection setelah semua konten disetujui guru.
- * Backend menyimpan konten ke DB dan mengaitkan ke kelas tujuan.
+ * Guru publish paket konten ke siswa setelah semua disetujui.
+ * Backend menyimpan ke DB dan menautkan ke kelas tujuan.
+ * Siswa di kelas tersebut bisa mengambil via GET /content/siswa.
  *
  * Success 201 → { publish_id: string, kelas_ids: string[], published_at: string }
  * Error   403 → role bukan guru
- * Error   400 → ada konten yang belum disetujui (validation di frontend sudah cukup)
+ * Error   400 → konten_list kosong atau elemen_id tidak ada
  *
  * @param {PublishPayload} payload
  * @returns {Promise<{ publish_id: string, kelas_ids: string[], published_at: string }>}
@@ -128,21 +146,24 @@ export async function publishKonten(payload) {
 
 // ─── GET /content/siswa ───────────────────────────────────────────────
 /**
- * Ambil semua paket konten yang sudah dipublish untuk siswa ini.
- * Dipakai ProgressSection untuk menampilkan konten yang tersedia per elemen.
+ * Siswa ambil semua paket konten yang sudah dipublish guru untuknya.
+ * Dipanggil ChatSection saat siswa membuka topik (prefetch, fire-and-forget).
+ * Response sudah berisi konten_list lengkap — tidak perlu generate ulang di sisi siswa.
  *
- * Success 200 → Array<{
- *   publish_id: string,
- *   mapel_id: string,
- *   elemen_id: string,
- *   elemen_label: string,
- *   materi: string|null,
- *   konten_list: KontenItem[],
- *   published_at: string
- * }>
+ * Filter (semua opsional, makin spesifik makin sempit):
+ *   mapel_id saja   → semua paket mapel itu
+ *   + elemen_id     → paket spesifik elemen
+ *   + materi_id     → paket spesifik materi dalam elemen
  *
- * @param {{ siswa_id: string, mapel_id?: string }} params
- * @returns {Promise<object[]>}
+ * Success 200 → PaketKonten[]
+ *
+ * @param {{
+ *   siswa_id:   string,
+ *   mapel_id?:  string,
+ *   elemen_id?: string,
+ *   materi_id?: string,
+ * }} params
+ * @returns {Promise<PaketKonten[]>}
  */
 export async function getKontenSiswa(params) {
   const { data } = await apiClient.get("/content/siswa", { params });
@@ -152,7 +173,7 @@ export async function getKontenSiswa(params) {
 // ─── GET /content/progress ────────────────────────────────────────────
 /**
  * Progress belajar siswa lintas semua mapel.
- * Dipakai: KPI dashboard siswa + tabel monitoring guru (rata_rata_quiz, by_mapel).
+ * KPI dashboard siswa + monitoring guru (rata_rata_quiz, by_mapel).
  *
  * Success 200 → LearningProgress
  *
@@ -167,21 +188,24 @@ export async function getLearningProgress(params) {
 // ─── POST /content/quiz/submit ────────────────────────────────────────
 /**
  * Simpan hasil quiz siswa ke backend.
- * Dipanggil dari QuizModal setelah siswa submit quiz (MC atau Essay).
- * Skor skala 0-100.
+ * Dipanggil QuizModal setelah siswa submit quiz MC atau essay.
+ * publish_id dipakai backend untuk tracing konten asal dan update progress per paket.
  *
  * Success 200 → { submitted: boolean, score: number, recorded_at: string }
- * Error   422 → materi_id / siswa_id tidak valid
+ * Error   422 → siswa_id / elemen_id tidak valid
  *
  * @param {{
- *   siswa_id: string,
- *   mapel_id: string,
- *   materi: string,
- *   materi_id: string,
- *   quiz_type: "mc"|"essay",
- *   level: "Low"|"Mid"|"High",
- *   answers: Record<string, string>,
- *   score: number
+ *   siswa_id:     string,
+ *   publish_id:   string,         - ID paket konten asal (PaketKonten.publish_id)
+ *   mapel_id:     string,
+ *   elemen_id:    string,         - WAJIB SELALU ADA
+ *   elemen_label: string,
+ *   materi?:      string,
+ *   materi_id?:   string,
+ *   quiz_type:    "mc"|"essay",
+ *   level:        Level,
+ *   answers:      Record<string, string>,
+ *   score:        number,         - 0–100. Essay: 0, dinilai AI secara async
  * }} payload
  * @returns {Promise<{ submitted: boolean, score: number, recorded_at: string }>}
  */
@@ -192,17 +216,17 @@ export async function submitQuiz(payload) {
 
 // ─── GET /content/recommend ───────────────────────────────────────────
 /**
- * Rekomendasi topik/materi berikutnya untuk siswa.
- * Tim 3 mempertimbangkan: progress, profil minat, dan hasil quiz.
- * Dipakai dashboard siswa (RekomCard) untuk menyarankan materi berikutnya.
+ * Rekomendasi topik berikutnya untuk siswa.
+ * Tim 3 mempertimbangkan progress, profil minat, dan hasil quiz.
+ * Dipakai RekomCard di dashboard siswa.
  *
  * Success 200 → Array<{
- *   mapel_id: string,
- *   materi: string,
- *   materi_id: string,
- *   elemen_id: string,
+ *   mapel_id:     string,
+ *   elemen_id:    string,
  *   elemen_label: string,
- *   alasan: string
+ *   materi:       string|null,
+ *   materi_id:    string|null,
+ *   alasan:       string
  * }>  (maks 3 item)
  *
  * @param {{ siswa_id: string, mapel_id?: string }} params

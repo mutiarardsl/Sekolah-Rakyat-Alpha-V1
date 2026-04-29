@@ -378,7 +378,7 @@ const ElemenPanel = ({ mapel, progressData, onStartBelajar }) => {
 
 /* ════════════════════════════════════════════════════════════════════ */
 const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest }) => {
-  const [filterTab, setFilterTab] = useState('all');
+  const [filterTab, setFilterTab] = useState('ongoing');
   const [selectedMapelId, setSelectedMapelId] = useState(null);
   const [searchQ, setSearchQ] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
