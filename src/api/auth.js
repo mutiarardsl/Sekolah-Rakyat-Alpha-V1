@@ -77,23 +77,10 @@ export async function login({ email, password }) {
   return data;
 }
 
-// ─── POST /auth/google ────────────────────────────────────────────────
-/**
- * Login via Google OAuth.
- * Frontend mengirim email yang sudah diverifikasi Google SDK.
- * Akun Google harus sudah terdaftar di sistem oleh admin.
- *
- * Success 200 → AuthResponse
- * Error   401 → { message: "Akun Google tidak terdaftar di sistem." }
- *
- * @param {string} email  — email terverifikasi dari Google
- * @returns {Promise<AuthResponse>}
- */
-export async function loginWithGoogle(email) {
-  const { data } = await apiClient.post("/auth/google", { email });
-  _saveSession(data);
-  return data;
-}
+// ─── POST /auth/google — DIHAPUS dari frontend ────────────────────────────
+// Google login tidak dipakai. Semua akun dikelola admin.
+// Endpoint tetap ada di BE untuk referensi, tapi tidak dikonsumsi FE.
+// export async function loginWithGoogle(email) { ... }
 
 // ─── POST /auth/logout ────────────────────────────────────────────────
 /**
@@ -131,9 +118,10 @@ export async function refreshToken(refresh_token) {
   return data;
 }
 
-// ─── POST /auth/forgot-password ───────────────────────────────────────
+// ─── POST /auth/forgot-password ───────────────────────────────────────────
 /**
  * Kirim link reset password ke email.
+ * User dapat reset password sendiri tanpa perlu ke admin.
  * Selalu return 200 untuk keamanan (tidak membocorkan apakah email terdaftar).
  *
  * Success 200 → { message: string }

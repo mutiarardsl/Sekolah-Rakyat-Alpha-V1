@@ -23,6 +23,7 @@ import DashboardSection from './sections/DashboardSection';
 import ProgressSection from './sections/ProgressSection';
 import ChatSection from './sections/ChatSection';
 import ProfileSection from './sections/ProfileSection';
+import LeaderboardSection from './sections/LeaderboardSection';
 
 const makeKey = (mapelId, sub) => `${mapelId}__${sub}`;
 
@@ -376,6 +377,7 @@ const StudentView = () => {
   const navItems = [
     { id: 'dashboard', icon: '🏠', label: 'Dashboard' },
     { id: 'progress', icon: '📈', label: 'Progress' },
+    { id: 'leaderboard', icon: '🏆', label: 'Leaderboard' },
   ];
 
   // Bottom nav item for mobile chat access (chat ditampilkan sebagai page penuh)
@@ -465,9 +467,15 @@ const StudentView = () => {
             {/* User info */}
             <div
               onClick={() => setActivePage('profile')}
-              style={{ padding: '14px', borderBottom: '1px solid rgba(255,255,255,.07)', cursor: 'pointer' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.04)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              style={{
+                padding: '14px',
+                borderBottom: '1px solid rgba(255,255,255,.07)',
+                cursor: 'pointer',
+                background: activePage === 'profile' ? 'rgba(13,92,99,.35)' : 'transparent',
+                transition: 'background .15s',
+              }}
+              onMouseEnter={e => { if (activePage !== 'profile') e.currentTarget.style.background = 'rgba(255,255,255,.04)'; }}
+              onMouseLeave={e => { if (activePage !== 'profile') e.currentTarget.style.background = 'transparent'; }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 40, height: 40, borderRadius: '50%', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.lg, border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.4)'}`, flexShrink: 0 }}>{user?.avatar || '?'}</div>
@@ -594,6 +602,7 @@ const StudentView = () => {
               }}
             />
           )}
+          {activePage === 'leaderboard' && <LeaderboardSection />}
           {activePage === 'chat' && <ChatSection {...sharedChat} />}
           {activePage === 'profile' && (
             <ProfileSection

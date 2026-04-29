@@ -111,7 +111,7 @@ export const handlers = [
     const { email, password } = await request.json();
     await d(400);
     const account = DUMMY_ACCOUNTS.find(
-      a => (a.email === email || a.nis === email) && a.password === password && !a.googleOnly
+      a => (a.email === email || a.nis === email) && a.password === password
     );
     if (!account) {
       return HttpResponse.json({ message: 'Email/NIS atau password salah.' }, { status: 401 });
@@ -135,30 +135,7 @@ export const handlers = [
     });
   }),
 
-  // POST /auth/google
-  http.post(url('/auth/google'), async ({ request }) => {
-    const { email } = await request.json();
-    await d(700);
-    const account = DUMMY_ACCOUNTS.find(a => a.email === email);
-    if (!account) {
-      return HttpResponse.json({ message: 'Akun Google tidak terdaftar di sistem.' }, { status: 401 });
-    }
-    return HttpResponse.json({
-      access_token: 'mock_jwt_google_' + Date.now(),
-      refresh_token: 'mock_refresh',
-      user: {
-        id: account.id,
-        nama: account.nama,
-        email: account.email,
-        role: account.role,
-        sekolah_id: account.sekolah_id,
-        avatar: account.avatar ?? null,
-        is_first_login: account.is_first_login ?? false,
-        avatarBg: account.avatarBg ?? null,
-        kelas_id: account.kelas_id ?? null,
-      },
-    });
-  }),
+  // POST /auth/google — DIHAPUS (Google login tidak digunakan)
 
   // POST /auth/logout
   http.post(url('/auth/logout'), async () => {

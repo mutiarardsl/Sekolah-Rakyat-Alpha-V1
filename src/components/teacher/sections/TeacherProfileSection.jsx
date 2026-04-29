@@ -1,13 +1,11 @@
 /**
  * SR MVP — TeacherProfileSection
- * Tim 6 Fase 2 | src/components/teacher/sections/TeacherProfileSection.jsx
+ * src/components/teacher/sections/TeacherProfileSection.jsx
  *
- * Halaman profil guru:
- *  - Avatar dengan upload foto
- *  - Nama lengkap, NIP, Email, Tanggal bergabung
- *  - Wali kelas (jika ada)
- *  - Mata pelajaran & kelas yang diampu (dikelompokkan per mapel)
- *  - Tombol Ganti Password (dipindah dari sidebar)
+ * Revisi: struktur mengikuti ProfileSection siswa
+ *  - Banner gradient full-width (bukan di dalam card)
+ *  - Konten 2-kolom dalam satu card putih (Informasi Pribadi | Akun & Mengajar)
+ *  - Seksi "Mata Pelajaran & Kelas" di bawah card
  */
 import { useState, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
@@ -19,48 +17,39 @@ import {
   ADMIN_MAPEL_LIST,
 } from '../../../data/masterData';
 
-// Guru yang sedang login (seeded = g1, Bpk. Hendra, mapped dari SEEDED_TEACHER_ID "t2")
 const CURRENT_GURU_ID = 'g1';
 
-// ─────────────────────────────────────────────────────────────────
-// InfoRow
-// ─────────────────────────────────────────────────────────────────
-const InfoRow = ({ icon, label, last = false, children }) => (
+/* ── ReadonlyInput — sama persis dengan ProfileSection siswa ── */
+const ReadonlyInput = ({ value }) => (
   <div style={{
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 12,
-    padding: '14px 0',
-    borderBottom: last ? 'none' : `1px solid ${C.tealXL}`,
+    display: 'flex', alignItems: 'center',
+    background: C.bg, borderRadius: 10,
+    border: `1.5px solid ${C.tealXL}`,
+    padding: '10px 14px',
   }}>
-    <div style={{
-      width: 36, height: 36, borderRadius: 10,
-      background: `${C.teal}14`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: FS.h3, flexShrink: 0, marginTop: 1,
-    }}>{icon}</div>
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{
-        fontSize: FS.xs, color: C.slate, fontWeight: 700,
-        textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4,
-      }}>{label}</div>
-      {children}
-    </div>
+    <span style={{ flex: 1, fontSize: FS.base, color: C.dark, fontWeight: 500 }}>{value || '—'}</span>
   </div>
 );
 
-// ─────────────────────────────────────────────────────────────────
-// MapelBlock — satu mapel dengan chip kelas
-// ─────────────────────────────────────────────────────────────────
+/* ── Field wrapper ── */
+const Field = ({ label, children }) => (
+  <div style={{ marginBottom: 20 }}>
+    <label style={{
+      display: 'block', fontSize: FS.sm, fontWeight: 700,
+      color: C.slate, textTransform: 'uppercase', letterSpacing: '.07em', marginBottom: 6,
+    }}>{label}</label>
+    {children}
+  </div>
+);
+
+/* ── MapelBlock — chip kelas per mapel ── */
 const MapelBlock = ({ mapelId, kelasList }) => {
   const mapel = ADMIN_MAPEL_LIST.find(m => m.id === mapelId);
   if (!mapel || kelasList.length === 0) return null;
   return (
     <div style={{
-      padding: '10px 14px',
-      borderRadius: 12,
-      background: `${mapel.color}0C`,
-      border: `1.5px solid ${mapel.color}28`,
+      padding: '10px 14px', borderRadius: 12,
+      background: `${mapel.color}0C`, border: `1.5px solid ${mapel.color}28`,
       marginBottom: 8,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -71,29 +60,23 @@ const MapelBlock = ({ mapelId, kelasList }) => {
         {kelasList.map(k => (
           <span key={k.id} style={{
             fontSize: FS.sm, fontWeight: 700,
-            background: `${mapel.color}16`,
-            color: mapel.color,
+            background: `${mapel.color}16`, color: mapel.color,
             border: `1px solid ${mapel.color}40`,
             borderRadius: 99, padding: '3px 10px',
-          }}>
-            {k.nama}
-          </span>
+          }}>{k.nama}</span>
         ))}
       </div>
     </div>
   );
 };
 
-// ─────────────────────────────────────────────────────────────────
-// Main
-// ─────────────────────────────────────────────────────────────────
+/* ── Main ── */
 const TeacherProfileSection = ({ onPwdSuccess }) => {
   const { isMobile } = useBreakpoint();
   const guru = ADMIN_GURU_INIT.find(g => g.id === CURRENT_GURU_ID);
   const semuaKelas = ADMIN_KELAS_INIT;
 
   const waliKelasList = semuaKelas.filter(k => k.waliKelasId === CURRENT_GURU_ID);
-
   const mapelKelasMap = (guru?.mapelId || []).map(mid => ({
     mapelId: mid,
     kelasList: semuaKelas.filter(k => k.mapelGuruMap?.[mid] === CURRENT_GURU_ID),
@@ -121,188 +104,198 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
   );
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', background: C.bg,
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', background: C.bg }}>
 
-      {/* 1 ── Judul halaman — STICKY */}
-      <div style={{ padding: '16px 28px 12px', background: C.bg, flexShrink: 0, borderBottom: `1px solid ${C.tealXL}` }}>
-        <h1 style={{
-          margin: 0,
-          fontFamily: FONTS.serif,
-          fontSize: 22, fontWeight: 700, color: C.dark, letterSpacing: '-.01em',
-        }}>
-          Profil Guru
-        </h1>
-        <p style={{ margin: '4px 0 0', fontSize: FS.md, color: C.slate }}>
-          Informasi akun dan data mengajar Anda di Sekolah Rakyat.
-        </p>
-      </div>
+      {/* ── Banner gradient full-width (sama dengan profil siswa) ── */}
+      <div style={{
+        background: `linear-gradient(130deg, ${C.dark} 0%, ${C.darkM} 55%, #1D4E55 100%)`,
+        padding: isMobile ? '20px 18px 24px' : '24px 32px 28px',
+        position: 'relative', overflow: 'hidden', flexShrink: 0,
+      }}>
+        {/* Decorasi */}
+        <div style={{ position: 'absolute', top: -50, right: -50, width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,.04)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -30, right: 80, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,.04)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: 18, right: 200, width: 55, height: 55, borderRadius: '50%', background: 'rgba(244,164,53,.07)', pointerEvents: 'none' }} />
 
-      {/* Scrollable content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px 14px' : '28px 32px', background: C.bg }}>
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
 
-        {/* 2 ── Kartu utama */}
-        <div style={{
-          background: C.white, borderRadius: 20,
-          border: `1px solid ${C.tealXL}`,
-          boxShadow: '0 4px 28px rgba(13,92,99,.08)',
-          overflow: 'hidden', maxWidth: 760, margin: '0 auto',
-        }}>
-
-          {/* Banner — avatar di dalam, tanpa teks nama/NIP */}
-          <div style={{
-            background: `linear-gradient(130deg, ${C.dark} 0%, ${C.darkM} 55%, #1D4E55 100%)`,
-            padding: '24px 32px', position: 'relative', overflow: 'hidden',
-          }}>
-            {/* dekorasi */}
-            <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(255,255,255,.04)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', bottom: -20, right: 100, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,.04)', pointerEvents: 'none' }} />
-            <div style={{ position: 'absolute', top: 18, right: 195, width: 50, height: 50, borderRadius: '50%', background: 'rgba(244,164,53,.07)', pointerEvents: 'none' }} />
-
-            <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', position: 'relative', zIndex: 1, flexWrap: 'wrap', gap: 12 }}>
-
-              {/* Avatar di dalam banner */}
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                {avatarSrc ? (
-                  <img src={avatarSrc} alt="Foto profil" style={{
-                    width: 100, height: 100, borderRadius: '50%', objectFit: 'cover',
-                    border: `3px solid rgba(255,255,255,.3)`,
-                    boxShadow: '0 4px 16px rgba(0,0,0,.3)',
-                  }} />
-                ) : (
-                  <div style={{
-                    width: 100, height: 100, borderRadius: '50%',
-                    background: guru.avatarBg || `linear-gradient(135deg,${C.teal},${C.tealL})`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#fff', fontWeight: 900, fontSize: 26,
-                    border: `3px solid rgba(255,255,255,.3)`,
-                    boxShadow: '0 4px 16px rgba(0,0,0,.3)',
-                    userSelect: 'none',
-                  }}>
-                    {guru.avatar}
-                  </div>
-                )}
-                {/* tombol upload foto */}
-                <button
-                  onClick={handleAvatarClick}
-                  title="Ganti foto profil"
-                  style={{
-                    position: 'absolute', bottom: 1, right: 1,
-                    width: 26, height: 26, borderRadius: '50%',
-                    background: C.amber, border: `2px solid rgba(255,255,255,.6)`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: FS.md, cursor: 'pointer', color: '#fff',
-                    boxShadow: '0 2px 6px rgba(0,0,0,.3)',
-                    transition: 'transform .15s',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.12)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-                >📷</button>
-                <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
-              </div>
-
-              {/* Tombol Ganti Password */}
-              <button
-                onClick={() => setShowChangePwd(true)}
+          {/* Avatar + nama */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              {avatarSrc ? (
+                <img src={avatarSrc} alt="Foto profil" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,.3)', boxShadow: '0 4px 16px rgba(0,0,0,.3)' }} />
+              ) : (
+                <div style={{
+                  width: 80, height: 80, borderRadius: '50%',
+                  background: guru.avatarBg || `linear-gradient(135deg,${C.teal},${C.tealL})`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 900, fontSize: 26,
+                  border: '3px solid rgba(255,255,255,.3)',
+                  boxShadow: '0 4px 16px rgba(0,0,0,.3)',
+                  userSelect: 'none',
+                }}>{guru.avatar}</div>
+              )}
+              <button onClick={handleAvatarClick} title="Ganti foto profil"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 7,
-                  padding: '9px 18px', borderRadius: 99,
-                  background: 'rgba(255,255,255,.1)',
-                  border: '1.5px solid rgba(255,255,255,.25)',
-                  color: '#fff', fontSize: FS.md, fontWeight: 700,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  backdropFilter: 'blur(8px)',
-                  transition: 'all .15s', whiteSpace: 'nowrap',
+                  position: 'absolute', bottom: 1, right: 1,
+                  width: 26, height: 26, borderRadius: '50%',
+                  background: C.amber, border: '2px solid rgba(255,255,255,.6)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: FS.md, cursor: 'pointer', color: '#fff',
+                  boxShadow: '0 2px 6px rgba(0,0,0,.3)', transition: 'transform .15s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,.2)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.5)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,.1)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.25)'; }}
-              >
-                🔐 Ganti Password
-              </button>
+                onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.12)'; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+              >📷</button>
+              <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
+            </div>
+
+            <div>
+              <div style={{ color: C.white, fontWeight: 800, fontSize: FS.h2, marginBottom: 2 }}>{guru.nama}</div>
+              <div style={{ color: 'rgba(255,255,255,.6)', fontSize: FS.base }}>{guru.email}</div>
+              <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.sm, marginTop: 3 }}>
+                NIP {guru.nip}
+                {waliKelasList.length > 0 && ` · Wali ${waliKelasList.map(k => k.nama).join(', ')}`}
+              </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Body — 2 kolom (1 kolom di mobile) */}
+      {/* ── Scrollable content ── */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '20px 16px' : '28px 32px', background: C.bg }}>
+        <div style={{
+          maxWidth: 860, margin: '0 auto',
+          background: C.white, borderRadius: 20,
+          border: `1px solid ${C.tealXL}`,
+          boxShadow: '0 4px 28px rgba(13,92,99,.07)',
+          overflow: 'hidden',
+        }}>
+
+          {/* 2-kolom — Informasi Pribadi | Akun & Status */}
           <div style={{
-            display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-            gap: '0 40px', padding: isMobile ? '16px 18px 24px' : '20px 32px 32px',
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            padding: isMobile ? '20px 18px 24px' : '28px 32px',
           }}>
 
             {/* Kolom kiri */}
-            <div>
-              <InfoRow icon="👤" label="Nama Lengkap">
-                <span style={{ fontSize: FS.lg, fontWeight: 700, color: C.dark }}>{guru.nama}</span>
-              </InfoRow>
-              <InfoRow icon="🪪" label="NIP">
-                <span style={{ fontSize: FS.base, fontWeight: 600, color: C.dark, fontVariantNumeric: 'tabular-nums', letterSpacing: '.02em' }}>{guru.nip}</span>
-              </InfoRow>
-              <InfoRow icon="✉️" label="Email">
-                <span style={{ fontSize: FS.base, fontWeight: 600, color: C.teal }}>{guru.email}</span>
-              </InfoRow>
-              <InfoRow icon="📅" label="Bergabung Sejak" last>
-                <span style={{ fontSize: FS.base, fontWeight: 600, color: C.dark }}>{guru.bergabung}</span>
-              </InfoRow>
+            <div style={{ paddingRight: isMobile ? 0 : 32, borderRight: isMobile ? 'none' : `1px solid ${C.tealXL}`, paddingBottom: isMobile ? 20 : 0 }}>
+              <div style={{ fontSize: FS.sm, fontWeight: 800, color: C.teal, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 16, paddingBottom: 8, borderBottom: `1px solid ${C.tealXL}` }}>
+                Informasi Pribadi
+              </div>
+              <Field label="Nama Lengkap">
+                <ReadonlyInput value={guru.nama} />
+              </Field>
+              <Field label="NIP">
+                <ReadonlyInput value={guru.nip} />
+              </Field>
+              <Field label="Email">
+                <div style={{
+                  display: 'flex', alignItems: 'center',
+                  background: C.bg, borderRadius: 10,
+                  border: `1.5px solid ${C.tealXL}`,
+                  padding: '10px 14px',
+                }}>
+                  <span style={{ flex: 1, fontSize: FS.base, color: C.teal, fontWeight: 600 }}>{guru.email}</span>
+                </div>
+              </Field>
+              <Field label="Bergabung Sejak">
+                <ReadonlyInput value={guru.bergabung} />
+              </Field>
             </div>
 
             {/* Kolom kanan */}
-            <div>
-              <InfoRow icon="🏫" label="Wali Kelas">
+            <div style={{ paddingLeft: isMobile ? 0 : 32, borderTop: isMobile ? `1px solid ${C.tealXL}` : 'none', paddingTop: isMobile ? 20 : 0 }}>
+              <div style={{ fontSize: FS.sm, fontWeight: 800, color: C.teal, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 16, paddingBottom: 8, borderBottom: `1px solid ${C.tealXL}` }}>
+                Akun &amp; Status
+              </div>
+              <Field label="Password">
+                <div style={{ display: 'flex', alignItems: 'center', background: C.bg, borderRadius: 10, border: `1.5px solid ${C.tealXL}`, padding: '10px 14px', gap: 8 }}>
+                  <span style={{ flex: 1, fontSize: FS.base, color: C.slate, letterSpacing: '.2em' }}>••••••••</span>
+                  <button onClick={() => setShowChangePwd(true)} style={{
+                    background: 'none', border: `1px solid ${C.tealXL}`, borderRadius: 7,
+                    padding: '4px 10px', fontSize: FS.sm, color: C.teal, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, transition: 'all .15s',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `${C.teal}10`; e.currentTarget.style.borderColor = C.teal; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.borderColor = C.tealXL; }}
+                  >🔐 Ganti</button>
+                </div>
+              </Field>
+              <Field label="Wali Kelas">
                 {waliKelasList.length > 0 ? (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 0' }}>
                     {waliKelasList.map(k => (
                       <span key={k.id} style={{
                         display: 'inline-flex', alignItems: 'center', gap: 5,
                         background: `${C.amber}14`, border: `1.5px solid ${C.amber}40`,
-                        borderRadius: 99, padding: '4px 12px',
+                        borderRadius: 99, padding: '5px 14px',
                         fontSize: FS.md, fontWeight: 700, color: C.dark,
                       }}>🏆 {k.nama}</span>
                     ))}
                   </div>
                 ) : (
-                  <span style={{ fontSize: FS.md, color: C.slate, fontStyle: 'italic' }}>Bukan wali kelas</span>
+                  <div style={{
+                    background: C.bg, borderRadius: 10,
+                    border: `1.5px solid ${C.tealXL}`,
+                    padding: '10px 14px',
+                  }}>
+                    <span style={{ fontSize: FS.base, color: C.slate, fontStyle: 'italic' }}>Bukan wali kelas</span>
+                  </div>
                 )}
-              </InfoRow>
-
-              <InfoRow icon="📚" label="Mata Pelajaran & Kelas yang Diampu" last>
+              </Field>
+              <Field label="Mata Pelajaran & Kelas Diampu">
                 {mapelKelasMap.length > 0 ? (
-                  <div style={{ marginTop: 2 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 2 }}>
                     {mapelKelasMap.map(({ mapelId, kelasList }) => (
                       <MapelBlock key={mapelId} mapelId={mapelId} kelasList={kelasList} />
                     ))}
                   </div>
                 ) : (
-                  <span style={{ fontSize: FS.md, color: C.slate, fontStyle: 'italic' }}>Belum ada data mengajar.</span>
+                  <div style={{
+                    background: C.bg, borderRadius: 10,
+                    border: `1.5px solid ${C.tealXL}`,
+                    padding: '10px 14px',
+                  }}>
+                    <span style={{ fontSize: FS.base, color: C.slate, fontStyle: 'italic' }}>Belum ada kelas diampu</span>
+                  </div>
                 )}
-              </InfoRow>
+              </Field>
+              <Field label="Status Akun">
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: `${C.green}14`, borderRadius: 99, border: `1.5px solid ${C.green}30`, padding: '7px 16px' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: C.green, boxShadow: `0 0 0 3px ${C.green}30` }} />
+                  <span style={{ fontSize: FS.md, fontWeight: 700, color: C.green }}>Aktif</span>
+                </div>
+              </Field>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Modal & Toast */}
-        {showChangePwd && (
-          <ChangePasswordModal
-            role="guru"
-            userName={guru.nama}
-            onClose={() => setShowChangePwd(false)}
-            onSuccess={() => {
-              setPwdToast(true);
-              setTimeout(() => setPwdToast(false), 3500);
-              if (onPwdSuccess) onPwdSuccess();
-            }}
-          />
-        )}
-        {pwdToast && (
-          <div style={{
-            position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
-            background: C.green, color: '#fff', borderRadius: 99,
-            padding: '10px 24px', fontSize: FS.base, fontWeight: 700, zIndex: 9999,
-            boxShadow: '0 4px 16px rgba(47,133,90,.4)',
-          }}>
-            ✅ Password berhasil diubah!
-          </div>
-        )}
-      </div> {/* end scrollable content */}
+      {/* ── Modal & Toast ── */}
+      {showChangePwd && (
+        <ChangePasswordModal
+          role="guru"
+          userName={guru.nama}
+          onClose={() => setShowChangePwd(false)}
+          onSuccess={() => {
+            setPwdToast(true);
+            setTimeout(() => setPwdToast(false), 3500);
+            if (onPwdSuccess) onPwdSuccess();
+          }}
+        />
+      )}
+      {pwdToast && (
+        <div style={{
+          position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)',
+          background: C.green, color: '#fff', borderRadius: 99,
+          padding: '10px 24px', fontSize: FS.base, fontWeight: 700, zIndex: 9999,
+          boxShadow: '0 4px 16px rgba(47,133,90,.4)',
+        }}>
+          ✅ Password berhasil diubah!
+        </div>
+      )}
     </div>
   );
 };

@@ -36,12 +36,7 @@ export function AuthProvider({ children }) {
     return res.user;
   }, []);
 
-  // FIX ③b: sama — loginWithGoogle juga sudah memanggil _saveSession()
-  const loginWithGoogle = useCallback(async (email) => {
-    const res = await authApi.loginWithGoogle(email);
-    setUser(res.user);
-    return res.user;
-  }, []);
+  // Google login dihapus — semua akun diatur admin, tidak ada self-register.
 
   const forgotPassword = useCallback(async (email) => {
     return await authApi.forgotPassword(email);
@@ -71,7 +66,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user, role: user?.role ?? null, isLoading, isLoggedIn: !!user,
-      login, loginWithGoogle, forgotPassword,
+      login, forgotPassword,
       logout, updateUser, completeFirstLogin,
     }}>
       {children}

@@ -866,10 +866,6 @@ export const DUMMY_ACCOUNTS = [
   { id: 't2', email: 'hendra@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Bpk. Hendra, M.Pd.', sekolah_id: 'sr_malang_001', avatar: 'BH', avatarBg: 'linear-gradient(135deg,#0D5C63,#1A8A94)', is_first_login: true },
   { id: 't1', email: 'sridewi@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Sri Dewi, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'SD', avatarBg: 'linear-gradient(135deg,#F4A435,#DD6B20)', is_first_login: false },
   { id: 'a1', email: 'admin@sr.id', password: 'admin123', role: 'admin', nama: 'Admin Sekolah Rakyat', sekolah_id: 'sr_malang_001', avatar: 'AD' },
-  // Google SSO
-  { id: 's2', email: 'dewi.rahayu@gmail.com', role: 'siswa', nama: 'Dewi Rahayu', avatar: 'DR', avatarBg: '#1D9E75', googleOnly: true },
-  { id: 's4', email: 'budi.santoso@gmail.com', role: 'siswa', nama: 'Budi Santoso', avatar: 'BS', avatarBg: '#534AB7', googleOnly: true },
-  { id: 't2', email: 'hendra.mpd@gmail.com', role: 'guru', nama: 'Bpk. Hendra, M.Pd.', avatar: 'BH', avatarBg: '#1D9E75', googleOnly: true },
 ];
 
 // ─── Emosi Meta — dipakai MonitoringSection, GameSection, StudentView ──
