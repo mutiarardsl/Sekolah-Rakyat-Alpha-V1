@@ -93,7 +93,7 @@ const TeacherView = () => {
 
   const navItems = [
     { id: 'dashboard', icon: '📊', label: 'Dashboard' },
-    { id: 'kelola', icon: '📐', label: 'Kelola Konten Belajar' },
+    { id: 'kelola', icon: '📐', label: 'Buat Konten Belajar' },
     { id: 'riwayat', icon: '📚', label: 'Riwayat Konten' },
   ];
 

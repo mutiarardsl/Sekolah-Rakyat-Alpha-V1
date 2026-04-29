@@ -367,10 +367,36 @@ export const handlers = [
   }),
 
   // GET /content/siswa
-  // Params: { siswa_id, mapel_id? }
-  http.get(url('/content/siswa'), async () => {
+  // Params: { siswa_id, mapel_id?, materi_id?, elemen_id? }
+  // FIX 4: kembalikan bank konten yang sudah dipublish guru
+  // Setiap paket berisi konten_list per tipe — siswa tidak perlu generating saat klik
+  http.get(url('/content/siswa'), async ({ request }) => {
+    const p = new URL(request.url).searchParams;
+    const mapelId = p.get('mapel_id') || 'mat';
+    const elemenId = p.get('elemen_id') || p.get('materi_id') || 'bil_aljabar';
+    const materi = p.get('materi_id') || 'Bilangan dan Aljabar';
     await d(500);
-    return HttpResponse.json([]); // Kosong di mock — konten baru muncul setelah guru publish
+    // Simulasi bank konten yang sudah dipublish guru untuk semua level
+    const LEVELS = ['Low', 'Mid', 'High'];
+    return HttpResponse.json(LEVELS.map(lv => ({
+      publish_id: `pub_${mapelId}_${elemenId}_${lv}_mock`,
+      mapel_id: mapelId,
+      elemen_id: elemenId,
+      elemen_label: materi,
+      materi: materi,
+      level: lv,
+      published_at: new Date(Date.now() - 86400000).toISOString(),
+      konten_list: [
+        // Flashcard — cards kosong → ChatSection pakai getConfContent() lokal
+        { tipe: 'flashcard', level: lv, content: { cards: [] } },
+        // Mindmap — content kosong → ChatSection pakai getConfContent() lokal
+        { tipe: 'mindmap', level: lv, content: { content: '' } },
+        // Bacaan — semua tipe tersedia, langsung 'generated: true'
+        { tipe: 'bacaan', level: lv, content: { content: '' } },
+        { tipe: 'quiz_pg', level: lv, content: { content: '' } },
+        { tipe: 'quiz_essay', level: lv, content: { content: '' } },
+      ],
+    })));
   }),
 
   // GET /content/progress
@@ -398,21 +424,44 @@ export const handlers = [
 
   // POST /content/quiz/submit
   // Body: { siswa_id, mapel_id, materi, materi_id, quiz_type, level, answers, score }
+  // FIX 2c: quiz_type 'pretest' juga didukung — backend Tim 3 catat untuk RAG
   http.post(url('/content/quiz/submit'), async ({ request }) => {
-    const { score } = await request.json();
+    const { score, quiz_type, materi_id } = await request.json();
     await d(300);
-    return HttpResponse.json({ submitted: true, score, recorded_at: nowISO() });
+    return HttpResponse.json({
+      submitted: true, score: score ?? 0,
+      quiz_type: quiz_type || 'mc',
+      materi_id: materi_id || '',
+      recorded_at: nowISO(),
+    });
   }),
 
   // GET /content/recommend
-  // Params: { siswa_id, mapel_id? }
-  http.get(url('/content/recommend'), async () => {
+  // Params: { siswa_id, mapel_ids? (comma-separated selectedMapels) }
+  // FIX: kembalikan [] jika tidak ada info mapel → frontend fallback ke buildRekomendasiAwal
+  // Saat backend Tim 3 live, RAG yang tentukan rekomendasi berdasarkan aktivitas siswa
+  http.get(url('/content/recommend'), async ({ request }) => {
+    const p = new URL(request.url).searchParams;
+    const mapelIds = (p.get('mapel_ids') || '').split(',').filter(Boolean);
     await d(500);
-    return HttpResponse.json([
-      { mapel_id: 'mat', materi: 'Fungsi Kuadrat', materi_id: 'mat__fungsi_kuadrat', elemen_id: 'bil_aljabar', elemen_label: 'Bilangan & Aljabar', alasan: 'Lanjutan dari Persamaan Linear yang sudah selesai' },
-      { mapel_id: 'bio', materi: 'Ekosistem', materi_id: 'bio__ekosistem', elemen_id: 'makhluk_hidup', elemen_label: 'Makhluk Hidup & Alam', alasan: 'Relevan dengan materi Sel & Jaringan yang sedang dipelajari' },
-      { mapel_id: 'bin', materi: 'Teks Argumentasi', materi_id: 'bin__teks_argumentasi', elemen_id: 'menulis', elemen_label: 'Menulis', alasan: 'Direkomendasikan berdasarkan profil minat siswa' },
-    ]);
+    // Jika tidak ada mapel_ids (siswa baru / belum aktivasi) → kembalikan []
+    // Frontend akan pakai buildRekomendasiAwal(selectedMapels) sebagai fallback
+    if (!mapelIds.length) return HttpResponse.json([]);
+    // Kembalikan rekomendasi yang konsisten dengan mapel pilihan siswa
+    // Menggunakan elemen & materi pertama per mapel — sama dengan buildRekomendasiAwal
+    // sehingga tidak ada inkonsistensi nama antara rekomendasi API dan progressData
+    const REKOM_MAP = {
+      mat: { mapel_id: 'mat', materi: 'Operasi Bilangan Bulat dan Pecahan', materi_id: 'mat__op_bilangan', elemen_id: 'bil_aljabar', elemen_label: 'Bilangan dan Aljabar', alasan: 'Fondasi utama matematika yang perlu dikuasai lebih dulu' },
+      bio: { mapel_id: 'bio', materi: 'Sel dan Organel Sel', materi_id: 'bio__sel', elemen_id: 'pemahaman_bio', elemen_label: 'Pemahaman Biologi', alasan: 'Konsep dasar Biologi yang menjadi dasar topik lanjutan' },
+      fis: { mapel_id: 'fis', materi: 'Besaran dan Satuan Fisika', materi_id: 'fis__besaran', elemen_id: 'pemahaman_fis', elemen_label: 'Pemahaman Fisika', alasan: 'Titik awal yang tepat untuk memahami Fisika secara sistematis' },
+      kim: { mapel_id: 'kim', materi: 'Struktur Atom', materi_id: 'kim__atom', elemen_id: 'pemahaman_kim', elemen_label: 'Pemahaman Kimia', alasan: 'Fondasi utama kimia modern' },
+      mat_w: { mapel_id: 'mat_w', materi: 'Statistika Dasar', materi_id: 'mat_w__statistika', elemen_id: 'statistika', elemen_label: 'Statistika', alasan: 'Materi yang relevan dengan kebutuhan sehari-hari' },
+      bin: { mapel_id: 'bin', materi: 'Teks Deskripsi', materi_id: 'bin__deskripsi', elemen_id: 'membaca', elemen_label: 'Membaca', alasan: 'Dasar literasi yang penting untuk semua mata pelajaran' },
+      pai: { mapel_id: 'pai', materi: 'Akidah Islam', materi_id: 'pai__akidah', elemen_id: 'akidah', elemen_label: 'Akidah', alasan: 'Fondasi pemahaman agama yang kuat' },
+    };
+    return HttpResponse.json(
+      mapelIds.slice(0, 3).map(id => REKOM_MAP[id]).filter(Boolean)
+    );
   }),
 
   // ════════════════════════════════════════════════════════════════════

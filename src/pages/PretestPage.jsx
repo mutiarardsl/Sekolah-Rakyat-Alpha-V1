@@ -24,6 +24,7 @@ import {
   KURIKULUM_ELEMEN,
 } from '../data/masterData';
 import { useStudentStore } from '../stores/studentStore';
+import { submitQuiz } from '../api/content'; // FIX 2: submit hasil pretest ke API
 
 const MAPEL_LIST = ADMIN_MAPEL_LIST.filter(m => KURIKULUM[m.id]);
 const SOAL_PER_ELEMEN = 5;
@@ -151,19 +152,35 @@ export default function PretestPage() {
     return { benar, total: soalList.length };
   };
 
-  const handleMulaiBelajar = () => {
+  const handleMulaiBelajar = async () => {
     const { benar, total } = computeResult();
     const level = hitungLevel(benar, total);
+    const score = total > 0 ? Math.round((benar / total) * 100) : 0;
 
+    // FIX 2b: simpan hasil pretest ke store lokal
     if (isMateriLevel && targetMateriId) {
-      // Pretest untuk materi spesifik
       markPretestMateriDone(targetMapelId, targetElemenId, targetMateriId, level);
     } else {
-      // Pretest untuk elemen (elemen tanpa breakdown materi)
       markPretestElemenDone(targetMapelId, targetElemenId, level);
     }
 
-    // Kembali ke StudentView — kirim signal untuk langsung buka ATPCamModal
+    // FIX 2b: submit hasil pretest ke API (POST /content/quiz/submit)
+    // Pretest diperlakukan sebagai quiz_type 'pretest' — backend Tim 3 catat untuk RAG
+    // Fire-and-forget: tidak block navigasi jika API gagal
+    submitQuiz({
+      siswa_id: 'usr_001',
+      mapel_id: targetMapelId,
+      materi: targetElemenLabel || targetElemenId,
+      materi_id: isMateriLevel ? targetMateriId : targetElemenId,
+      quiz_type: 'pretest',
+      level: level.charAt(0).toUpperCase() + level.slice(1),
+      answers: Object.fromEntries(
+        soalList.map((s, idx) => [soalKey(s, idx), String(answers[soalKey(s, idx)] ?? '')])
+      ),
+      score,
+    }).catch(() => { /* silent — pretest tetap lanjut */ });
+
+    // Navigasi ke StudentView
     navigate('/siswa', {
       replace: true,
       state: {
@@ -235,18 +252,6 @@ export default function PretestPage() {
                 </div>
               </div>
             </div>
-
-            {/* Self-assessment notice */}
-            {hasFallback && (
-              <div style={{
-                background: '#FFFBF0', border: '1.5px solid #F6AD55', borderRadius: 10,
-                padding: '8px 14px', marginBottom: 14,
-                fontSize: FS.sm, color: '#B7791F', display: 'flex', alignItems: 'center', gap: 7,
-              }}>
-                <span>📋</span>
-                <span>Pilih jawaban yang paling sesuai kemampuanmu.</span>
-              </div>
-            )}
 
             {/* Progress bar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>

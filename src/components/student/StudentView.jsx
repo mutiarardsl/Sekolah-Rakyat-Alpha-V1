@@ -247,7 +247,7 @@ const StudentView = () => {
   /* ── Content / quiz state ───────────────────────────────────── */
   const [confContent, setConfContent] = useState(CONF_CONTENT_INIT);
   const [confOverlay, setConfOverlay] = useState(null);
-  const [confGenerating, setConfGenerating] = useState(false);
+  // confGenerating dihapus — tidak ada generate on-demand, konten dari bank guru
   const [flashIdx, setFlashIdx] = useState(0);
   const [flashFlipped, setFlashFlipped] = useState(false);
   const [quizActive, setQuizActive] = useState(false);
@@ -376,7 +376,6 @@ const StudentView = () => {
   const navItems = [
     { id: 'dashboard', icon: '🏠', label: 'Dashboard' },
     { id: 'progress', icon: '📈', label: 'Progress' },
-    { id: 'profile', icon: '👤', label: 'Profil' },
   ];
 
   // Bottom nav item for mobile chat access (chat ditampilkan sebagai page penuh)
@@ -390,7 +389,7 @@ const StudentView = () => {
     chatMateri, setChatMateri,
     msgsByKey, setMsgsByKey,
     input, setInput, typing, setTyping,
-    confContent, setConfContent, confOverlay, setConfOverlay, confGenerating, setConfGenerating,
+    confContent, setConfContent, confOverlay, setConfOverlay,
     flashIdx, setFlashIdx, flashFlipped, setFlashFlipped,
     quizActive, setQuizActive, quizAnswers, setQuizAnswers, quizSubmitted, setQuizSubmitted,
     progressData, setProgressData,

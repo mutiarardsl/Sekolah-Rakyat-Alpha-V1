@@ -11,7 +11,7 @@ import { C, FONTS, FS } from '../../../styles/tokens';
 import { Card, EmptyState } from '../../shared/UI';
 import { getMentorInsight } from '../../../api/mentor'; // FIX ①: pakai api/mentor bukan fetch() langsung
 import { getRekomendasiSiswa, } from '../../../api/admin'; // FIX P1: load notifikasi bell dari backend
-import { getLearningProgress } from '../../../api/content'; // FIX P3: progress real dari backend
+import { getLearningProgress, getRecommendations } from '../../../api/content'; // FIX P3 + rekomendasi API
 import {
   STUDENTS,
   ADMIN_MAPEL_LIST,
@@ -675,6 +675,62 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
       .catch(() => { /* silent */ });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // selectedMapels dari store — harus dideklarasikan SEBELUM useEffect yang memakainya
+  const selectedMapels = useStudentStore(s => s.selectedMapels);
+
+  // Rekomendasi dari API — 3 sumber prioritas:
+  //   1. pretestResult.wrongTopics (paling relevan)
+  //   2. GET /content/recommend dengan mapel_ids → RAG Tim 3
+  //   3. buildRekomendasiAwal(selectedMapels) → fallback lokal
+  //
+  // FIX flash: tidak ada useState(null) → rekomAwal tampil langsung tanpa flash.
+  // FIX first-login: jika selectedMapels kosong → skip API → rekomAwal dipakai.
+  // FIX konsistensi: kirim mapel_ids ke API, resolve label dari masterData.
+  const [apiRekom, setApiRekom] = useState(null);
+  useEffect(() => {
+    if (!selectedMapels || selectedMapels.length === 0) return;
+    let active = true;
+    getRecommendations({
+      siswa_id: CURRENT_STUDENT_ID,
+      mapel_ids: selectedMapels.join(','),
+    })
+      .then(data => {
+        if (!active || !Array.isArray(data) || !data.length) return;
+        const normalized = data.map((r, i) => {
+          const mapelId = r.mapel_id;
+          const mapelMeta = MAPEL_LIST_ALL.find(m => m.id === mapelId) || {};
+          const elemenList = KURIKULUM_ELEMEN[mapelId] || [];
+          const elemenMatch = elemenList.find(e => e.id === r.elemen_id) || elemenList[0]
+            || { id: r.elemen_id || mapelId, label: r.elemen_label || mapelId };
+          const elemenId = elemenMatch.id;
+          const elemenLbl = elemenMatch.label;
+          const materiList = (MATERI_PER_ELEMEN?.[mapelId]?.[elemenId]) || [];
+          const isMateriLevel = materiList.length > 0;
+          const materiMatch = materiList.find(
+            m => m.toLowerCase() === (r.materi || '').toLowerCase()
+          );
+          const materiId = materiMatch || r.materi || elemenLbl;
+          return {
+            id: `rekom_api_${i}`,
+            mapelId,
+            mapelLabel: mapelMeta.label || mapelId,
+            mapelIcon: mapelMeta.icon || '📚',
+            mapelColor: mapelMeta.color || C.teal,
+            elemenId,
+            elemenLabel: elemenLbl,
+            materiId,
+            isMateriLevel,
+            targetMateriId: isMateriLevel ? materiId : null,
+            alasan: r.alasan || 'Direkomendasikan untuk kamu',
+            tag: i === 0 ? '⭐ Rekomendasi' : '📝 Coba Ini',
+          };
+        });
+        setApiRekom(normalized);
+      })
+      .catch(() => { });
+    return () => { active = false; };
+  }, [selectedMapels.join(',')]); // re-fetch jika selectedMapels berubah (setelah aktivasi)
+
   // Prioritas kalkulasi lokal (dari masterData/store) — API hanya fallback jika lokal benar-benar kosong
   const localQuizScore = (studentData?.riwayat || []).reduce((sum, r) => {
     const score = r.quizTotal > 0 ? Math.round((r.quiz / r.quizTotal) * 100) : 0;
@@ -710,8 +766,11 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
     return top ? top[0] : null;
   })();
 
-  /* Bangun daftar rekomendasi */
-  const { selectedMapels } = useStudentStore();
+  /* Bangun daftar rekomendasi — FIX 1: 3 sumber dengan prioritas jelas
+   * 1. wrongTopics dari pretest (paling relevan — siswa baru selesai pretest)
+   * 2. apiRekom dari GET /content/recommend (RAG Tim 3 — berdasarkan aktivitas)
+   * 3. buildRekomendasiAwal(selectedMapels) — fallback saat pertama login / API kosong
+   */
   const rekomAwal = buildRekomendasiAwal(selectedMapels);
   const rekomList = (pretestResult?.wrongTopics?.length > 0)
     ? pretestResult.wrongTopics.slice(0, 3).map((wt, i) => ({
@@ -721,7 +780,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
         : `${wt.materiId} perlu penguatan. Mulai dari konsep dasar untuk fondasi yang kuat.`,
       tag: i === 0 ? '⚡ Prioritas' : '📝 Perlu Latihan',
     }))
-    : rekomAwal;
+    : (apiRekom ?? rekomAwal);
 
   const ACTIVITY_LIMIT = 10;  // batas tampil aktivitas terbaru sebelum expand
 

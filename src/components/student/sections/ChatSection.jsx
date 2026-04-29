@@ -23,7 +23,8 @@ import QuizModal, { getQuizV2 } from './QuizModal';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 // FIX P0: sambungkan ke API Mentor (Tim 5) dan Content (Tim 3)
 import { sendMessage, streamMessage, getChatHistory, resetSession } from '../../../api/mentor';
-import { generateContent } from '../../../api/content';
+import { getKontenSiswa } from '../../../api/content'; // bank konten guru — sudah ada, tinggal ambil
+// FIX 4: getKontenSiswa → prefetch bank konten guru saat topik dibuka
 
 // Flag dari .env:
 //   VITE_MENTOR_STREAM : true → stream token-per-token, false → tunggu full response
@@ -537,7 +538,7 @@ const ChatSection = ({
   chatMateri, setChatMateri,
   msgsByKey, setMsgsByKey,
   input, setInput, typing, setTyping,
-  confContent, setConfContent, confOverlay, setConfOverlay, confGenerating, setConfGenerating,
+  confContent, setConfContent, confOverlay, setConfOverlay,
   flashIdx, setFlashIdx, flashFlipped, setFlashFlipped,
   quizActive, setQuizActive, quizAnswers, setQuizAnswers, quizSubmitted, setQuizSubmitted,
   progressData, setProgressData,
@@ -1020,6 +1021,57 @@ const ChatSection = ({
         })();
       }
       setSubMateri(chatMateri.materiId);
+
+      // FIX 4b: prefetch bank konten dari guru (GET /content/siswa)
+      // Sistem bank konten: guru sudah publish semua jenis konten per elemen/level
+      // → RAG tinggal ambil, siswa tidak perlu tunggu generating saat klik
+      // Hanya fetch jika belum ada konten untuk topik ini di confContent
+      const topikKeyForConf = makeKey(chatMateri.mapelId, chatMateri.materiId);
+      (async () => {
+        try {
+          const bank = await getKontenSiswa({
+            siswa_id: chatMateri.siswaId || 'usr_001',
+            mapel_id: chatMateri.mapelId,
+            materi_id: chatMateri.materiId,
+            elemen_id: chatMateri.elemenId || chatMateri.materiId,
+          });
+          if (!Array.isArray(bank) || !bank.length) return;
+
+          // Ambil paket konten untuk elemen/materi yang sedang dibuka
+          const paket = bank.find(p =>
+            p.elemen_id === (chatMateri.elemenId || chatMateri.materiId) ||
+            p.materi === chatMateri.materiId
+          );
+          if (!paket?.konten_list?.length) return;
+
+          // Bangun confContent dari bank konten guru
+          // konten_list: [{ tipe, level, content }]
+          setConfContent(prev => {
+            const existing = prev[topikKeyForConf] || {};
+            const updated = { ...existing };
+            paket.konten_list.forEach(item => {
+              const key = item.tipe; // 'flashcard' | 'mindmap' | 'quiz_pg' | 'quiz_essay' | 'bacaan'
+              if (!updated[key]?.generated) {
+                const localBase = getConfContent(
+                  chatMateri.materiId, chatMateri.mapelLabel
+                )[key] || {};
+                updated[key] = {
+                  ...localBase,
+                  generated: true, // tandai sudah ada — tombol tampil 'Lihat' bukan 'Buat'
+                  // Override konten dari bank jika tidak kosong
+                  ...(item.tipe === 'flashcard' && Array.isArray(item.content?.cards) && item.content.cards.length
+                    ? { cards: item.content.cards } : {}),
+                  ...(item.tipe === 'mindmap' && item.content?.content
+                    ? { text: item.content.content } : {}),
+                  ...(item.tipe === 'bacaan' && item.content?.content
+                    ? { text: item.content.content } : {}),
+                };
+              }
+            });
+            return { ...prev, [topikKeyForConf]: updated };
+          });
+        } catch { /* silent — konten lokal dari getConfContent dipakai jika bank kosong */ }
+      })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camGranted, chatMateri?.mapelId, chatMateri?.materiId]);
@@ -1150,52 +1202,24 @@ const ChatSection = ({
     }
   };
 
-  /* ── Generate Format Konten — selalu panggil generateContent (MSW intercept jika aktif) ── */
-  const generateConf = async (type) => {
-    setConfGenerating(true);
-    // FIX: selalu panggil generateContent — MSW intercept jika VITE_USE_MSW=true
-    // Struktur lokal sebagai base, API hanya override text/cards jika ada & tidak kosong
-    // sehingga mindmap tidak pernah kosong meskipun API kembalikan konten parsial.
-    try {
-      const siswaId = chatMateri?.siswaId || 'usr_001';
-      const currentEmosi = useStudentStore.getState().currentEmosi || null;
-      const currentLevel = levelMap[activeKey] || chatMateri?.level || 'Low';
-      const levelCapitalized = currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1);
-
-      const res = await generateContent({
-        siswa_id: siswaId,
-        mapel_id: chatMateri?.mapelId || '',
-        materi: chatMateri?.mapelLabel || materiId || '',
-        materi_id: materiId || chatMateri?.mapelId || '',
-        tipe: type,
-        level: levelCapitalized,
-        emosi: currentEmosi,
-      });
-
-      const localFallback = getConfContent(materiId || chatMateri?.mapelLabel, chatMateri?.mapelLabel);
-      const localBase = localFallback[type] || {};
-      const apiContent = res?.content || {};
-
+  /* ── Buka Format Konten — konten sudah ada di bank (prefetch saat topik dibuka) ── */
+  // Tidak ada generate on-demand lagi. Jika konten belum ada di confContent
+  // (bank kosong / prefetch gagal), fallback ke getConfContent() lokal.
+  const openConf = (type) => {
+    // Pastikan ada konten di confContent[activeKey][type] sebelum buka modal
+    const kConf = confContent[activeKey] || {};
+    if (!kConf[type]?.generated) {
+      // Konten belum di-prefetch — pakai lokal sebagai fallback
+      const fallback = getConfContent(materiId || chatMateri?.mapelLabel, chatMateri?.mapelLabel);
       setConfContent(p => ({
         ...p,
         [activeKey]: {
           ...(p[activeKey] || {}),
-          [type]: {
-            ...localBase,
-            generated: true,
-            ...(type === 'mindmap' && apiContent.content ? { text: apiContent.content } : {}),
-            ...(type === 'flashcard' && Array.isArray(apiContent.cards) && apiContent.cards.length > 0
-              ? { cards: apiContent.cards } : {}),
-          },
+          [type]: { ...(fallback[type] || {}), generated: true },
         },
       }));
-    } catch {
-      // Fallback ke konten lokal jika API Tim 3 belum siap
-      const fallback = getConfContent(materiId || chatMateri?.mapelLabel, chatMateri?.mapelLabel);
-      setConfContent(p => ({ ...p, [activeKey]: { ...(p[activeKey] || {}), [type]: fallback[type] } }));
-    } finally {
-      setConfGenerating(false);
     }
+    setConfModal({ type });
   };
 
   /* ── Submit Quiz (dipanggil oleh QuizModal via prop onSubmit) ── */
@@ -2163,7 +2187,7 @@ const ChatSection = ({
                 {/* Header */}
                 <div style={{
                   padding: '12px 14px',
-                  background: ct.color,
+                  background: chatMateri.mapelColor,
                   display: 'flex', alignItems: 'center', gap: 8,
                   flexShrink: 0,
                 }}>
@@ -2185,25 +2209,15 @@ const ChatSection = ({
 
                 {/* Body — scrollable */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px' }}>
-                  {confGenerating ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 16 }}>
-                      <div style={{ width: 36, height: 36, border: `4px solid ${ct.bgLight}`, borderTopColor: ct.color, borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
-                      <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark }}>Generating {ct.label}...</div>
-                      <div style={{ fontSize: FS.sm, color: C.slate }}>sedang menyusun konten</div>
-                    </div>
-                  ) : !data?.generated ? (
-                    <div style={{ textAlign: 'center', padding: '40px 0', color: C.slate }}>
-                      <div style={{ fontSize: 36, marginBottom: 10 }}>{ct.icon}</div>
-                      <div style={{ fontSize: 13 }}>Klik "Generate Ulang" untuk membuat {ct.label}</div>
-                    </div>
-                  ) : (
+                  {/* Konten sudah ada dari bank guru (prefetch saat topik dibuka) */}
+                  {(
                     <>
                       {ct.type === 'mindmap' && (
-                        <MindMapView tree={data.tree} color={ct.color} bgLight={ct.bgLight} materiId={materiId} />
+                        <MindMapView tree={data.tree} color={ct.color} bgLight={`${ct.color}18`} materiId={materiId} />
                       )}
                       {ct.type === 'flashcard' && data.cards && (
                         <FlashcardView
-                          cards={data.cards} color={ct.color} bgLight={ct.bgLight} materiId={materiId}
+                          cards={data.cards} color={ct.color} bgLight={`${ct.color}18`} materiId={materiId}
                           flashIdx={flashIdx} setFlashIdx={setFlashIdx}
                           flashFlipped={flashFlipped} setFlashFlipped={setFlashFlipped}
                         />
@@ -2227,15 +2241,12 @@ const ChatSection = ({
                     const done_ = kConf[ct.type]?.generated;
                     return (
                       <button key={ct.type}
-                        onClick={() => { if (!materiId) return; if (!done_) generateConf(ct.type); setConfModal({ type: ct.type }); }}
+                        onClick={() => { if (!materiId) return; openConf(ct.type); }}
                         disabled={!materiId}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${done_ ? ct.color : C.tealXL}`, cursor: materiId ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: done_ ? ct.bgLight : C.white, color: done_ ? ct.color : C.slate, fontSize: FS.md, fontWeight: 700, textAlign: 'left', transition: 'all .2s', opacity: materiId ? 1 : .5 }}>
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 9, border: `1.5px solid ${done_ ? ct.color : ct.color}`, cursor: materiId ? 'pointer' : 'not-allowed', fontFamily: 'inherit', background: done_ ? `${ct.color}18` : C.white, color: done_ ? ct.color : C.slate, fontSize: FS.md, fontWeight: 700, textAlign: 'left', transition: 'all .2s', opacity: materiId ? 1 : .5 }}>
                         <span style={{ fontSize: 15 }}>{ct.icon}</span>
                         <span style={{ flex: 1 }}>{ct.label}</span>
-                        {done_
-                          ? <span style={{ fontSize: FS.xs, opacity: .8 }}>Lihat</span>
-                          : <span style={{ fontSize: FS.xs, color: C.tealL }}>Buat</span>
-                        }
+                        <span style={{ fontSize: FS.xs, opacity: .8 }}>Lihat</span>
                       </button>
                     );
                   })}
@@ -2263,8 +2274,8 @@ const ChatSection = ({
                   style={{
                     width: '100%', padding: '9px 0', borderRadius: 9,
                     border: `1.5px solid ${materiId ? chatMateri.mapelColor : C.tealXL}`,
-                    background: materiId ? `${chatMateri.mapelColor}10` : C.bg,
-                    color: materiId ? chatMateri.mapelColor : C.slate,
+                    background: materiId ? `${chatMateri.color}10` : C.bg,
+                    color: materiId ? chatMateri.color : C.slate,
                     fontSize: FS.md, fontWeight: 700, cursor: materiId ? 'pointer' : 'not-allowed',
                     fontFamily: 'inherit', transition: 'all .2s',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,

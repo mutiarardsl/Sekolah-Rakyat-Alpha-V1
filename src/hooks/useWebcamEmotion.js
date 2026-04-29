@@ -13,13 +13,18 @@ import { useState, useRef, useCallback } from "react";
 import { detectEmotion } from "../api/emotion";
 
 const CAPTURE_INTERVAL_MS = 5000; // kirim frame setiap 5 detik
-const USE_REAL_API = import.meta.env.VITE_EMOTION_API === "true";
+// FIX 3: kirim ke API jika:
+//   VITE_EMOTION_API=true  → backend Tim 1 live
+//   VITE_USE_MSW=true      → MSW intercept /emotion/detect → selalu dapat response
+// Dummy mode hanya jika kedua flag false (offline total)
+const USE_REAL_API = import.meta.env.VITE_EMOTION_API === 'true'
+  || import.meta.env.VITE_USE_MSW === 'true';
 
 // Dummy emosi siklus untuk Fase 2 (sebelum Tim 1 selesai)
 const DUMMY_EMOTIONS = ["antusias", "bosan", "bingung", "frustrasi", "antusias"];
 let dummyEmoIdx = 0;
 
-export function useWebcamEmotion(siswaId) {
+export function useWebcamEmotion(siswaId, sessionId = null) {
   const [permitted, setPermitted] = useState(false);
   const [micPermitted, setMicPermitted] = useState(false);
   const [emosi, setEmosi] = useState(null);
@@ -88,7 +93,12 @@ export function useWebcamEmotion(siswaId) {
       const frame = captureFrame();
       if (!frame) return;
       try {
-        const res = await detectEmotion({ siswa_id: siswaId, frame_base64: frame });
+        // FIX 3c: sertakan session_id agar Tim 1 bisa korelasikan emosi per sesi belajar
+        const res = await detectEmotion({
+          siswa_id: siswaId,
+          frame_base64: frame,
+          ...(sessionId ? { session_id: sessionId } : {}),
+        });
         setEmosi(res.emosi);
         setConfidence(res.confidence);
       } catch {
