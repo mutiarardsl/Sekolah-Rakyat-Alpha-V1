@@ -973,7 +973,7 @@ export const DUMMY_ACCOUNTS = [
   //  t3 · Ratna   → 1 mapel (bin), BELUM ganti password → force change password muncul
   { id: 't3', email: 'ratna@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Ibu Ratna, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'IR', avatarBg: 'linear-gradient(135deg,#805AD5,#9B72DB)', is_first_login: true },
   //  t4 · Yoga    → multi-mapel (eko/sos), sudah login sebelumnya
-  { id: 't4', email: 'yoga@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Bpk. Yoga, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'BY', avatarBg: 'linear-gradient(135deg,#276749,#48BB78)', is_first_login: false },
+  { id: 't4', email: 'yoga@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Bpk. Yoga, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'BY', avatarBg: 'linear-gradient(135deg,#276749,#48BB78)', is_first_login: true },
 
   // ── Admin ──────────────────────────────────────────────────────────────────
   { id: 'a1', email: 'admin@sr.id', password: 'admin123', role: 'admin', nama: 'Admin Sekolah Rakyat', sekolah_id: 'sr_malang_001', avatar: 'AD' },
