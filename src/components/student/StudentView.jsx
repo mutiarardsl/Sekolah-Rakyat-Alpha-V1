@@ -4,7 +4,6 @@
  *
  * Perubahan:
  *  - Kamera: camGranted state dikelola di sini, di-reset saat buka chat baru
- *  - recentActivity + addRecentActivity → diteruskan ke Dashboard & Chat
  *  - openChatWithWebcam: dipakai oleh "Mulai Belajar" & "Lanjutkan"
  *    → set chatMateri + reset camGranted → navigasi ke chat
  *  - Hapus showCamModal (modal kamera sekarang inside ChatSection)

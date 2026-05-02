@@ -81,7 +81,7 @@ const getLastTopicPerMapel = (progressData) => {
   const items = Object.values(byKey);
   // Kembalikan 4 terbaru — dibalik karena addRecentActivity prepend (terbaru di index 0)
   // progressData entries tidak punya timestamp eksplisit, gunakan posisi array (belakang = terbaru)
-  return items.slice(-4).reverse();
+  return items.slice(-5).reverse();
 };
 
 /* ── Status helper ──────────────────────────────────────────────────────── */
@@ -662,9 +662,6 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
   const { user } = useAuth();
   const CURRENT_STUDENT_ID = user?.id || null;
 
-  // Ambil aktivitas terbaru langsung dari store (persisten)
-  const recentActivity = useStudentStore(s => s.recentActivity);
-
   /* ── Ambil data siswa untuk KPI & AI Insight ── */
   // Prioritas: gunakan data dari AuthContext (real-time) dan fallback ke STUDENTS master data
   const studentDataFromMaster = STUDENTS?.find(s => s.id === CURRENT_STUDENT_ID);
@@ -774,8 +771,6 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
       tag: i === 0 ? '⚡ Prioritas' : '📝 Perlu Latihan',
     }))
     : rekomAwal;
-
-  const ACTIVITY_LIMIT = 10;  // batas tampil aktivitas terbaru sebelum expand
 
   return (
     <div style={{ overflowY: 'auto', height: '100%', width: '100%', padding: 'var(--content-py, 20px) var(--content-px, 22px)', background: C.bg }}>
@@ -916,75 +911,6 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
             sub="Mulai belajar dari rekomendasi di atas atau pilih mata pelajaran di menu Progress"
           />
         )}
-      </div>
-
-      {/* ── Aktivitas Terbaru ── */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark }}>
-            📋 Aktivitas Terbaru
-          </div>
-          {recentActivity.length > ACTIVITY_LIMIT && (
-            <button onClick={() => setShowAllActivity(v => !v)}
-              style={{ background: 'none', border: 'none', fontSize: FS.sm, color: C.teal, fontWeight: 700, cursor: 'pointer' }}>
-              {showAllActivity ? 'Sembunyikan ▲' : `Lihat semua (${recentActivity.length}) ▼`}
-            </button>
-          )}
-        </div>
-        <Card style={{ padding: '4px 0', overflow: 'hidden' }}>
-          {(() => {
-            const displayed = showAllActivity ? recentActivity : recentActivity.slice(0, ACTIVITY_LIMIT);
-            return displayed.map((act, i) => {
-              const lvl = act.level || null;
-              const lvlMeta = lvl
-                ? ({ low: { label: 'Low', color: '#276749', bg: '#F0FFF4', border: '#9AE6B4' }, mid: { label: 'Mid', color: '#B7791F', bg: '#FFFBF0', border: '#F6AD55' }, high: { label: 'High', color: '#9B2C2C', bg: '#FFF5F5', border: '#FEB2B2' } }[lvl] || null)
-                : null;
-              return (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '11px 16px',
-                  borderBottom: i < displayed.length - 1 ? `1px solid ${C.tealXL}` : 'none',
-                }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 10, background: `${act.mapelColor}18`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h2, flexShrink: 0
-                  }}>
-                    {act.type === 'game' ? '🎮' : act.type === 'quiz' ? '📝' : act.mapelIcon}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: FS.md, fontWeight: 600, color: C.dark, lineHeight: 1.4 }}>{act.label}</span>
-                      {lvlMeta && (
-                        <span style={{
-                          fontSize: FS.xs, padding: '1px 7px', borderRadius: 99, fontWeight: 700,
-                          background: lvlMeta.bg, color: lvlMeta.color, border: `1px solid ${lvlMeta.border}`,
-                          flexShrink: 0,
-                        }}>
-                          Lv.{lvlMeta.label}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>{fmtWaktuRelatif(act.ts)}</div>
-                  </div>
-                </div>
-              );
-            });
-          })()}
-          {recentActivity.length === 0 && (
-            <EmptyState icon="📖" title="Belum ada aktivitas" sub="Ayo mulai belajar!" style={{ fontSize: FS.md, padding: '24px' }} />
-          )}
-          {!showAllActivity && recentActivity.length > ACTIVITY_LIMIT && (
-            <div
-              onClick={() => setShowAllActivity(true)}
-              style={{ padding: '10px 16px', textAlign: 'center', fontSize: FS.sm, color: C.teal, fontWeight: 700, cursor: 'pointer', borderTop: `1px solid ${C.tealXL}` }}
-              onMouseEnter={e => e.currentTarget.style.background = `${C.teal}06`}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-            >
-              + {recentActivity.length - ACTIVITY_LIMIT} aktivitas lainnya ▼
-            </div>
-          )}
-
-        </Card>
       </div>
     </div>
   );
