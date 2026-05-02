@@ -399,7 +399,7 @@ export const TEACHERS = [
   // t4: multi-mapel (eko/sos/geo), bukan first login
   {
     id: "t4", name: "Bpk. Yoga, S.Pd.", initials: "BY",
-    mapelId: ["eko", "sos", "geo"],
+    mapelId: ["eko", "sos"],
     bg: `linear-gradient(135deg,${C.green},#48BB78)`,
     isFirstLogin: false,
   },
@@ -803,7 +803,7 @@ export const ADMIN_GURU_INIT = [
   { id: "g1", nama: "Bpk. Hendra, M.Pd.", nip: "198205152008011005", email: "hendra@sr-malang.sch.id", mapelId: ["mat"], kelasId: ["x1", "x2", "x3"], bergabung: "Agustus 2022", status: "Aktif", avatar: "BH", avatarBg: `linear-gradient(135deg,#0D5C63,#1A8A94)` },
   { id: "g2", nama: "Sri Dewi, S.Pd.", nip: "197911222005012003", email: "dewi@sr-malang.sch.id", mapelId: ["bio", "fis", "kim"], kelasId: ["x1", "x2"], bergabung: "Januari 2021", status: "Aktif", avatar: "SD", avatarBg: `linear-gradient(135deg,#F4A435,#DD6B20)` },
   { id: "g3", nama: "Ibu Ratna, S.Pd.", nip: "198507102010012009", email: "ratna@sr-malang.sch.id", mapelId: ["bin"], kelasId: ["x1", "x2", "x3"], bergabung: "Juli 2023", status: "Aktif", avatar: "IR", avatarBg: `linear-gradient(135deg,#6B46C1,#9B72DB)` },
-  { id: "g4", nama: "Bpk. Yoga, S.Pd.", nip: "199001152015011002", email: "yoga@sr-malang.sch.id", mapelId: ["eko", "sos", "geo"], kelasId: ["x2", "x3"], bergabung: "Agustus 2023", status: "Aktif", avatar: "BY", avatarBg: `linear-gradient(135deg,#2F855A,#48BB78)` },
+  { id: "g4", nama: "Bpk. Yoga, S.Pd.", nip: "199001152015011002", email: "yoga@sr-malang.sch.id", mapelId: ["eko", "sos"], kelasId: ["x2", "x3"], bergabung: "Agustus 2023", status: "Aktif", avatar: "BY", avatarBg: `linear-gradient(135deg,#2F855A,#48BB78)` },
   { id: "g5", nama: "Ibu Sari, S.Pd.", nip: "198803042012012006", email: "sari@sr-malang.sch.id", mapelId: ["eng"], kelasId: ["x1", "x2", "x3"], bergabung: "Maret 2022", status: "Aktif", avatar: "IS", avatarBg: `linear-gradient(135deg,#2B6CB0,#4299E1)` },
   { id: "g6", nama: "Bpk. Anton, S.Pd.", nip: "198612102014011004", email: "anton@sr-malang.sch.id", mapelId: ["pjok"], kelasId: ["x1", "x2"], bergabung: "Juli 2021", status: "Aktif", avatar: "BA", avatarBg: `linear-gradient(135deg,#C05621,#ED8936)` },
   { id: "g7", nama: "Ibu Wulan, S.Sn.", nip: "199205282016012008", email: "wulan@sr-malang.sch.id", mapelId: ["seni"], kelasId: ["x2", "x3"], bergabung: "Oktober 2024", status: "Aktif", avatar: "IW", avatarBg: `linear-gradient(135deg,#B7791F,#D69E2E)` },
@@ -961,7 +961,7 @@ export const DUMMY_ACCOUNTS = [
   // ── Siswa ──────────────────────────────────────────────────────────────────
   // password temp = SR + NIS; is_first_login = true → wajib aktivasi dulu
   { id: 's2', email: 'dewi@siswa.sr.id', nis: '2025002', password: 'siswa123', role: 'siswa', nama: 'Dewi Rahayu', sekolah_id: 'sr_malang_001', avatar: 'DR', avatarBg: '#1D9E75', is_first_login: true },
-  { id: 's4', email: 'budi@siswa.sr.id', nis: '2025004', password: 'siswa123', role: 'siswa', nama: 'Budi Santoso', sekolah_id: 'sr_malang_001', avatar: 'BS', avatarBg: '#534AB7', is_first_login: false },
+  { id: 's9', email: 'budi@siswa.sr.id', nis: '2025009', password: 'siswa123', role: 'siswa', nama: 'Budi Santoso', sekolah_id: 'sr_malang_001', avatar: 'BS', avatarBg: '#0D5C63', is_first_login: false },
 
   // ── Guru ───────────────────────────────────────────────────────────────────
   // id harus cocok dengan TEACHERS[x].id agar TeacherView bisa lookup by user.id
@@ -972,7 +972,7 @@ export const DUMMY_ACCOUNTS = [
   { id: 't1', email: 'sridewi@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Sri Dewi, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'SD', avatarBg: 'linear-gradient(135deg,#F4A435,#DD6B20)', is_first_login: false },
   //  t3 · Ratna   → 1 mapel (bin), BELUM ganti password → force change password muncul
   { id: 't3', email: 'ratna@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Ibu Ratna, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'IR', avatarBg: 'linear-gradient(135deg,#805AD5,#9B72DB)', is_first_login: true },
-  //  t4 · Yoga    → multi-mapel (eko/sos/geo), sudah login sebelumnya
+  //  t4 · Yoga    → multi-mapel (eko/sos), sudah login sebelumnya
   { id: 't4', email: 'yoga@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Bpk. Yoga, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'BY', avatarBg: 'linear-gradient(135deg,#276749,#48BB78)', is_first_login: false },
 
   // ── Admin ──────────────────────────────────────────────────────────────────

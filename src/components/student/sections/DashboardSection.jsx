@@ -11,7 +11,7 @@ import { C, FONTS, FS } from '../../../styles/tokens';
 import { Card, EmptyState } from '../../shared/UI';
 import { getMentorInsight } from '../../../api/mentor'; // FIX ①: pakai api/mentor bukan fetch() langsung
 import { getRekomendasiSiswa, } from '../../../api/admin'; // FIX P1: load notifikasi bell dari backend
-import { getLearningProgress, getRecommendations } from '../../../api/content'; // FIX P3 + rekomendasi API
+import { getLearningProgress } from '../../../api/content'; // FIX P3
 import {
   STUDENTS,
   ADMIN_MAPEL_LIST,
@@ -20,9 +20,7 @@ import {
   MATERI_PER_ELEMEN,
 } from '../../../data/masterData';
 import { useStudentStore } from '../../../stores/studentStore';
-
-/* ── Siswa yang login (hardcoded Budi Santoso = s9) ── */
-const CURRENT_STUDENT_ID = 's9';
+import { useAuth } from '../../../context/AuthContext';
 
 //bobot 
 const MC_WEIGHT = 0.7;
@@ -195,7 +193,7 @@ const NotifikasiBell = ({ siswaId }) => {
   useEffect(() => {
     (async () => {
       try {
-        const data = await getRekomendasiSiswa({ siswa_id: siswaId || CURRENT_STUDENT_ID });
+        const data = await getRekomendasiSiswa({ siswa_id: siswaId });
         if (Array.isArray(data) && data.length > 0) {
           // Normalise response ke format notif lokal
           setNotifs(data.map(r => ({
@@ -413,9 +411,11 @@ const HeroWithInsight = ({ adminData, totalSesiHours, avgQuiz, topMapel, dominan
   const [loading, setLoading] = useState(false);
   const [displayed, setDisplayed] = useState('');
   const timerRef = useRef(null);
+  const { user: authUser } = useAuth();
 
   const { text: greetText, emoji: greetEmoji } = getGreeting();
-  const firstName = (adminData?.nama || 'Budi Santoso').split(' ')[0];
+  // Gunakan nama dari AuthContext (real-time) → fallback ke adminData → fallback default
+  const firstName = (authUser?.nama || adminData?.nama || 'Siswa').split(' ')[0];
   const tanggal = new Date().toLocaleDateString('id-ID', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
@@ -441,8 +441,8 @@ const HeroWithInsight = ({ adminData, totalSesiHours, avgQuiz, topMapel, dominan
       setLoading(true);
       try {
         const result = await getMentorInsight({
-          siswa_id: CURRENT_STUDENT_ID,
-          nama: adminData?.nama || 'Siswa',
+          siswa_id: authUser?.id,
+          nama: authUser?.nama || adminData?.nama || 'Siswa',
           top_mapel: topMapel || null,
           emosi_dominan: dominantEmosi || null,
           total_jam: totalSesiHours,
@@ -468,7 +468,7 @@ const HeroWithInsight = ({ adminData, totalSesiHours, avgQuiz, topMapel, dominan
 
       {/* Bell ditaruh di LUAR hero (di atas, absolute pojok kanan) agar bebas dari overflow:hidden */}
       <div style={{ position: 'absolute', top: 14, right: 16, zIndex: 20 }}>
-        <NotifikasiBell siswaId={CURRENT_STUDENT_ID} />
+        <NotifikasiBell siswaId={authUser?.id} />
       </div>
 
       {/* Hero card — overflow:hidden hanya mempengaruhi konten di dalamnya */}
@@ -658,11 +658,20 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
   const mapelProgress = getLastTopicPerMapel(progressData);
   const [showAllActivity, setShowAllActivity] = useState(false);
 
+  // Ambil user yang sedang login (dinamis)
+  const { user } = useAuth();
+  const CURRENT_STUDENT_ID = user?.id || null;
+
   // Ambil aktivitas terbaru langsung dari store (persisten)
   const recentActivity = useStudentStore(s => s.recentActivity);
 
   /* ── Ambil data siswa untuk KPI & AI Insight ── */
-  const studentData = STUDENTS?.find(s => s.id === CURRENT_STUDENT_ID);
+  // Prioritas: gunakan data dari AuthContext (real-time) dan fallback ke STUDENTS master data
+  const studentDataFromMaster = STUDENTS?.find(s => s.id === CURRENT_STUDENT_ID);
+  // Merge: user dari auth (nama, email, dll) + riwayat dari master data
+  const studentData = CURRENT_STUDENT_ID
+    ? { ...(studentDataFromMaster || {}), ...user, riwayat: studentDataFromMaster?.riwayat || [] }
+    : null;
   const riwayat = studentData?.riwayat || [];
 
   // FIX P3: fetch progress real dari GET /content/progress — augment data lokal
@@ -679,61 +688,10 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
       .catch(() => { /* silent */ });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // selectedMapels dari store — harus dideklarasikan SEBELUM useEffect yang memakainya
+  // Rekomendasi: satu sumber tunggal tanpa race condition.
+  // pretestResult.wrongTopics override saat siswa baru selesai pretest.
+  // Ketika RAG Tim 3 live, tambahkan kembali useEffect getRecommendations() di sini.
   const selectedMapels = useStudentStore(s => s.selectedMapels);
-
-  // Rekomendasi dari API — 3 sumber prioritas:
-  //   1. pretestResult.wrongTopics (paling relevan)
-  //   2. GET /content/recommend dengan mapel_ids → RAG Tim 3
-  //   3. buildRekomendasiAwal(selectedMapels) → fallback lokal
-  //
-  // FIX flash: tidak ada useState(null) → rekomAwal tampil langsung tanpa flash.
-  // FIX first-login: jika selectedMapels kosong → skip API → rekomAwal dipakai.
-  // FIX konsistensi: kirim mapel_ids ke API, resolve label dari masterData.
-  const [apiRekom, setApiRekom] = useState(null);
-  useEffect(() => {
-    if (!selectedMapels || selectedMapels.length === 0) return;
-    let active = true;
-    getRecommendations({
-      siswa_id: CURRENT_STUDENT_ID,
-      mapel_ids: selectedMapels.join(','),
-    })
-      .then(data => {
-        if (!active || !Array.isArray(data) || !data.length) return;
-        const normalized = data.map((r, i) => {
-          const mapelId = r.mapel_id;
-          const mapelMeta = MAPEL_LIST_ALL.find(m => m.id === mapelId) || {};
-          const elemenList = KURIKULUM_ELEMEN[mapelId] || [];
-          const elemenMatch = elemenList.find(e => e.id === r.elemen_id) || elemenList[0]
-            || { id: r.elemen_id || mapelId, label: r.elemen_label || mapelId };
-          const elemenId = elemenMatch.id;
-          const elemenLbl = elemenMatch.label;
-          const materiList = (MATERI_PER_ELEMEN?.[mapelId]?.[elemenId]) || [];
-          const isMateriLevel = materiList.length > 0;
-          const materiMatch = materiList.find(
-            m => m.toLowerCase() === (r.materi || '').toLowerCase()
-          );
-          const materiId = materiMatch || r.materi || elemenLbl;
-          return {
-            id: `rekom_api_${i}`,
-            mapelId,
-            mapelLabel: mapelMeta.label || mapelId,
-            mapelIcon: mapelMeta.icon || '📚',
-            mapelColor: mapelMeta.color || C.teal,
-            elemenId,
-            elemenLabel: elemenLbl,
-            materiId,
-            isMateriLevel,
-            targetMateriId: isMateriLevel ? materiId : null,
-            alasan: r.alasan || 'Direkomendasikan untuk kamu',
-            tag: i === 0 ? '⭐ Rekomendasi' : '📝 Coba Ini',
-          };
-        });
-        setApiRekom(normalized);
-      })
-      .catch(() => { });
-    return () => { active = false; };
-  }, [selectedMapels.join(',')]); // re-fetch jika selectedMapels berubah (setelah aktivasi)
 
   // REVISI FASE 3: localQuizScore = akumulasi agregasi (MC 70% + Essay 30%) semua materi
   // Baca dari quiz_results[] per sesi riwayat — format baru selaras dengan quizHistory store
@@ -801,10 +759,10 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
     return top ? top[0] : null;
   })();
 
-  /* Bangun daftar rekomendasi — FIX 1: 3 sumber dengan prioritas jelas
+  /* Bangun daftar rekomendasi — 2 sumber dengan prioritas jelas:
    * 1. wrongTopics dari pretest (paling relevan — siswa baru selesai pretest)
-   * 2. apiRekom dari GET /content/recommend (RAG Tim 3 — berdasarkan aktivitas)
-   * 3. buildRekomendasiAwal(selectedMapels) — fallback saat pertama login / API kosong
+   * 2. buildRekomendasiAwal(selectedMapels) — elemen pertama tiap mapel pilihan siswa
+   * Ketika RAG Tim 3 live, tambahkan sumber ke-3 dari GET /content/recommend.
    */
   const rekomAwal = buildRekomendasiAwal(selectedMapels);
   const rekomList = (pretestResult?.wrongTopics?.length > 0)
@@ -815,7 +773,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
         : `${wt.materiId} perlu penguatan. Mulai dari konsep dasar untuk fondasi yang kuat.`,
       tag: i === 0 ? '⚡ Prioritas' : '📝 Perlu Latihan',
     }))
-    : (apiRekom ?? rekomAwal);
+    : rekomAwal;
 
   const ACTIVITY_LIMIT = 10;  // batas tampil aktivitas terbaru sebelum expand
 

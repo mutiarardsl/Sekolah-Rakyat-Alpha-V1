@@ -197,17 +197,27 @@ export const handlers = [
   http.put(url('/auth/change-password'), async ({ request }) => {
     const { old_password, new_password, user_id } = await request.json();
     await d(600);
-    if (!old_password || old_password.length < 1) {
-      return HttpResponse.json({ message: 'Password lama salah.' }, { status: 401 });
-    }
-    // Update DUMMY_ACCOUNTS in-memory agar re-login berikutnya pakai password baru
-    // dan is_first_login → false (force-change selesai)
-    if (user_id) {
-      const acc = DUMMY_ACCOUNTS.find(a => a.id === user_id);
-      if (acc) {
-        if (new_password) acc.password = new_password;
-        acc.is_first_login = false;
+
+    // Cari akun berdasarkan user_id
+    const acc = user_id ? DUMMY_ACCOUNTS.find(a => a.id === user_id) : null;
+
+    // Validasi old_password — KECUALI first-login (old_password dikirim '' oleh ForceChangePasswordModal)
+    // First-login: acc.is_first_login === true → tidak perlu verifikasi password lama
+    const isFirstLogin = acc?.is_first_login === true;
+    if (!isFirstLogin) {
+      // Normal change password: verifikasi old_password
+      if (!old_password) {
+        return HttpResponse.json({ message: 'Password lama wajib diisi.' }, { status: 401 });
       }
+      if (acc && acc.password !== old_password) {
+        return HttpResponse.json({ message: 'Password lama salah.' }, { status: 401 });
+      }
+    }
+
+    // Update DUMMY_ACCOUNTS in-memory: password baru + is_first_login → false
+    if (acc) {
+      if (new_password) acc.password = new_password;
+      acc.is_first_login = false;
     }
     return HttpResponse.json({ message: 'Password berhasil diubah.' });
   }),
@@ -904,31 +914,12 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   }),
 
   // GET /content/recommend
-  // Params: { siswa_id, mapel_ids? (comma-separated selectedMapels) }
-  // FIX: kembalikan [] jika tidak ada info mapel → frontend fallback ke buildRekomendasiAwal
-  // Saat backend Tim 3 live, RAG yang tentukan rekomendasi berdasarkan aktivitas siswa
-  http.get(url('/content/recommend'), async ({ request }) => {
-    const p = new URL(request.url).searchParams;
-    const mapelIds = (p.get('mapel_ids') || '').split(',').filter(Boolean);
+  // Selalu return [] → frontend pakai buildRekomendasiAwal(selectedMapels) sebagai
+  // satu-satunya sumber rekomendasi (no flash, no override).
+  // Ketika RAG Tim 3 live, handler ini baru diisi dengan data nyata dari backend.
+  http.get(url('/content/recommend'), async () => {
     await d(500);
-    // Jika tidak ada mapel_ids (siswa baru / belum aktivasi) → kembalikan []
-    // Frontend akan pakai buildRekomendasiAwal(selectedMapels) sebagai fallback
-    if (!mapelIds.length) return HttpResponse.json([]);
-    // Kembalikan rekomendasi yang konsisten dengan mapel pilihan siswa
-    // Menggunakan elemen & materi pertama per mapel — sama dengan buildRekomendasiAwal
-    // sehingga tidak ada inkonsistensi nama antara rekomendasi API dan progressData
-    const REKOM_MAP = {
-      mat: { mapel_id: 'mat', materi: 'Operasi Bilangan Bulat dan Pecahan', materi_id: 'mat__op_bilangan', elemen_id: 'bil_aljabar', elemen_label: 'Bilangan dan Aljabar', alasan: 'Fondasi utama matematika yang perlu dikuasai lebih dulu' },
-      bio: { mapel_id: 'bio', materi: 'Sel dan Organel Sel', materi_id: 'bio__sel', elemen_id: 'pemahaman_bio', elemen_label: 'Pemahaman Biologi', alasan: 'Konsep dasar Biologi yang menjadi dasar topik lanjutan' },
-      fis: { mapel_id: 'fis', materi: 'Besaran dan Satuan Fisika', materi_id: 'fis__besaran', elemen_id: 'pemahaman_fis', elemen_label: 'Pemahaman Fisika', alasan: 'Titik awal yang tepat untuk memahami Fisika secara sistematis' },
-      kim: { mapel_id: 'kim', materi: 'Struktur Atom', materi_id: 'kim__atom', elemen_id: 'pemahaman_kim', elemen_label: 'Pemahaman Kimia', alasan: 'Fondasi utama kimia modern' },
-      mat_w: { mapel_id: 'mat_w', materi: 'Statistika Dasar', materi_id: 'mat_w__statistika', elemen_id: 'statistika', elemen_label: 'Statistika', alasan: 'Materi yang relevan dengan kebutuhan sehari-hari' },
-      bin: { mapel_id: 'bin', materi: 'Teks Deskripsi', materi_id: 'bin__deskripsi', elemen_id: 'membaca', elemen_label: 'Membaca', alasan: 'Dasar literasi yang penting untuk semua mata pelajaran' },
-      pai: { mapel_id: 'pai', materi: 'Akidah Islam', materi_id: 'pai__akidah', elemen_id: 'akidah', elemen_label: 'Akidah', alasan: 'Fondasi pemahaman agama yang kuat' },
-    };
-    return HttpResponse.json(
-      mapelIds.slice(0, 3).map(id => REKOM_MAP[id]).filter(Boolean)
-    );
+    return HttpResponse.json([]);
   }),
 
   // ════════════════════════════════════════════════════════════════════

@@ -16,8 +16,7 @@ import {
     STUDENTS,
     ADMIN_SISWA_INIT,
 } from '../../../data/masterData';
-
-const CURRENT_STUDENT_ID = 's9';
+import { useAuth } from '../../../context/AuthContext';
 //bobot 
 const MC_WEIGHT = 0.7;
 const ESSAY_WEIGHT = 0.3;
@@ -176,6 +175,8 @@ const LeaderboardSection = () => {
     const [mode, setMode] = useState('monthly'); // 'daily' | 'monthly'
     const { isMobile } = useBreakpoint();
     const podiumRef = useRef();
+    const { user } = useAuth();
+    const CURRENT_STUDENT_ID = user?.id || null;
 
     const leaderboard = buildLeaderboard(mode);
     const myRank = leaderboard.find(s => s.id === CURRENT_STUDENT_ID);

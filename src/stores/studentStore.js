@@ -28,8 +28,19 @@ const PRETEST_DONE_MAPELS_INIT = new Set(['mat', 'kim']);
 export const useStudentStore = create((set, get) => ({
 
   // ── Mapel pilihan siswa (onboarding) ─────────────────────────────
-  selectedMapels: [],
-  setSelectedMapels: (mapels) => set({ selectedMapels: mapels }),
+  // PENTING: baca dari localStorage agar tidak hilang saat reload / re-login
+  // Key: sr_selected_mapels_{user_id} → agar beda siswa tidak tercampur
+  selectedMapels: (() => {
+    try {
+      const saved = localStorage.getItem('sr_selected_mapels');
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore */ }
+    return [];
+  })(),
+  setSelectedMapels: (mapels) => {
+    try { localStorage.setItem('sr_selected_mapels', JSON.stringify(mapels)); } catch { /* ignore */ }
+    set({ selectedMapels: mapels });
+  },
 
   // ── Pretest status per ELEMEN ─────────────────────────────────────
   pretestDoneElemen: PRETEST_DONE_ELEMEN_INIT,

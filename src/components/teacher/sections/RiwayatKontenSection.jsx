@@ -248,14 +248,72 @@ const LEVEL_BADGE = {
 };
 const LEVELS_ORDER = ['Low', 'Mid', 'High'];
 
-const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
-  // Siswa yang relevan = dari kelas yang sama dengan konten ini
-  const kelasSiswa = ADMIN_SISWA_INIT.filter(s => s.kelasId === riwayat.kelas_id);
-  // Fallback: jika kelas_id tidak match (misal seed berbeda), tampilkan semua
-  const displaySiswa = kelasSiswa.length > 0 ? kelasSiswa : ADMIN_SISWA_INIT;
+// ── SiswaRow — satu baris siswa dengan badge level ──
+const SiswaRow = ({ siswa, selesaiPerLevel }) => {
+  const playedAny = LEVELS_ORDER.some(lv => selesaiPerLevel[lv][siswa.id] != null);
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '9px 12px', borderRadius: 10,
+      background: playedAny ? `${C.teal}04` : '#FAFAFA',
+      border: `1px solid ${playedAny ? `${C.teal}18` : '#EDF2F7'}`,
+    }}>
+      <Avatar initials={siswa.avatar} bg={siswa.avatarBg} size={30} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {siswa.nama}
+        </div>
+        {/* NIS — info tambahan agar guru bisa identifikasi siswa */}
+        <div style={{ fontSize: 10, color: C.slate }}>
+          NIS {siswa.nis}
+          {playedAny && (() => {
+            const lastLv = [...LEVELS_ORDER].reverse().find(lv => selesaiPerLevel[lv][siswa.id] != null);
+            return ` · Terakhir: Level ${lastLv} · ${selesaiPerLevel[lastLv][siswa.id]}`;
+          })()}
+        </div>
+      </div>
 
-  // Build set per level: siswa_id → selesai_at
-  const selesaiPerLevel = {}; // { Low: { siswa_id: selesai_at }, Mid: {...}, High: {...} }
+      {/* 3 badge Low/Mid/High */}
+      <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+        {LEVELS_ORDER.map(lv => {
+          const done = selesaiPerLevel[lv][siswa.id] != null;
+          const badge = LEVEL_BADGE[lv];
+          return (
+            <span key={lv} title={done ? `Selesai: ${selesaiPerLevel[lv][siswa.id]}` : `Belum memainkan level ${lv}`}
+              style={{
+                fontSize: 10, fontWeight: 700,
+                padding: '3px 8px', borderRadius: 99,
+                background: done ? badge.active.bg : '#F7FAFC',
+                color: done ? badge.active.color : '#A0AEC0',
+                border: `1px solid ${done ? badge.active.border : '#E2E8F0'}`,
+                transition: 'all .15s',
+              }}>
+              {lv}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
+  const isSemuaKelas = !riwayat.kelas_id || riwayat.kelas_id === '__semua__';
+
+  // Kumpulkan kelas yang relevan
+  // Jika "semua kelas": ambil kelas sesuai jenjang guru
+  // Jika spesifik: hanya 1 kelas
+  const relevantKelas = isSemuaKelas
+    ? ADMIN_KELAS_INIT.filter(k => k.tingkat === (riwayat.jenjang || 'X'))
+    : ADMIN_KELAS_INIT.filter(k => k.id === riwayat.kelas_id);
+
+  // Tab kelas — hanya muncul jika publish ke semua kelas
+  const [activeKelasId, setActiveKelasId] = useState(
+    isSemuaKelas ? 'semua' : (relevantKelas[0]?.id || null)
+  );
+
+  // Build set selesaiPerLevel dari gameItems (embedded di konten_list)
+  const selesaiPerLevel = {};
   LEVELS_ORDER.forEach(lv => { selesaiPerLevel[lv] = {}; });
   (gameItems || []).forEach(it => {
     const lv = it.level;
@@ -265,30 +323,48 @@ const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
     });
   });
 
-  // Hitung total unik siswa yang sudah memainkan minimal 1 level
-  const totalUnik = displaySiswa.filter(s =>
-    LEVELS_ORDER.some(lv => selesaiPerLevel[lv][s.id] != null)
+  // Siswa yang ditampilkan sesuai tab aktif
+  const displayKelas = isSemuaKelas && activeKelasId === 'semua'
+    ? relevantKelas    // akan di-render per grup di bawah
+    : relevantKelas.filter(k => k.id === activeKelasId);
+
+  // Hitung total unik per kelas atau keseluruhan
+  const allSiswaIds = relevantKelas.flatMap(k =>
+    ADMIN_SISWA_INIT.filter(s => k.siswaIds.includes(s.id))
+  );
+  const uniqueAllIds = [...new Set(allSiswaIds.map(s => s.id))];
+  const totalUnik = uniqueAllIds.filter(id =>
+    LEVELS_ORDER.some(lv => selesaiPerLevel[lv][id] != null)
   ).length;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div style={{ background: C.white, borderRadius: 16, width: 'min(520px, calc(100vw - 24px))', maxHeight: '85vh', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: C.white, borderRadius: 16, width: 'min(560px, calc(100vw - 24px))', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 60px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ padding: '16px 20px 14px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '16px 20px 14px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
             <div style={{ fontFamily: FONTS.serif, fontSize: FS.xl, fontWeight: 700, color: C.dark }}>🎮 Progress Game</div>
             <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>
               {riwayat.mapel_label} · {riwayat.elemen_label}{riwayat.materi ? ` · ${riwayat.materi}` : ''}
             </div>
+            {/* Label publish target */}
+            <div style={{ marginTop: 5, display: 'inline-flex', alignItems: 'center', gap: 5, background: isSemuaKelas ? '#EBF8FF' : `${C.teal}10`, borderRadius: 99, padding: '2px 10px', border: `1px solid ${isSemuaKelas ? '#90CDF4' : C.tealXL}` }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: isSemuaKelas ? '#2B6CB0' : C.teal }}>
+                {isSemuaKelas
+                  ? `🌐 Dipublish ke Semua Kelas (${relevantKelas.length} kelas)`
+                  : `📋 ${riwayat.kelas_nama || relevantKelas[0]?.nama || riwayat.kelas_id}`
+                }
+              </span>
+            </div>
           </div>
           <button onClick={onClose} style={{ background: C.white, border: '2px solid #EDF2F7', borderRadius: 8, width: 28, height: 28, cursor: 'pointer', fontSize: FS.lg, color: C.slate }}>✕</button>
         </div>
 
-        {/* Legenda + ringkasan */}
-        <div style={{ padding: '10px 20px', borderBottom: `1px solid rgba(13,92,99,.06)`, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        {/* Ringkasan & legenda */}
+        <div style={{ padding: '10px 20px', borderBottom: `1px solid rgba(13,92,99,.06)`, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flexShrink: 0 }}>
           <span style={{ fontSize: FS.xs, color: C.slate }}>
-            {totalUnik} / {displaySiswa.length} siswa sudah memainkan
+            {totalUnik} / {uniqueAllIds.length} siswa sudah memainkan
           </span>
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
             {LEVELS_ORDER.map(lv => (
@@ -304,56 +380,96 @@ const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
           </div>
         </div>
 
-        {/* List siswa */}
-        <div style={{ overflowY: 'auto', maxHeight: 'calc(85vh - 120px)', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {displaySiswa.map(siswa => {
-            const playedAny = LEVELS_ORDER.some(lv => selesaiPerLevel[lv][siswa.id] != null);
-            return (
-              <div key={siswa.id} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '9px 12px', borderRadius: 10,
-                background: playedAny ? `${C.teal}04` : '#FAFAFA',
-                border: `1px solid ${playedAny ? `${C.teal}18` : '#EDF2F7'}`,
+        {/* ── Tab kelas — hanya muncul jika publish ke semua kelas ── */}
+        {isSemuaKelas && (
+          <div style={{ padding: '10px 20px 0', display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0, borderBottom: `1px solid rgba(13,92,99,.06)`, paddingBottom: 10 }}>
+            <button
+              onClick={() => setActiveKelasId('semua')}
+              style={{
+                padding: '4px 12px', borderRadius: 99, fontSize: FS.sm, fontWeight: 700,
+                cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid',
+                background: activeKelasId === 'semua' ? C.teal : C.white,
+                color: activeKelasId === 'semua' ? C.white : C.slate,
+                borderColor: activeKelasId === 'semua' ? C.teal : C.tealXL,
               }}>
-                <Avatar initials={siswa.avatar} bg={siswa.avatarBg} size={30} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {siswa.nama}
-                  </div>
-                  {/* Waktu terakhir selesai — level tertinggi yang sudah dimainkan */}
-                  {playedAny && (() => {
-                    const lastLv = [...LEVELS_ORDER].reverse().find(lv => selesaiPerLevel[lv][siswa.id] != null);
-                    return (
-                      <div style={{ fontSize: 10, color: C.slate }}>
-                        Terakhir: Level {lastLv} · {selesaiPerLevel[lastLv][siswa.id]}
-                      </div>
-                    );
-                  })()}
-                </div>
+              Semua Kelas
+            </button>
+            {relevantKelas.map(k => {
+              const siswaKelas = ADMIN_SISWA_INIT.filter(s => k.siswaIds.includes(s.id));
+              const selesaiKelas = siswaKelas.filter(s =>
+                LEVELS_ORDER.some(lv => selesaiPerLevel[lv][s.id] != null)
+              ).length;
+              return (
+                <button key={k.id} onClick={() => setActiveKelasId(k.id)}
+                  style={{
+                    padding: '4px 12px', borderRadius: 99, fontSize: FS.sm, fontWeight: 700,
+                    cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid',
+                    background: activeKelasId === k.id ? C.teal : C.white,
+                    color: activeKelasId === k.id ? C.white : C.dark,
+                    borderColor: activeKelasId === k.id ? C.teal : C.tealXL,
+                  }}>
+                  {k.nama}
+                  <span style={{ marginLeft: 5, opacity: .7, fontSize: 10 }}>
+                    {selesaiKelas}/{siswaKelas.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-                {/* 3 badge Low/Mid/High */}
-                <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
-                  {LEVELS_ORDER.map(lv => {
-                    const done = selesaiPerLevel[lv][siswa.id] != null;
-                    const badge = LEVEL_BADGE[lv];
-                    return (
-                      <span key={lv} title={done ? `Selesai: ${selesaiPerLevel[lv][siswa.id]}` : `Belum memainkan level ${lv}`}
-                        style={{
-                          fontSize: 10, fontWeight: 700,
-                          padding: '3px 8px', borderRadius: 99,
-                          background: done ? badge.active.bg : '#F7FAFC',
-                          color: done ? badge.active.color : '#A0AEC0',
-                          border: `1px solid ${done ? badge.active.border : '#E2E8F0'}`,
-                          transition: 'all .15s',
-                        }}>
-                        {lv}
-                      </span>
-                    );
-                  })}
+        {/* ── Daftar siswa ── */}
+        <div style={{ overflowY: 'auto', flex: 1, padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {isSemuaKelas && activeKelasId === 'semua' ? (
+            // Tampilkan semua kelas dalam grup terpisah agar guru tahu kelas masing-masing
+            relevantKelas.map(kelas => {
+              const siswaKelas = ADMIN_SISWA_INIT.filter(s => kelas.siswaIds.includes(s.id));
+              if (siswaKelas.length === 0) return null;
+              const selesaiCount = siswaKelas.filter(s =>
+                LEVELS_ORDER.some(lv => selesaiPerLevel[lv][s.id] != null)
+              ).length;
+              return (
+                <div key={kelas.id} style={{ marginBottom: 8 }}>
+                  {/* Header grup kelas */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 10px', borderRadius: 8, marginBottom: 6,
+                    background: `${C.teal}08`, border: `1px solid ${C.tealXL}`,
+                  }}>
+                    <span style={{ fontSize: 13 }}>🏫</span>
+                    <span style={{ fontSize: FS.md, fontWeight: 800, color: C.teal }}>
+                      Kelas {kelas.nama}
+                    </span>
+                    <span style={{ marginLeft: 'auto', fontSize: FS.xs, color: C.slate, fontWeight: 600 }}>
+                      {selesaiCount}/{siswaKelas.length} siswa
+                    </span>
+                    {/* Progress bar mini */}
+                    <div style={{ width: 60, height: 5, borderRadius: 99, background: C.tealXL, overflow: 'hidden', flexShrink: 0 }}>
+                      <div style={{ height: '100%', width: `${siswaKelas.length > 0 ? (selesaiCount / siswaKelas.length) * 100 : 0}%`, background: C.teal, borderRadius: 99, transition: 'width .3s' }} />
+                    </div>
+                  </div>
+                  {/* Siswa dalam kelas ini */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {siswaKelas.map(siswa => (
+                      <SiswaRow key={siswa.id} siswa={siswa} selesaiPerLevel={selesaiPerLevel} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            // Tampilkan siswa dari 1 kelas (tab terpilih atau publish spesifik)
+            (() => {
+              const kelasTerpilih = relevantKelas.find(k => k.id === activeKelasId) || relevantKelas[0];
+              const siswaKelas = kelasTerpilih
+                ? ADMIN_SISWA_INIT.filter(s => kelasTerpilih.siswaIds.includes(s.id))
+                : ADMIN_SISWA_INIT.filter(s => s.kelasId === riwayat.kelas_id);
+              const fallback = siswaKelas.length > 0 ? siswaKelas : ADMIN_SISWA_INIT;
+              return fallback.map(siswa => (
+                <SiswaRow key={siswa.id} siswa={siswa} selesaiPerLevel={selesaiPerLevel} />
+              ));
+            })()
+          )}
         </div>
       </div>
     </div>

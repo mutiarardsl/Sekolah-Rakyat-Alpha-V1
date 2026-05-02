@@ -6,18 +6,65 @@
  *  - Banner gradient full-width (bukan di dalam card)
  *  - Konten 2-kolom dalam satu card putih (Informasi Pribadi | Akun & Mengajar)
  *  - Seksi "Mata Pelajaran & Kelas" di bawah card
+ *
+ * REVISI PENTING:
+ *  - Profile guru sekarang DINAMIS dari AuthContext (user yang sedang login)
+ *  - Lookup: user.id → TEACHERS → cari di ADMIN_GURU_INIT by nama/mapelId
+ *  - Saat integrasi BE: ganti lookup dengan GET /guru/profile?id=user.id
+ *  - Mapel & kelas yang ditampilkan sesuai data guru yang login
  */
 import { useState, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import ChangePasswordModal from '../../shared/ChangePasswordModal';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { useAuth } from '../../../context/AuthContext';
 import {
   ADMIN_GURU_INIT,
   ADMIN_KELAS_INIT,
   ADMIN_MAPEL_LIST,
+  TEACHERS,
 } from '../../../data/masterData';
 
-const CURRENT_GURU_ID = 'g1';
+// ─── Mapping teacher id → guru id ─────────────────────────────────────────
+// TEACHERS pakai id t1/t2/t3/t4, ADMIN_GURU_INIT pakai id g1/g2/g3/g4.
+// Mapping ini menyambungkan keduanya.
+// Saat integrasi BE: user.id akan langsung berupa guru_id dari database.
+const TEACHER_TO_GURU_ID = {
+  t1: 'g2',  // Sri Dewi → bio/fis/kim
+  t2: 'g1',  // Hendra   → mat
+  t3: 'g3',  // Ratna    → bin
+  t4: 'g4',  // Yoga     → eko/sos
+};
+
+// ─── Resolve guru dari user yang sedang login ──────────────────────────────
+// Prioritas: user.id → mapping t→g → ADMIN_GURU_INIT
+// Fallback: cari berdasarkan nama atau langsung pakai guru pertama
+const resolveGuru = (user) => {
+  if (!user) return ADMIN_GURU_INIT[0];
+
+  // Coba mapping langsung (mock environment: t1/t2/t3/t4)
+  const mappedId = TEACHER_TO_GURU_ID[user.id];
+  if (mappedId) {
+    const guru = ADMIN_GURU_INIT.find(g => g.id === mappedId);
+    if (guru) return guru;
+  }
+
+  // Jika user.id sudah berformat g1/g2/... (BE real), langsung cari
+  const byId = ADMIN_GURU_INIT.find(g => g.id === user.id);
+  if (byId) return byId;
+
+  // Fallback: cari berdasarkan nama dari user session
+  if (user.nama) {
+    const byNama = ADMIN_GURU_INIT.find(g =>
+      g.nama.toLowerCase().includes(
+        user.nama.replace('Bpk. ', '').replace('Ibu ', '').split(',')[0].toLowerCase().trim()
+      )
+    );
+    if (byNama) return byNama;
+  }
+
+  return ADMIN_GURU_INIT[0];
+};
 
 /* ── ReadonlyInput — sama persis dengan ProfileSection siswa ── */
 const ReadonlyInput = ({ value }) => (
@@ -73,13 +120,17 @@ const MapelBlock = ({ mapelId, kelasList }) => {
 /* ── Main ── */
 const TeacherProfileSection = ({ onPwdSuccess }) => {
   const { isMobile } = useBreakpoint();
-  const guru = ADMIN_GURU_INIT.find(g => g.id === CURRENT_GURU_ID);
+  const { user } = useAuth();
+
+  // Resolve guru berdasarkan user yang sedang login (DINAMIS)
+  // Saat integrasi BE: ganti resolveGuru() dengan data dari GET /guru/profile
+  const guru = resolveGuru(user);
   const semuaKelas = ADMIN_KELAS_INIT;
 
-  const waliKelasList = semuaKelas.filter(k => k.waliKelasId === CURRENT_GURU_ID);
+  const waliKelasList = semuaKelas.filter(k => k.waliKelasId === guru?.id);
   const mapelKelasMap = (guru?.mapelId || []).map(mid => ({
     mapelId: mid,
-    kelasList: semuaKelas.filter(k => k.mapelGuruMap?.[mid] === CURRENT_GURU_ID),
+    kelasList: semuaKelas.filter(k => k.mapelGuruMap?.[mid] === guru?.id),
   })).filter(m => m.kelasList.length > 0);
 
   const [avatarSrc, setAvatarSrc] = useState(null);

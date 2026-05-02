@@ -16,8 +16,7 @@ import {
     ADMIN_SISWA_INIT,
     ADMIN_KELAS_INIT,
 } from '../../../data/masterData';
-
-const CURRENT_STUDENT_ID = 's9';
+import { useAuth } from '../../../context/AuthContext';
 
 /* ── ReadonlyInput ── */
 const ReadonlyInput = ({ value, onEdit }) => (
@@ -44,13 +43,17 @@ const Field = ({ label, children }) => (
 
 /* ── Main ── */
 const ProfileSection = ({ progressData, onChangePwd }) => {
-    const adminData = ADMIN_SISWA_INIT.find(s => s.id === CURRENT_STUDENT_ID);
-    const kelasData = ADMIN_KELAS_INIT.find(k => k.id === adminData?.kelasId || k.nama === 'X-1');
+    const { user: authUser } = useAuth();
+    const CURRENT_STUDENT_ID = authUser?.id || null;
+    const adminData = ADMIN_SISWA_INIT.find(s => s.id === CURRENT_STUDENT_ID) || {};
+    // Gabungkan: data auth (real-time) + master data (fallback)
+    const effectiveData = { ...adminData, ...(authUser || {}) };
+    const kelasData = ADMIN_KELAS_INIT.find(k => k.id === (effectiveData?.kelasId || adminData?.kelasId) || k.nama === 'X-1');
     const { isMobile } = useBreakpoint();
 
     const [avatarSrc, setAvatarSrc] = useState(null);
-    const [email, setEmail] = useState(adminData?.email || 'budi@siswa.sr');
-    const [namaEdit, setNamaEdit] = useState(adminData?.nama || 'Budi Santoso');
+    const [email, setEmail] = useState(effectiveData?.email || '');
+    const [namaEdit, setNamaEdit] = useState(effectiveData?.nama || authUser?.nama || 'Siswa');
     const [showEditNama, setShowEditNama] = useState(false);
     const [showEditEmail, setShowEditEmail] = useState(false);
     const [showChangePwdLocal, setShowChangePwdLocal] = useState(false);
@@ -88,12 +91,12 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                             ) : (
                                 <div style={{
                                     width: 80, height: 80, borderRadius: '50%',
-                                    background: adminData?.avatarBg || `linear-gradient(135deg,${C.teal},${C.tealL})`,
+                                    background: effectiveData?.avatarBg || `linear-gradient(135deg,${C.teal},${C.tealL})`,
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     color: '#fff', fontWeight: 900, fontSize: 26,
                                     border: '3px solid rgba(255,255,255,.3)',
                                     boxShadow: '0 4px 16px rgba(0,0,0,.3)',
-                                }}>{adminData?.avatar || 'BS'}</div>
+                                }}>{effectiveData?.avatar || (namaEdit ? namaEdit.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?')}</div>
                             )}
                             <button onClick={handleAvatarClick} title="Ganti foto profil"
                                 style={{
@@ -113,7 +116,7 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                             <div style={{ color: C.white, fontWeight: 800, fontSize: FS.h2, marginBottom: 2 }}>{namaEdit}</div>
                             <div style={{ color: 'rgba(255,255,255,.6)', fontSize: FS.base }}>{email}</div>
                             <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.sm, marginTop: 3 }}>
-                                Kelas {kelasData?.nama || 'X-1'} · NIS {adminData?.nis || '2025009'}
+                                Kelas {kelasData?.nama || 'X-1'} · NIS {effectiveData?.nis || effectiveData?.NIS || '—'}
                             </div>
                         </div>
                     </div>
@@ -144,13 +147,13 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                                 <ReadonlyInput value={namaEdit} onEdit={() => setShowEditNama(true)} />
                             </Field>
                             <Field label="NIS">
-                                <ReadonlyInput value={adminData?.nis || '2025009'} />
+                                <ReadonlyInput value={effectiveData?.nis || effectiveData?.NIS || '—'} />
                             </Field>
                             <Field label="Kelas">
                                 <ReadonlyInput value={kelasData?.nama || 'X-1'} />
                             </Field>
                             <Field label="Bergabung Sejak">
-                                <ReadonlyInput value={adminData?.bergabung || 'Jul 2025'} />
+                                <ReadonlyInput value={effectiveData?.bergabung || adminData?.bergabung || 'Jul 2025'} />
                             </Field>
                         </div>
 
@@ -188,7 +191,7 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
 
             {/* ── Modals ── */}
             {showChangePwdLocal && (
-                <ChangePasswordModal role="siswa" userName={adminData?.nama} onClose={() => setShowChangePwdLocal(false)} />
+                <ChangePasswordModal role="siswa" userName={namaEdit || effectiveData?.nama} onClose={() => setShowChangePwdLocal(false)} />
             )}
         </div>
     );
