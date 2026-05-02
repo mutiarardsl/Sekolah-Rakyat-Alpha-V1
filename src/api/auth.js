@@ -164,8 +164,8 @@ export async function aktivasiAkun({ password, user_id }) {
  * @param {{ old_password: string, new_password: string }} payload
  * @returns {Promise<{ message: string }>}
  */
-export async function changePassword({ old_password, new_password }) {
-  const { data } = await apiClient.put('/auth/change-password', { old_password, new_password });
+export async function changePassword({ old_password, new_password, user_id }) {
+  const { data } = await apiClient.put('/auth/change-password', { old_password, new_password, user_id });
   return data;
 }
 

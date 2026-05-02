@@ -145,28 +145,6 @@ const CapaianPembelajaranPanel = ({ mapelId, mapelColor, mapelLabel, compact = f
             "{cp.deskripsi}"
           </div>
 
-          {/* Butir-butir */}
-          {cp.butir && cp.butir.length > 0 && (
-            <div>
-              <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#8899AA', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Butir CP
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {cp.butir.map((b, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                    <span style={{
-                      width: 18, height: 18, borderRadius: 5,
-                      background: `${mapelColor}18`, color: mapelColor,
-                      fontSize: FS.xs, fontWeight: 800,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, marginTop: 1,
-                    }}>{i + 1}</span>
-                    <span style={{ fontSize: compact ? 11 : 12, color: '#2D3E50', lineHeight: 1.55 }}>{b}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -192,13 +170,10 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
   const initialCP = modalMapel.cp
     ? modalMapel.cp
     : masterCP
-      ? { fase: masterCP.fase, deskripsi: masterCP.deskripsi, butir: [...(masterCP.butir || [])] }
-      : { fase: "", deskripsi: "", butir: [] };
+      ? { fase: masterCP.fase, deskripsi: masterCP.deskripsi }
+      : { fase: "", deskripsi: "" };
 
   const [cp, setCp] = useState(initialCP);
-  const [newButir, setNewButir] = useState("");
-  const [editCpIdx, setEditCpIdx] = useState(null);
-  const [editCpVal, setEditCpVal] = useState("");
 
   const isEdit = !!form.id;
   const setF = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -221,18 +196,9 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
   };
 
   // CP handlers
-  const handleAddButir = () => {
-    const val = newButir.trim();
-    if (!val) return;
-    setCp(p => ({ ...p, butir: [...p.butir, val] }));
-    setNewButir("");
-  };
-  const handleDeleteButir = (idx) => setCp(p => ({ ...p, butir: p.butir.filter((_, i) => i !== idx) }));
-  const handleStartEditCp = (idx) => { setEditCpIdx(idx); setEditCpVal(cp.butir[idx]); };
   const handleSaveEditCp = (idx) => {
     const val = editCpVal.trim();
     if (!val) return;
-    setCp(p => ({ ...p, butir: p.butir.map((b, i) => i === idx ? val : b) }));
     setEditCpIdx(null); setEditCpVal("");
   };
 
@@ -302,7 +268,7 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
             }}>🎯</span>
             <div>
               <div style={{ fontSize: FS.md, fontWeight: 700, color: C.dark }}>Capaian Pembelajaran</div>
-              <div style={{ fontSize: FS.xs, color: C.slate }}>Fase, deskripsi umum, dan butir-butir CP</div>
+              <div style={{ fontSize: FS.xs, color: C.slate }}>Fase dan deskripsi capaian pembelajaran</div>
             </div>
           </div>
 
@@ -336,93 +302,7 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
             />
           </div>
 
-          {/* Butir CP */}
-          <div>
-            <label style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 }}>
-              Butir CP <span style={{ fontWeight: 400, textTransform: "none" }}>({cp.butir.length} butir)</span>
-            </label>
 
-            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-              <input
-                value={newButir}
-                onChange={e => setNewButir(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddButir(); } }}
-                placeholder="Tambah butir CP baru, tekan Enter..."
-                style={{ ...INP, flex: 1 }}
-                onFocus={e => e.target.style.borderColor = C.teal}
-                onBlur={e => e.target.style.borderColor = C.tealXL}
-              />
-              <button
-                onClick={handleAddButir}
-                disabled={!newButir.trim()}
-                style={{
-                  padding: "9px 14px", borderRadius: 9, border: "none",
-                  background: newButir.trim() ? (form.color || C.teal) : C.tealXL,
-                  color: newButir.trim() ? C.white : C.slate,
-                  fontWeight: 700, fontSize: FS.md, cursor: newButir.trim() ? "pointer" : "not-allowed",
-                  fontFamily: "inherit", flexShrink: 0, transition: "all .15s"
-                }}>+ Tambah</button>
-            </div>
-
-            {cp.butir.length === 0 ? (
-              <div style={{
-                textAlign: "center", padding: "14px", background: `${form.color || C.teal}06`,
-                borderRadius: 9, fontSize: FS.sm, color: C.slate, border: `1.5px dashed ${C.tealXL}`
-              }}>
-                Belum ada butir CP. Tambahkan di atas.
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {cp.butir.map((b, idx) => (
-                  <div key={idx} style={{
-                    display: "flex", alignItems: "flex-start", gap: 8,
-                    background: `${form.color || C.teal}06`, borderRadius: 8, padding: "8px 10px",
-                    border: `1px solid ${form.color || C.teal}18`
-                  }}>
-                    <span style={{
-                      width: 18, height: 18, borderRadius: 5, background: (form.color || C.teal) + "20",
-                      color: form.color || C.teal, fontSize: FS.xs, fontWeight: 800,
-                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1
-                    }}>{idx + 1}</span>
-
-                    {editCpIdx === idx ? (
-                      <textarea
-                        value={editCpVal}
-                        onChange={e => setEditCpVal(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSaveEditCp(idx); }
-                          if (e.key === "Escape") { setEditCpIdx(null); setEditCpVal(""); }
-                        }}
-                        rows={2}
-                        style={{
-                          flex: 1, padding: "4px 8px", border: `1.5px solid ${C.teal}`,
-                          borderRadius: 6, fontSize: FS.sm, outline: "none", fontFamily: "inherit",
-                          resize: "vertical", lineHeight: 1.5
-                        }}
-                        autoFocus
-                      />
-                    ) : (
-                      <span style={{ flex: 1, fontSize: FS.sm, color: C.dark, lineHeight: 1.55 }}>{b}</span>
-                    )}
-
-                    <div style={{ display: "flex", gap: 4, flexShrink: 0, marginTop: 1 }}>
-                      {editCpIdx === idx ? (
-                        <>
-                          <button onClick={() => handleSaveEditCp(idx)} style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: C.teal, color: C.white, fontSize: FS.sm, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✓</button>
-                          <button onClick={() => { setEditCpIdx(null); setEditCpVal(""); }} style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${C.tealXL}`, background: C.white, color: C.slate, fontSize: FS.sm, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
-                        </>
-                      ) : (
-                        <>
-                          <button onClick={() => handleStartEditCp(idx)} style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${C.tealXL}`, background: C.white, color: C.teal, fontSize: FS.sm, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>✏️</button>
-                          <button onClick={() => handleDeleteButir(idx)} style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${C.redL}`, background: C.white, color: C.red, fontSize: FS.sm, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
         {/* CRUD Elemen ATP */}

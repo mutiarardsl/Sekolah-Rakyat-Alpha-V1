@@ -11,7 +11,7 @@
  *  4. Panel kanan: hapus distribusi emosi kelas, Smart Alert → Smart Info
  *     Smart Info: jumlah pelanggaran, jumlah per emosi, jumlah akses game
  */
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Card, Btn, EmptyState } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { STUDENTS, EMOSI_META, EMOSI_Y } from '../../../data/masterData';
@@ -62,7 +62,8 @@ const buildSegments = (sesi) => {
 /* ── Evaluasi AI ─────────────────────────────────────────────────── */
 const generateAIEvaluasi = (st) => {
   if (!st.todayActive) return null;
-  const hasQuiz = st.todayQuizScore != null && st.todayQuizTotal != null;
+  const lastQuiz = st.todayLastQuiz;
+  const hasQuiz = lastQuiz != null;
   const noQuiz = st.todayActive && st.todayMateriId && !hasQuiz;
   const latestSesi = st.riwayat?.[0];
   const levelLabel = { low: 'Level Low', mid: 'Level Mid', high: 'Level High' };
@@ -87,18 +88,21 @@ const generateAIEvaluasi = (st) => {
     return parts.join(' ');
   }
   if (!hasQuiz) return null;
-  const pct = st.todayQuizScore / st.todayQuizTotal;
-  const pctStr = `${Math.round(pct * 100)}/100`;
+  // Pakai aggregated jika ada (MC+Essay), fallback ke mc_score saja
+  const displayScore = lastQuiz.aggregated ?? lastQuiz.mc_score ?? 0;
+  const isFullAgregasi = lastQuiz.aggregated != null;
+  const pct = displayScore / 100;
+  const pctStr = `${displayScore}/100${isFullAgregasi ? ' (agregasi)' : ' (PG)'}`;
   if (pct >= 0.9) {
-    return [`Pencapaian luar biasa (${pctStr}).`, emosiProfile?.positiveEnd ? 'Emosi antusias — kondisi ideal.' : '', 'Siswa dapat diberi materi lanjut.'].filter(Boolean).join(' ');
+    return [`Pencapaian luar biasa ${levelCtx}(${pctStr}).`, emosiProfile?.positiveEnd ? 'Emosi antusias — kondisi ideal.' : '', 'Siswa dapat diberi materi lanjut.'].filter(Boolean).join(' ');
   }
-  if (pct >= 0.7) {
-    return [`Pemahaman cukup baik (${pctStr}).`, durasiLabel === 'singkat (< 1 jam)' ? 'Durasi singkat — pendalaman berpotensi tingkatkan skor.' : '', emosiInsight, 'Latihan variatif untuk perkuat konsep.'].filter(Boolean).join(' ');
+  if (pct >= 0.75) {
+    return [`Pemahaman cukup baik ${levelCtx}(${pctStr}).`, durasiLabel === 'singkat (< 1 jam)' ? 'Durasi singkat — pendalaman berpotensi tingkatkan skor.' : '', emosiInsight, 'Latihan variatif untuk perkuat konsep.'].filter(Boolean).join(' ');
   }
   if (pct >= 0.5) {
-    return [`Perlu perhatian (${pctStr}).`, emosiInsight || (emosiProfile?.negRatio > 0.4 ? 'Emosi negatif dominan — intervensi dini.' : ''), 'Rekomendasikan sesi ulang dengan pendekatan visual.'].filter(Boolean).join(' ');
+    return [`Perlu perhatian ${levelCtx}(${pctStr}).`, emosiInsight || (emosiProfile?.negRatio > 0.4 ? 'Emosi negatif dominan — intervensi dini.' : ''), 'Rekomendasikan sesi ulang dengan pendekatan visual.'].filter(Boolean).join(' ');
   }
-  return [`Pemahaman masih sangat kurang (${pctStr}).`, emosiInsight, 'Intervensi segera — pertimbangkan bimbingan individual.'].filter(Boolean).join(' ');
+  return [`Pemahaman masih sangat kurang ${levelCtx}(${pctStr}).`, emosiInsight, 'Intervensi segera — pertimbangkan bimbingan individual.'].filter(Boolean).join(' ');
 };
 
 /* ── Smart Alerts ────────────────────────────────────────────────── */
@@ -109,10 +113,7 @@ function generateSmartAlerts(studentsWithLive) {
     if (st.hasViolation && st.violations?.length > 0) {
       alerts.push({ id: `violation-${st.id}`, level: 'warning', icon: '⚠️', text: `${st.name} terdeteksi ${st.violationCount}x pelanggaran`, color: '#C05621', bg: '#FFFBF0', student: st, isViolation: true });
     }
-    if (st.todayQuizScore != null && st.todayQuizTotal != null) {
-      const pct = st.todayQuizScore / st.todayQuizTotal;
-      if (pct < 0.7) alerts.push({ id: `quiz-${st.id}`, level: pct < 0.5 ? 'critical' : 'warning', icon: '📝', text: `${st.name} skor ${st.todayQuizScore}/${st.todayQuizTotal} (${Math.round(pct * 100)}%)`, color: pct < 0.5 ? C.red : C.orange, bg: pct < 0.5 ? '#FFF5F5' : '#FFF8EE', student: st });
-    }
+
     const latestRiwayat = st.riwayat?.[0];
     if (latestRiwayat?.emosiSesi) {
       const segs = buildSegments(latestRiwayat.emosiSesi);
@@ -163,7 +164,7 @@ const EmosiTimeline = ({ sesi }) => {
 };
 
 /* ── Download Modal ──────────────────────────────────────────────── */
-const DownloadModal = ({ cls, teacherMapel, studentsWithLive, onClose }) => {
+const DownloadModal = ({ cls, teacherMapel, studentsWithLive, evaluasiState, onClose }) => {
   const todayISO = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState(todayISO);
   const [generating, setGenerating] = useState(false);
@@ -176,7 +177,11 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, onClose }) => {
     // Header — tanpa kolom evaluasi
     const header = [
       'Nama Siswa', 'NIS', 'Tanggal', 'Kelas', 'Mata Pelajaran',
-      'Elemen / Materi', 'Level', 'Nilai Quiz', 'Durasi (jam)', 'Evaluasi',
+      'Elemen / Materi',
+      'Low - PG', 'Low - Essay', 'Low - Agregasi',
+      'Mid - PG', 'Mid - Essay', 'Mid - Agregasi',
+      'High - PG', 'High - Essay', 'High - Agregasi',
+      'Nilai Terakhir', 'Level Terakhir', 'Durasi (jam)', 'Evaluasi AI',
     ].join(',');
 
     // Parse tanggal yang dipilih untuk matching riwayat
@@ -205,15 +210,46 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, onClose }) => {
       } else {
         // Satu baris per sesi (siswa bisa punya beberapa elemen/materi dalam satu hari)
         sesiHariIni.forEach(r => {
-          const hasQuiz = r.quiz != null && r.quizTotal != null;
+          // Kumpulkan nilai per level dari quiz_results sesi ini
+          const LEVEL_ORDER = ['low', 'mid', 'high'];
+          const lvMap = {};
+          (r.quiz_results || []).forEach(qr => {
+            const lv = qr.level || 'low';
+            if (!lvMap[lv]) lvMap[lv] = { mc: null, essay: null };
+            if (qr.type === 'essay') lvMap[lv].essay = qr.score ?? null;
+            else lvMap[lv].mc = qr.score ?? null;
+          });
+          // Hitung agregasi per level
+          const levelCols = LEVEL_ORDER.flatMap(lv => {
+            const d = lvMap[lv] || {};
+            const agg = (d.mc != null && d.essay != null)
+              ? Math.round(d.mc * 0.7 + d.essay * 0.3) : null;
+            return [
+              d.mc != null ? d.mc : '-',
+              d.essay != null ? d.essay : '-',
+              agg != null ? agg : '-',
+            ];
+          });
+          // Nilai & level terakhir dikerjakan
+          const lastQr = (r.quiz_results || []).slice(-1)[0];
+          const lastLevel = lastQr?.level || '-';
+          const lastLvData = lastQr ? (lvMap[lastQr.level] || {}) : {};
+          const lastAgg = (lastLvData.mc != null && lastLvData.essay != null)
+            ? Math.round(lastLvData.mc * 0.7 + lastLvData.essay * 0.3)
+            : (lastLvData.mc ?? lastLvData.essay ?? '-');
+          // Revisi 2F: cari evaluasi dari sesiKey terbaru (riwayat[0])
+          const latestSesiKey = st.riwayat?.[0]
+            ? `${st.id}__${st.riwayat[0].tanggal}__${st.riwayat[0].materiId}`
+            : null;
+          const evalText = latestSesiKey ? (evaluasiState?.[latestSesiKey]?.text ?? '-') : '-';
           rows.push([
             `"${st.name}"`, `"${st.nis || '-'}"`, selectedDate,
             `"${cls?.label || '-'}"`, `"${teacherMapel?.label || '-'}"`,
             `"${r.materiId || '-'}"`,
-            `"${r.level || '-'}"`,
-            hasQuiz ? Math.round((r.quiz / r.quizTotal) * 100) : '-',
+            ...levelCols,
+            lastAgg, `"${lastLevel}"`,
             r.durasi != null ? r.durasi.toFixed(1) : '-',
-            generateAIEvaluasi(st),
+            `"${evalText}"`,
           ].join(','));
         });
       }
@@ -320,8 +356,100 @@ const EvaluasiDropdown = ({ text, color, bg }) => {
   );
 };
 
-/* ── StudentDrawer ───────────────────────────────────────────────── */
-const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onClose }) => {
+/* ── EvaluasiSesiPanel ────────────────────────────────────────────── */
+// Dirender per sesi di StudentDrawer. Menggantikan EvaluasiCell yang sebelumnya
+// dipakai di kolom tabel.
+// Props:
+//   sesiKey   : `${studentId}__${tanggal}__${materiId}`
+//   state     : evaluasiState[sesiKey] | undefined
+//   onGenerate: () => void
+const EvaluasiSesiPanel = ({ sesiKey: _sesiKey, state, onGenerate }) => {
+  const status = state?.status || 'idle';
+  const isExpired = status === 'done' && state.expiresAt && Date.now() > state.expiresAt;
+
+  if (status === 'idle') {
+    return (
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid rgba(13,92,99,.07)` }}>
+        <button onClick={onGenerate}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '6px 12px', borderRadius: 8,
+            border: `1px solid ${C.teal}44`, background: 'transparent',
+            cursor: 'pointer', fontSize: FS.sm, fontWeight: 700, color: C.teal,
+            fontFamily: 'inherit', transition: 'all .15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = `${C.teal}0F`; e.currentTarget.style.borderColor = C.teal; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = `${C.teal}44`; }}
+        >
+          ✨ Generate Evaluasi
+        </button>
+      </div>
+    );
+  }
+
+  if (status === 'loading') {
+    return (
+      <div style={{
+        marginTop: 10, paddingTop: 10, borderTop: `1px solid rgba(13,92,99,.07)`,
+        display: 'flex', alignItems: 'center', gap: 6
+      }}>
+        <div style={{ display: 'flex', gap: 3 }}>
+          {[0, 1, 2].map(i => (
+            <div key={i} style={{
+              width: 5, height: 5, borderRadius: '50%', background: C.teal,
+              opacity: 0.6, animation: `waveTyping .8s ${i * .2}s infinite`,
+            }} />
+          ))}
+        </div>
+        <span style={{ fontSize: FS.xs, color: C.teal, fontWeight: 500 }}>Membuat evaluasi...</span>
+      </div>
+    );
+  }
+
+  // DONE
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid rgba(13,92,99,.07)` }}>
+      <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.teal, marginBottom: 5 }}>
+        ✨ Evaluasi AI
+      </div>
+      <div style={{
+        background: `${C.teal}08`, border: `1px solid ${C.teal}22`,
+        borderRadius: 8, padding: '8px 10px',
+        fontSize: FS.sm, color: C.darkL, lineHeight: 1.7,
+      }}>
+        {state.text || '—'}
+      </div>
+      {state.generatedAt && (
+        <div style={{ fontSize: 9, color: C.slate, marginTop: 4 }}>
+          Dibuat: {new Date(state.generatedAt).toLocaleString('id-ID', {
+            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+          })}
+          {isExpired && ' · Sudah dapat diperbarui'}
+        </div>
+      )}
+      {/* Tombol Perbarui — hanya muncul setelah 24 jam */}
+      {isExpired && (
+        <button onClick={onGenerate}
+          style={{
+            marginTop: 6, display: 'flex', alignItems: 'center', gap: 4,
+            padding: '4px 10px', borderRadius: 99,
+            border: `1px solid ${C.slate}44`, background: 'transparent',
+            cursor: 'pointer', fontSize: 10, color: C.slate,
+            fontFamily: 'inherit', transition: 'all .15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = C.teal; e.currentTarget.style.color = C.teal; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = `${C.slate}44`; e.currentTarget.style.color = C.slate; }}
+        >
+          🔄 Perbarui Evaluasi
+        </button>
+      )}
+    </div>
+  );
+};
+
+
+const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onClose,
+  evaluasiState, onGenerateEvaluasi }) => {
   const [openSesiIdx, setOpenSesiIdx] = useState(null);
   const [openViolationIdx, setOpenViolationIdx] = useState(null);
 
@@ -385,7 +513,6 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                     const gIdx = r.origIdx;
                     const isTrenOpen = openSesiIdx === gIdx;
                     const isViolOpen = openViolationIdx === gIdx;
-                    const quizColor = r.quiz / r.quizTotal >= 0.7 ? C.green : r.quiz / r.quizTotal >= 0.5 ? C.amber : C.red;
                     const isLatestSession = riwayatByDate[0]?.entries[0]?.origIdx === gIdx;
                     const rawSessionViolations = [...(r.violations || []), ...(isLatestSession ? wsViolations : [])];
                     const seenKeys = new Set();
@@ -396,25 +523,97 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                       return true;
                     });
                     const hasSessionViolation = sessionViolations.length > 0;
+
+                    // Derive breakdown per level dari quiz_results
+                    const LEVEL_ORDER_D = ['low', 'mid', 'high'];
+                    const LEVEL_META_D = {
+                      low: { label: 'Low', color: '#276749', bg: '#F0FFF4', border: '#9AE6B4' },
+                      mid: { label: 'Mid', color: '#B7791F', bg: '#FFFBF0', border: '#F6AD55' },
+                      high: { label: 'High', color: '#9B2C2C', bg: '#FFF5F5', border: '#FEB2B2' },
+                    };
+                    const lvMap = {};
+                    (r.quiz_results || []).forEach(qr => {
+                      const lv = qr.level || 'low';
+                      if (!lvMap[lv]) lvMap[lv] = { mc: null, essay: null };
+                      if (qr.type === 'essay') lvMap[lv].essay = qr.score ?? null;
+                      else lvMap[lv].mc = qr.score ?? null;
+                    });
+                    const hasAnyQuiz = Object.keys(lvMap).length > 0;
+
                     return (
                       <div key={gIdx} style={{ background: C.white, borderRadius: 10, border: `1.5px solid rgba(13,92,99,.07)`, marginBottom: 6, overflow: 'hidden' }}>
                         <div style={{ padding: '11px 14px' }}>
                           <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, marginBottom: 3 }}>{r.materiId}</div>
-                            <div style={{ display: 'flex', gap: 10 }}>
-                              <span style={{ fontSize: FS.sm, fontWeight: 700, color: quizColor }}>Quiz: {r.quiz}/{r.quizTotal}</span>
-                              {r.level && (
-                                <span style={{
-                                  fontSize: 10, fontWeight: 700, padding: '1px 7px',
-                                  borderRadius: 99,
-                                  background: r.level === 'high' ? '#FFF5F5' : r.level === 'mid' ? '#FFFBF0' : '#F0FFF4',
-                                  color: r.level === 'high' ? '#9B2C2C' : r.level === 'mid' ? '#B7791F' : '#276749',
-                                }}>
-                                  Level {r.level}
-                                </span>
-                              )}
-                              <span style={{ fontSize: FS.sm, color: C.darkL }}>{r.durasi.toFixed(1)} jam</span>
-                            </div>
+                            <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, marginBottom: 6 }}>{r.materiId}</div>
+
+                            {/* Breakdown nilai per level */}
+                            {hasAnyQuiz ? (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5, marginBottom: 8 }}>
+                                {LEVEL_ORDER_D.map(lv => {
+                                  const d = lvMap[lv] || {};
+                                  const agg = (d.mc != null && d.essay != null)
+                                    ? Math.round(d.mc * 0.7 + d.essay * 0.3) : null;
+                                  const meta = LEVEL_META_D[lv];
+                                  const isEmpty = d.mc == null && d.essay == null;
+                                  return (
+                                    <div key={lv} style={{
+                                      borderRadius: 7, padding: '6px 8px',
+                                      border: `1px solid ${isEmpty ? '#E2E8F0' : meta.border}`,
+                                      background: isEmpty ? '#F7FAFC' : meta.bg,
+                                      opacity: isEmpty ? 0.5 : 1,
+                                    }}>
+                                      <div style={{ fontSize: 9, fontWeight: 700, color: isEmpty ? C.slate : meta.color, marginBottom: 3, textTransform: 'uppercase', letterSpacing: .5 }}>
+                                        {meta.label}
+                                      </div>
+                                      <div style={{ fontSize: FS.xs, color: C.darkL, lineHeight: 1.6 }}>
+                                        <div>PG: <strong>{d.mc != null ? d.mc : '—'}</strong></div>
+                                        <div>Essay: <strong>{d.essay != null ? d.essay : '—'}</strong></div>
+                                        {agg != null && (
+                                          <div style={{ marginTop: 2, paddingTop: 2, borderTop: `1px solid ${meta.border}` }}>
+                                            Agg: <strong style={{ color: agg >= 75 ? '#276749' : '#B7791F' }}>{agg}</strong>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: FS.xs, color: C.slate, fontStyle: 'italic', marginBottom: 6 }}>Belum ada quiz dikerjakan</div>
+                            )}
+
+                            <div style={{ fontSize: FS.sm, color: C.darkL }}>{r.durasi?.toFixed(1)} jam</div>
+
+                            {/* Revisi 2D: EvaluasiSesiPanel per sesi — hanya jika ada quiz */}
+                            {hasAnyQuiz && (() => {
+                              const sesiKey = `${student.id}__${r.tanggal}__${r.materiId}`;
+                              return (
+                                <EvaluasiSesiPanel
+                                  sesiKey={sesiKey}
+                                  state={evaluasiState?.[sesiKey]}
+                                  onGenerate={() => {
+                                    const lastQuizDariSesi = (() => {
+                                      const lvMap2 = {};
+                                      (r.quiz_results || []).forEach(qr => {
+                                        const lv = qr.level || 'low';
+                                        if (!lvMap2[lv]) lvMap2[lv] = { mc: null, essay: null };
+                                        if (qr.type === 'essay') lvMap2[lv].essay = qr.score ?? null;
+                                        else lvMap2[lv].mc = qr.score ?? null;
+                                      });
+                                      const levels = Object.keys(lvMap2);
+                                      if (!levels.length) return null;
+                                      const lastLv = levels[levels.length - 1];
+                                      const d = lvMap2[lastLv];
+                                      const agg2 = (d.mc != null && d.essay != null)
+                                        ? Math.round(d.mc * 0.7 + d.essay * 0.3) : null;
+                                      return { type: 'mc', level: lastLv, mc_score: d.mc, essay_score: d.essay, aggregated: agg2 };
+                                    })();
+                                    const sesiContext = { ...student, todayMateriId: r.materiId, todayLastQuiz: lastQuizDariSesi };
+                                    onGenerateEvaluasi(sesiKey, sesiContext);
+                                  }}
+                                />
+                              );
+                            })()}
                           </div>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                             <button onClick={() => { setOpenSesiIdx(isTrenOpen ? null : gIdx); if (!isTrenOpen) setOpenViolationIdx(null); }}
@@ -537,7 +736,35 @@ const MonitoringSection = ({
   const [violationMap, setViolationMap] = useState({});
   const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
   const [dismissedViolations, setDismissedViolations] = useState(new Set());
-  const [dismissedQuiz, setDismissedQuiz] = useState(new Set());
+
+  // State evaluasi per siswa: { [studentId]: { status: 'idle'|'loading'|'done', text: string|null } }
+  const [evaluasiState, setEvaluasiState] = useState({});
+
+  // Reset evaluasiState saat kelas berubah
+  useEffect(() => {
+    setEvaluasiState({});
+  }, [activeClass]);
+
+  // Revisi 2B: sesiKey = `${st.id}__${tanggal}__${materiId}` — unik per sesi
+  const handleGenerateEvaluasi = useCallback((sesiKey, sesiContext) => {
+    const now = Date.now();
+    setEvaluasiState(p => ({ ...p, [sesiKey]: { status: 'loading', text: null } }));
+    setTimeout(() => {
+      const text = generateAIEvaluasi(sesiContext);
+      setEvaluasiState(p => ({
+        ...p,
+        [sesiKey]: {
+          status: 'done',
+          text,
+          generatedAt: now,
+          expiresAt: now + 86400000, // expired 24 jam — deterministik
+          // TODO BE: ganti setTimeout ini dengan POST /evaluasi/siswa/:id
+          // Response BE: { text, generated_at, expires_at }
+          // FE simpan text + expiresAt dari response — tidak ada logika lain yang berubah
+        },
+      }));
+    }, 1200 + Math.random() * 600);
+  }, []);
 
   useEffect(() => {
     const handleSrViolation = (e) => {
@@ -565,14 +792,21 @@ const MonitoringSection = ({
     const allViolations = [...latestSessionViolations, ...liveViolations, ...eventViolations].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
     const seen = new Set();
     const violations = allViolations.filter(v => { const key = `${v.detail}__${v.timestamp}`; if (seen.has(key)) return false; seen.add(key); return true; });
-    const baseStudent = live ? { ...s, todayActive: live.aktif ?? s.todayActive, todayLevel: live.level || s.todayLevel, emotionKey: live.emosi || s.emotionKey, todayMateriId: live.materiId || s.todayMateriId, todayQuizScore: live.lastQuiz ?? s.todayQuizScore, todayQuizTotal: live.lastQuizTotal ?? s.todayQuizTotal } : s;
+    // Revisi 3: nilai lastQuiz < 10 dari mock WS dianggap noise simulasi, bukan skor quiz sungguhan
+    const wsQuizValid = live?.lastQuiz != null && live.lastQuiz >= 10;
+    const baseStudent = live ? { ...s, todayActive: live.aktif ?? s.todayActive, todayLevel: live.level || s.todayLevel, emotionKey: live.emosi || s.emotionKey, todayMateriId: live.materiId || s.todayMateriId, todayLastQuiz: wsQuizValid ? { ...(s.todayLastQuiz || {}), mc_score: live.lastQuiz, aggregated: null } : s.todayLastQuiz } : s;
     return { ...baseStudent, violations, hasViolation: violations.length > 0, lastViolation: violations[violations.length - 1] || null, violationCount: violations.length };
   });
 
   /* ── KPI ── */
   const aktifHariIni = studentsWithLive.filter(s => s.todayActive);
-  const sudahQuiz = aktifHariIni.filter(s => s.todayQuizScore != null);
-  const avgProgress = sudahQuiz.length > 0 ? Math.round(sudahQuiz.reduce((a, s) => a + (s.todayQuizScore / s.todayQuizTotal) * 100, 0) / sudahQuiz.length) : 0;
+  const sudahQuiz = aktifHariIni.filter(s => s.todayLastQuiz != null);
+  const avgProgress = sudahQuiz.length > 0
+    ? Math.round(sudahQuiz.reduce((a, s) => {
+      const score = s.todayLastQuiz.aggregated ?? s.todayLastQuiz.mc_score ?? 0;
+      return a + score;
+    }, 0) / sudahQuiz.length)
+    : 0;
 
   /* ── Smart Info stats ── */
   const totalPelanggaran = studentsWithLive.filter(s => s.hasViolation).length;
@@ -584,7 +818,6 @@ const MonitoringSection = ({
   const smartAlerts = useMemo(() => generateSmartAlerts(studentsWithLive), [studentsWithLive]);
   const visibleAlerts = smartAlerts.filter(a => !dismissedAlerts.has(a.id));
   const visibleViolations = studentsWithLive.filter(s => s.hasViolation && !dismissedViolations.has(s.id));
-  const visibleQuiz = studentsWithLive.filter(s => s.todayQuizScore != null && (s.todayQuizScore / s.todayQuizTotal) < 0.5 && !dismissedQuiz.has(s.id));
 
   const sortedStudents = [...studentsWithLive.filter(s => s.todayActive), ...studentsWithLive.filter(s => !s.todayActive)];
 
@@ -658,9 +891,8 @@ const MonitoringSection = ({
                         { label: 'Nama Siswa', align: 'left' },
                         { label: 'Materi/Elemen', align: 'left' },
                         { label: 'Level', align: 'center' },
-                        { label: 'Nilai Quiz', align: 'center' },
+                        { label: 'Nilai Terakhir', align: 'center' },
                         { label: 'Durasi', align: 'center' },
-                        { label: 'Evaluasi', align: 'center' },
                         { label: 'Aksi', align: 'center' },
                       ].map(h => (
                         <th key={h.label} style={{ padding: '9px 12px', textAlign: h.align, fontSize: FS.xs, fontWeight: 700, color: C.white, textTransform: 'uppercase', letterSpacing: .7, whiteSpace: 'nowrap' }}>{h.label}</th>
@@ -717,11 +949,22 @@ const MonitoringSection = ({
                             })() : <span style={{ color: C.slate }}>—</span>}
                           </td>
 
-                          {/* Nilai Quiz */}
+                          {/* Nilai Terakhir */}
                           <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {isActive && st.todayQuizScore != null
-                              ? <span style={{ fontSize: FS.md, fontWeight: 600, color: C.dark }}>{Math.round((st.todayQuizScore / st.todayQuizTotal) * 100)}</span>
-                              : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
+                            {isActive && st.todayLastQuiz != null ? (() => {
+                              const lq = st.todayLastQuiz;
+                              const score = lq.aggregated ?? lq.mc_score ?? 0;
+                              const isAgg = lq.aggregated != null;
+                              const scoreColor = score >= 75 ? C.green : score >= 50 ? C.amber : C.red;
+                              return (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                                  <span style={{ fontSize: FS.md, fontWeight: 700, color: scoreColor }}>{score}</span>
+                                  <span style={{ fontSize: 9, color: C.slate, fontWeight: 500 }}>
+                                    {isAgg ? 'Agregasi' : 'PG saja'}
+                                  </span>
+                                </div>
+                              );
+                            })() : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
                           </td>
 
                           {/* Durasi */}
@@ -729,15 +972,6 @@ const MonitoringSection = ({
                             {isActive && st.todayStudyHours != null
                               ? <span style={{ fontSize: FS.md, color: C.darkL, fontWeight: 600 }}>{st.todayStudyHours.toFixed(1)} jam</span>
                               : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
-                          </td>
-
-                          {/* Evaluasi */}
-                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {(() => {
-                              const evaluasi = generateAIEvaluasi(st);
-                              if (!evaluasi) return <span style={{ fontSize: FS.base, color: C.slate }}>—</span>;
-                              return <EvaluasiDropdown text={evaluasi} color={C.teal} bg={C.white} />;
-                            })()}
                           </td>
 
                           {/* Aksi */}
@@ -844,47 +1078,7 @@ const MonitoringSection = ({
                 );
               })()}
 
-              {/* Divider */}
-              <div style={{ height: 1, background: 'rgba(13,92,99,.06)', margin: '3px 0' }} />
 
-              {/* ── Kategori Quiz <50% (merah muda) ── */}
-              {(() => {
-                const siswaQuizRendah = studentsWithLive.filter(s =>
-                  s.todayActive && s.todayQuizScore != null && s.todayQuizTotal != null &&
-                  (s.todayQuizScore / s.todayQuizTotal) < 0.5 && !dismissedQuiz.has(s.id)
-                );
-                return (
-                  <div>
-                    <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#9B2C2C', textTransform: 'uppercase', letterSpacing: .7, marginBottom: 5 }}>
-                      📝 Nilai Quiz &lt; 50%
-                    </div>
-                    {siswaQuizRendah.length === 0 ? (
-                      <div style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', fontSize: FS.sm, color: '#9B2C2C', fontWeight: 600 }}>
-                        Tidak ada nilai kritis
-                      </div>
-                    ) : siswaQuizRendah.map(st => {
-                      const pct = Math.round((st.todayQuizScore / st.todayQuizTotal) * 100);
-                      return (
-                        <div key={st.id}
-                          onClick={() => { setSelectedStudent(st); setDismissedQuiz(prev => new Set([...prev, st.id])); }}
-                          style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', marginBottom: 5, cursor: 'pointer', transition: 'filter .15s' }}
-                          onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
-                          onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: st.avatarBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.xs, flexShrink: 0 }}>
-                              {st.avatar}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: FS.sm, fontWeight: 700, color: '#9B2C2C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{st.name}</div>
-                              <div style={{ fontSize: FS.xs, color: '#718096' }}>Quiz: {pct}/100 · klik detail</div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
             </div>
           </div>
         )} {/* end smart info conditional */}
@@ -894,7 +1088,7 @@ const MonitoringSection = ({
       {/* Student Drawer */}
       {
         selectedStudent && (
-          <StudentDrawer student={selectedStudent} recommendations={recommendations} setRecModal={setRecModal} setRecText={setRecText} onClose={() => setSelectedStudent(null)} />
+          <StudentDrawer student={selectedStudent} recommendations={recommendations} setRecModal={setRecModal} setRecText={setRecText} onClose={() => setSelectedStudent(null)} evaluasiState={evaluasiState} onGenerateEvaluasi={handleGenerateEvaluasi} />
         )
       }
 
@@ -940,7 +1134,7 @@ const MonitoringSection = ({
       {/* Modal Download */}
       {
         downloadModal && (
-          <DownloadModal cls={cls} teacherMapel={teacherMapel} studentsWithLive={studentsWithLive} onClose={() => setDownloadModal(false)} />
+          <DownloadModal cls={cls} teacherMapel={teacherMapel} studentsWithLive={studentsWithLive} evaluasiState={evaluasiState} onClose={() => setDownloadModal(false)} />
         )
       }
     </div >

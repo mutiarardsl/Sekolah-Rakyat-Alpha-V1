@@ -47,7 +47,7 @@ const Field = ({ label, type, value, show, error, onChange, onToggle, placeholde
     </div>
 );
 
-export default function ForceChangePasswordModal({ userName = '', role = 'guru', onSuccess }) {
+export default function ForceChangePasswordModal({ userName = '', role = 'guru', userId, onSuccess }) {
     const [newPass, setNewPass] = useState('');
     const [confirmPass, setConfirmPass] = useState('');
     const [showNew, setShowNew] = useState(false);
@@ -76,7 +76,7 @@ export default function ForceChangePasswordModal({ userName = '', role = 'guru',
         try {
             // FIX: guru first-login tidak punya old_password field di modal ini.
             // Backend menerima empty string sebagai sinyal first-login change.
-            await changePassword({ old_password: '', new_password: newPass });
+            await changePassword({ old_password: '', new_password: newPass, user_id: userId });
             setDone(true);
             setTimeout(() => onSuccess?.(), 1400);
         } catch (err) {

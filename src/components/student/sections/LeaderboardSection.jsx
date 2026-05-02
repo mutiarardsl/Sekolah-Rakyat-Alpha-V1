@@ -18,13 +18,45 @@ import {
 } from '../../../data/masterData';
 
 const CURRENT_STUDENT_ID = 's9';
+//bobot 
+const MC_WEIGHT = 0.7;
+const ESSAY_WEIGHT = 0.3;
 
 /* ── Helpers ── */
-const getTotalScore = (student) =>
-    (student.riwayat || []).reduce((sum, r) => {
-        const score = r.quizTotal > 0 ? Math.round((r.quiz / r.quizTotal) * 100) : 0;
-        return sum + score;
-    }, 0);
+// REVISI FASE 3: total_poin_quiz = akumulasi agregasi (MC + Essay) di semua materi yang diakses.
+// Logika per materi:
+//   - Jika ada MC dan Essay: rata-rata keduanya
+//   - Jika hanya MC atau hanya Essay: gunakan skor yang ada
+// Akumulasi semua materi = total_poin yang tampil di KPI & leaderboard.
+const getTotalScore = (student) => {
+    // Jika student punya field total_poin_quiz dari backend (GET /content/progress), pakai itu.
+    // Fallback ke kalkulasi lokal dari riwayat.
+    if (student.total_poin_quiz != null) return student.total_poin_quiz;
+
+    // Kalkulasi lokal dari riwayat (sebelum integrasi backend)
+    // Baca dari quiz_results[] per sesi — format baru selaras dengan quizHistory store
+    const riwayat = student.riwayat || [];
+    let totalAgregasi = 0;
+    const grupMap = {};
+    riwayat.forEach(r => {
+        (r.quiz_results || []).forEach(qr => {
+            const key = `${r.materiId || 'umum'}__${qr.level || 'low'}`;
+            if (!grupMap[key]) grupMap[key] = { mc: null, essay: null };
+            if (qr.type === 'essay') grupMap[key].essay = qr.score ?? null;
+            else grupMap[key].mc = qr.score ?? null;
+        });
+    });
+    Object.values(grupMap).forEach(({ mc, essay }) => {
+        if (mc != null && essay != null) {
+            totalAgregasi += Math.round(mc * MC_WEIGHT + essay * ESSAY_WEIGHT);
+        } else if (mc != null) {
+            totalAgregasi += mc;
+        } else if (essay != null) {
+            totalAgregasi += essay;
+        }
+    });
+    return totalAgregasi;
+};
 
 // Daily: score hanya dari riwayat 24 jam terakhir (simulasi: ambil 30% random seed per siswa)
 const getDailyScore = (student) => {

@@ -95,6 +95,7 @@ const store = {
   kelas: structuredClone(ADMIN_KELAS_INIT),
   mapel: structuredClone(ADMIN_MAPEL_LIST),
   rekomendasi: [],   // { id, guru_id, guru_nama, guru_mapel, siswa_id, pesan, dibaca, created_at }
+  publishedKonten: [], // RiwayatKontenItem[] — diisi saat POST /content/publish
 };
 
 const d = (ms = 300) => delay(ms);
@@ -191,15 +192,22 @@ export const handlers = [
   }),
 
   // PUT /auth/change-password
-  // Body: { old_password, new_password }
+  // Body: { old_password, new_password, user_id? }
   // FIX: handler baru — ChangePasswordModal & ForceChangePasswordModal butuh endpoint ini
   http.put(url('/auth/change-password'), async ({ request }) => {
-    const { old_password } = await request.json();
+    const { old_password, new_password, user_id } = await request.json();
     await d(600);
-    // Validasi: old_password harus cocok dengan salah satu akun dummy yang login
-    // Di mock, kita toleransi semua password lama asalkan bukan string kosong
     if (!old_password || old_password.length < 1) {
       return HttpResponse.json({ message: 'Password lama salah.' }, { status: 401 });
+    }
+    // Update DUMMY_ACCOUNTS in-memory agar re-login berikutnya pakai password baru
+    // dan is_first_login → false (force-change selesai)
+    if (user_id) {
+      const acc = DUMMY_ACCOUNTS.find(a => a.id === user_id);
+      if (acc) {
+        if (new_password) acc.password = new_password;
+        acc.is_first_login = false;
+      }
     }
     return HttpResponse.json({ message: 'Password berhasil diubah.' });
   }),
@@ -322,19 +330,114 @@ export const handlers = [
     const { tipe, level, elemen_label, materi } = await request.json();
     await d(1500 + Math.random() * 1000);
     const topik = materi || elemen_label || 'Materi';
-    // Mock mengembalikan content kosong/minimal — frontend tetap pakai placeholder lokal.
-    // Saat backend Tim 3 live, content diisi hasil RAG sesungguhnya.
-    const contentByTipe = {
-      bacaan: { text: '' },
-      quiz_pg: { soal: [] },
-      quiz_essay: { pertanyaan: [] },
-      flashcard: { cards: [] },
-      mindmap: { content: '' },
-    };
+    const lv = level || 'Low';
+
+    // Mock mengembalikan data dummy realistis per tipe.
+    // Shape IDENTIK dengan yang akan dikembalikan backend Tim 3 (RAG).
+    // KelolaBelajarSection hanya overwrite placeholder jika array.length > 0
+    // (lihat Fix A di handleSubmit), sehingga data di sini langsung tampil di UI.
+    let mockContent;
+
+    if (tipe === 'bacaan') {
+      const depthMap = {
+        Low: 'Pengantar sederhana dengan bahasa sehari-hari.',
+        Mid: 'Pembahasan mendalam dengan analogi kontekstual dan contoh nyata.',
+        High: 'Analisis kritis yang mencakup perbandingan, implikasi, dan evaluasi konsep.',
+      };
+      mockContent = {
+        text: `[Mock Bacaan – ${lv}]\n\n`
+          + `Topik: ${topik}\n\n`
+          + `${depthMap[lv]}\n\n`
+          + `${topik} adalah salah satu konsep fundamental dalam pembelajaran ini. `
+          + `Memahami ${topik} dengan baik akan membantu siswa dalam menghadapi tantangan `
+          + `yang lebih kompleks di tahap selanjutnya. Melalui pendekatan ${lv.toLowerCase()} `
+          + `ini, siswa diajak untuk membangun pemahaman yang kuat dan bermakna.`,
+      };
+    } else if (tipe === 'quiz_pg') {
+      const diffMap = { Low: 'mudah', Mid: 'sedang', High: 'sulit' };
+      mockContent = {
+        soal: [
+          {
+            pertanyaan: `[${lv}] Manakah pernyataan yang BENAR tentang ${topik}?`,
+            pilihan: [
+              `${topik} hanya berlaku dalam kondisi tertentu`,
+              `${topik} merupakan konsep universal yang mendasari ${elemen_label}`,
+              `${topik} tidak berkaitan dengan materi sebelumnya`,
+              `${topik} hanya dipelajari di jenjang atas`,
+            ],
+            jawaban: `${topik} merupakan konsep universal yang mendasari ${elemen_label}`,
+          },
+          {
+            pertanyaan: `[${lv}] Dalam konteks ${elemen_label}, ${topik} digunakan untuk?`,
+            pilihan: [
+              `Memperumit proses analisis`,
+              `Menyederhanakan perhitungan dasar saja`,
+              `Membantu memahami pola dan hubungan antar konsep`,
+              `Menggantikan metode konvensional sepenuhnya`,
+            ],
+            jawaban: `Membantu memahami pola dan hubungan antar konsep`,
+          },
+          {
+            pertanyaan: `[${lv}] Kesulitan tingkat ${diffMap[lv]}: Jika ${topik} diterapkan pada kasus nyata, apa yang perlu diperhatikan pertama kali?`,
+            pilihan: [
+              `Mengabaikan konteks dan langsung menghitung`,
+              `Memahami kondisi awal dan batasan masalah`,
+              `Menggunakan rumus tanpa memahami maknanya`,
+              `Mencari jawaban tercepat tanpa validasi`,
+            ],
+            jawaban: `Memahami kondisi awal dan batasan masalah`,
+          },
+        ],
+      };
+    } else if (tipe === 'quiz_essay') {
+      mockContent = {
+        pertanyaan: [
+          `[${lv}] Jelaskan pengertian ${topik} dengan kata-katamu sendiri! Berikan minimal satu contoh konkret dari kehidupan sehari-hari.`,
+          `[${lv}] Bagaimana ${topik} berkaitan dengan ${elemen_label}? Uraikan hubungannya secara sistematis.`,
+          `[${lv}] Analisis situasi berikut: Seorang siswa menghadapi masalah yang berkaitan dengan ${topik}. Langkah-langkah apa yang harus ditempuh untuk menyelesaikannya?`,
+        ],
+      };
+    } else if (tipe === 'flashcard') {
+      mockContent = {
+        cards: [
+          {
+            depan: `Apa definisi ${topik}?`,
+            belakang: `${topik} adalah konsep dalam ${elemen_label} yang menjelaskan hubungan antara elemen-elemen dasar secara sistematis dan terstruktur.`,
+          },
+          {
+            depan: `Sebutkan contoh penerapan ${topik} dalam kehidupan nyata!`,
+            belakang: `Contoh: penerapan ${topik} dapat ditemukan dalam situasi sehari-hari seperti perencanaan, pemecahan masalah, dan pengambilan keputusan yang melibatkan ${elemen_label}.`,
+          },
+          {
+            depan: `Mengapa ${topik} penting dipelajari pada level ${lv}?`,
+            belakang: `Pada level ${lv}, ${topik} membangun fondasi pemahaman yang diperlukan untuk menghadapi konsep yang lebih kompleks di level berikutnya.`,
+          },
+        ],
+      };
+    } else if (tipe === 'mindmap') {
+      mockContent = {
+        content: `[Mock Mindmap]\nTopik Utama: ${topik}\n`
+          + `\u251C\u2500 Definisi & Konsep Dasar\n`
+          + `\u2502  \u251C\u2500 Pengertian ${topik}\n`
+          + `\u2502  \u2514\u2500 Komponen utama\n`
+          + `\u251C\u2500 Hubungan dengan ${elemen_label}\n`
+          + `\u2502  \u251C\u2500 Keterkaitan konsep\n`
+          + `\u2502  \u2514\u2500 Aplikasi dalam konteks\n`
+          + `\u251C\u2500 Contoh & Penerapan\n`
+          + `\u2502  \u251C\u2500 Kasus nyata\n`
+          + `\u2502  \u2514\u2500 Simulasi problem\n`
+          + `\u2514\u2500 Evaluasi & Refleksi\n`
+          + `   \u251C\u2500 Soal latihan\n`
+          + `   \u2514\u2500 Indikator penguasaan`,
+      };
+    } else {
+      mockContent = {};
+    }
+
     return HttpResponse.json({
       tipe,
       level: level || null,
-      content: contentByTipe[tipe] ?? {},
+      content: mockContent,
       generated_at: nowISO(),
     });
   }),
@@ -343,14 +446,47 @@ export const handlers = [
   // Body: PublishPayload { mapel_id, elemen_id, elemen_label, materi?, materi_id?,
   //                        kelas_id, jenjang, guru_id, atp, konten_list: KontenItem[] }
   // KontenItem: { tipe, level, content, approved }  (field "tipe" bukan "type")
+  // Menyimpan ke store.publishedKonten agar GET /content/riwayat bisa membacanya kembali.
   http.post(url('/content/publish'), async ({ request }) => {
     const body = await request.json();
     await d(1200);
+    const publishId = 'pub_' + Date.now();
+    const publishedAt = nowISO();
     const kelasIds = body.kelas_id === '__semua__'
       ? store.kelas.filter(k => k.tingkat === body.jenjang).map(k => k.id)
       : [body.kelas_id].filter(Boolean);
+
+    // Resolve display fields dari store agar RiwayatKontenSection render tanpa lookup lokal
+    const mapelEntry = store.mapel.find(m => m.id === body.mapel_id) || {};
+    const kelasEntry = store.kelas.find(k => k.id === body.kelas_id);
+    const kelasNama = body.kelas_id === '__semua__'
+      ? `Semua Kelas ${body.jenjang}`
+      : kelasEntry?.nama || body.kelas_id;
+
+    // Simpan ke store — shape: RiwayatKontenItem (typedef di api/content.js)
+    const riwayatItem = {
+      publish_id: publishId,
+      guru_id: body.guru_id,
+      mapel_id: body.mapel_id,
+      mapel_label: mapelEntry.label || body.mapel_id,
+      mapel_icon: mapelEntry.icon || '📚',
+      mapel_color: mapelEntry.color || '#319795',
+      elemen_id: body.elemen_id,
+      elemen_label: body.elemen_label,
+      materi: body.materi || null,
+      materi_id: body.materi_id || null,
+      kelas_id: body.kelas_id,
+      kelas_nama: kelasNama,
+      jenjang: body.jenjang,
+      atp: body.atp || '',
+      published_at: publishedAt,
+      konten_list: body.konten_list || [],
+    };
+    // Prepend agar urut DESC (terbaru di atas)
+    store.publishedKonten.unshift(riwayatItem);
+
     return HttpResponse.json(
-      { publish_id: 'pub_' + Date.now(), kelas_ids: kelasIds, published_at: nowISO() },
+      { publish_id: publishId, kelas_ids: kelasIds, published_at: publishedAt },
       { status: 201 }
     );
   }),
@@ -362,29 +498,231 @@ export const handlers = [
   //                kelas_id, jenjang, published_at, konten_list: KontenItem[] }
   // KontenItem: { tipe, level, content, approved }  (field "tipe" bukan "type")
   //
-  // Struktur konten_list dalam SATU paket (satu guru-publish):
-  //   bacaan×3 (Low/Mid/High) + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 = 13 item
-  //   game TIDAK ada di sini — diambil via GET /game/list Tim 4
+  // REVISI FASE 3: konten_list = 16 item
+  //   bacaan×3 (Low/Mid/High) + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 + game×3 = 16
+  //   game disertakan di sini (mirror dari GET /game/list Tim 4) agar siswa GET /content
+  //   mengembalikan jumlah yang sama dengan guru POST /content/publish (16 item).
+  //   Frontend menyaring game berdasarkan level siswa saat ini.
+  //
+  // SISTEM BACAAN MARKDOWN:
+  //   Konten bacaan dikirim dalam format Markdown penuh.
+  //   Frontend (ChatSection) merender via renderMarkdown() yang sudah ada.
+  //   Struktur per level:
+  //     Low  → paragraf pengantar + 3 poin utama + 1 contoh sederhana
+  //     Mid  → pembahasan mendalam + analogi + 2 contoh kontekstual + ringkasan
+  //     High → analisis kritis + perbandingan + implikasi + evaluasi
   http.get(url('/content/siswa'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const mapelId = p.get('mapel_id') || 'mat';
     const elemenId = p.get('elemen_id') || p.get('materi_id') || 'bil_aljabar';
     const materiIdParam = p.get('materi_id') || null;
+    const topikLabel = materiIdParam || (elemenId === 'bil_aljabar' ? 'Bilangan dan Aljabar'
+      : elemenId === 'data_statistika' ? 'Data dan Statistika' : elemenId);
     const elemenLabel = elemenId === 'bil_aljabar' ? 'Bilangan dan Aljabar'
       : elemenId === 'data_statistika' ? 'Data dan Statistika'
         : elemenId;
     await d(500);
     const LVLS = ['Low', 'Mid', 'High'];
-    // Satu paket publish berisi seluruh konten_list (semua tipe × semua level)
-    // Mock mengembalikan konten kosong — frontend tetap pakai placeholder lokal.
-    // Saat backend Tim 3 live, content diisi hasil generate sesungguhnya.
+
+    // ── Helper: mock bacaan Markdown per level ─────────────────────
+    const makeBacaan = (lv, topik) => {
+      const depthMap = {
+        Low: `# ${topik}
+
+## A. Pengertian
+
+**${topik}** merupakan salah satu konsep dasar yang dipelajari dalam ${elemenLabel}. Pemahaman yang baik terhadap konsep ini menjadi landasan untuk mempelajari materi-materi berikutnya.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Dengan memahami **${topik}**, kamu akan lebih mudah memecahkan berbagai permasalahan yang berkaitan.
+
+## B. Ciri-ciri dan Karakteristik
+
+Berikut ini adalah ciri-ciri utama dari **${topik}**:
+
+1. Memiliki struktur yang teratur dan dapat diidentifikasi secara sistematis
+2. Berkaitan erat dengan konsep-konsep lain dalam ${elemenLabel}
+3. Dapat diterapkan dalam berbagai konteks kehidupan sehari-hari
+
+Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+
+## C. Contoh Penerapan
+
+**Contoh 1:**
+Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Dalam konteks ini, **${topik}** berperan sebagai alat bantu analisis yang efektif.
+
+**Contoh 2:**
+Excepteur sint occaecat cupidatat non proident. Prinsip **${topik}** diterapkan ketika kita perlu membandingkan dua situasi yang berbeda secara objektif.
+
+## D. Rangkuman
+
+> **${topik}** adalah konsep penting dalam ${elemenLabel} yang dapat membantu kita memahami dan menganalisis berbagai fenomena secara lebih terstruktur.
+
+💡 *Setelah membaca materi ini, klik tombol "Selesai membaca" dan diskusikan dengan Kak Nusa jika ada yang belum dipahami.*`,
+
+        Mid: `# ${topik}: Pemahaman Mendalam
+
+## A. Konsep Inti
+
+**${topik}** dalam konteks ${elemenLabel} memiliki dimensi yang lebih luas dibandingkan pemahaman dasar. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+
+Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore.
+
+## B. Hubungan Antar Konsep
+
+Dalam kerangka ${elemenLabel}, **${topik}** berinteraksi dengan konsep-konsep lain sebagai berikut:
+
+| Aspek | Keterangan |
+|---|---|
+| Keterkaitan Horizontal | Berhubungan dengan konsep setara dalam ${elemenLabel} |
+| Keterkaitan Vertikal | Menjadi dasar bagi konsep-konsep tingkat lanjut |
+| Penerapan Praktis | Dapat digunakan langsung dalam pemecahan masalah |
+
+Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+## C. Analisis Kontekstual
+
+**Situasi 1 — Konteks Formal:**
+Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium. Penerapan **${topik}** dalam situasi ini memerlukan pemahaman yang komprehensif tentang kondisi dan variabel yang terlibat.
+
+**Situasi 2 — Konteks Informal:**
+Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit. Di sini, **${topik}** membantu kita membuat keputusan yang lebih tepat dan terukur.
+
+## D. Implikasi Praktis
+
+1. **Perencanaan** — Ut labore et dolore magnam aliquam quaerat voluptatem
+2. **Evaluasi** — Neque porro quisquam est, qui dolorem ipsum quia dolor
+3. **Pengambilan Keputusan** — At vero eos et accusamus et iusto odio dignissimos
+
+## E. Rangkuman
+
+Pemahaman mendalam tentang **${topik}** membuka wawasan baru dalam memandang permasalahan di ${elemenLabel}. Dengan menguasai konsep ini, kamu mampu berpikir lebih kritis dan sistematis.
+
+📌 *Refleksi: Identifikasi satu situasi nyata di mana kamu pernah menghadapi permasalahan yang berkaitan dengan ${topik}.*`,
+
+        High: `# Analisis Kritis: ${topik}
+
+## A. Tinjauan Teoretis
+
+Pada tingkat analisis ini, **${topik}** dikaji tidak hanya dari perspektif deskriptif, melainkan juga dari sudut pandang evaluatif dan komparatif. Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+
+Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam eaque ipsa quae ab illo inventore veritatis.
+
+## B. Perbandingan Pendekatan
+
+| Dimensi | Pendekatan Konvensional | Pendekatan Berbasis ${topik} |
+|---|---|---|
+| Analisis | Linier, satu variabel | Multidimensi, sistematis |
+| Validitas | Bergantung asumsi tunggal | Mempertimbangkan konteks |
+| Fleksibilitas | Terbatas pada kondisi ideal | Adaptif terhadap variasi |
+| Kesimpulan | Sering parsial | Lebih komprehensif |
+
+## C. Batas dan Keterbatasan
+
+Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit. **${topik}** paling efektif diterapkan ketika:
+
+1. Variabel-variabel utama dapat didefinisikan dengan jelas
+2. Data yang tersedia cukup untuk mendukung analisis yang valid
+3. Konteks penerapan sesuai dengan asumsi dasar yang digunakan
+
+Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur.
+
+## D. Kritik dan Perspektif Alternatif
+
+At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti.
+
+Beberapa perspektif kritis terhadap penerapan **${topik}**:
+
+- **Perspektif Reduksionis:** Risiko penyederhanaan yang berlebihan terhadap kompleksitas realita
+- **Perspektif Kontekstualis:** Pentingnya mempertimbangkan faktor-faktor kualitatif yang tidak terukur
+- **Perspektif Komparatif:** Keunggulan dan kelemahan dibandingkan pendekatan alternatif lainnya
+
+## E. Evaluasi dan Sintesis
+
+Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus.
+
+**Pertanyaan evaluatif:**
+1. Dalam kondisi apa **${topik}** memberikan hasil analisis yang paling akurat?
+2. Bagaimana cara mengidentifikasi potensi bias dalam penerapan **${topik}**?
+3. Apa yang dapat kamu tawarkan sebagai penyempurnaan terhadap pendekatan yang ada?
+
+## F. Rangkuman
+
+Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kuat sebagai alat analisis, tetap memerlukan pemahaman kontekstual yang mendalam agar dapat diterapkan secara optimal.
+
+🔬 *Tantangan: Cari satu kasus nyata di mana penerapan ${topik} menghasilkan kesimpulan yang berbeda dari intuisi awal. Diskusikan temuanmu dengan Kak Nusa.*`,
+      };
+      return { text: depthMap[lv] || depthMap.Low };
+    };
+
+    // ── Helper: mock quiz_pg per level ─────────────────────────────
+    const makeQuizPG = (lv, topik) => ({
+      soal: [
+        {
+          pertanyaan: `[${lv}] Manakah pernyataan yang BENAR tentang ${topik}?`,
+          pilihan: [`${topik} hanya berlaku dalam kondisi tertentu saja`, `${topik} merupakan konsep fundamental dalam ${elemenLabel}`, `${topik} tidak berkaitan dengan materi lain`, `${topik} hanya dipelajari di jenjang atas`],
+          jawaban: `${topik} merupakan konsep fundamental dalam ${elemenLabel}`,
+        },
+        {
+          pertanyaan: `[${lv}] Dalam konteks ${elemenLabel}, ${topik} digunakan untuk?`,
+          pilihan: [`Memperumit proses analisis`, `Menyederhanakan perhitungan dasar saja`, `Membantu memahami pola dan hubungan antar konsep`, `Menggantikan metode konvensional sepenuhnya`],
+          jawaban: `Membantu memahami pola dan hubungan antar konsep`,
+        },
+        {
+          pertanyaan: `[${lv}] Apa ciri khas ${topik} pada level ${lv}?`,
+          pilihan: [`Memahami kondisi awal dan batasan masalah`, `Mengabaikan konteks dan langsung menghitung`, `Menggunakan rumus tanpa memahami maknanya`, `Mencari jawaban tercepat tanpa validasi`],
+          jawaban: `Memahami kondisi awal dan batasan masalah`,
+        },
+      ],
+    });
+
+    // ── Helper: mock quiz_essay per level ──────────────────────────
+    const makeQuizEssay = (lv, topik) => ({
+      pertanyaan: [
+        `[${lv}] Jelaskan pengertian ${topik} dengan kata-katamu sendiri! Berikan minimal satu contoh konkret.`,
+        `[${lv}] Bagaimana ${topik} berkaitan dengan ${elemenLabel}? Uraikan hubungannya secara sistematis.`,
+        `[${lv}] Analisis situasi: Bagaimana kamu menerapkan ${topik} dalam kehidupan nyata? Langkah apa saja yang diperlukan?`,
+      ],
+    });
+
+    // ── Helper: mock flashcard per level ───────────────────────────
+    const makeFlashcard = (lv, topik) => ({
+      cards: [
+        { depan: `Apa definisi ${topik}?`, belakang: `${topik} adalah konsep dalam ${elemenLabel} yang menjelaskan hubungan antar elemen secara sistematis (Level ${lv}).` },
+        { depan: `Sebutkan contoh penerapan ${topik}!`, belakang: `Contoh: ${topik} dapat ditemukan dalam perencanaan, pemecahan masalah, dan pengambilan keputusan sehari-hari.` },
+        { depan: `Mengapa ${topik} penting di level ${lv}?`, belakang: `Di level ${lv}, ${topik} membangun fondasi yang diperlukan untuk menghadapi konsep lebih kompleks berikutnya.` },
+      ],
+    });
+
+    // ── Helper: mock game item (mirror GET /game/list) ──────────────
+    // Disertakan di konten_list agar total = 16 (sama dengan yang guru publish).
+    // Frontend menyaring berdasarkan level siswa aktif.
+    // game_id di sini adalah ID yang sama dengan GET /game/list.
+    const makeGame = (lv, topik, mapel) => ({
+      game_id: `g_${mapel}_${lv.toLowerCase()}_${Date.now()}`,
+      nama: `Quest ${lv}: ${topik}`,
+      deskripsi: `Game edukasi interaktif tentang ${topik} — level ${lv}`,
+      mapel_id: mapel,
+      elemen_id: elemenId,
+      elemen_label: elemenLabel,
+      materi: materiIdParam,
+      materi_id: materiIdParam,
+      level: lv,
+      status: 'ready',
+      html_url: `https://game.sekolahrakyat.id/play/${mapel}_${elemenId}?level=${lv}`,
+    });
+
+    // ── Build konten_list: 16 item ─────────────────────────────────
+    // bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 + game×3 = 16
     const kontenList = [
-      ...LVLS.map(lv => ({ tipe: 'bacaan', level: lv, content: { text: '' }, approved: true })),
-      ...LVLS.map(lv => ({ tipe: 'quiz_pg', level: lv, content: { soal: [] }, approved: true })),
-      ...LVLS.map(lv => ({ tipe: 'quiz_essay', level: lv, content: { pertanyaan: [] }, approved: true })),
-      ...LVLS.map(lv => ({ tipe: 'flashcard', level: lv, content: { cards: [] }, approved: true })),
-      { tipe: 'mindmap', level: null, content: { content: '' }, approved: true },
+      ...LVLS.map(lv => ({ tipe: 'bacaan', level: lv, content: makeBacaan(lv, topikLabel), approved: true })),
+      ...LVLS.map(lv => ({ tipe: 'quiz_pg', level: lv, content: makeQuizPG(lv, topikLabel), approved: true })),
+      ...LVLS.map(lv => ({ tipe: 'quiz_essay', level: lv, content: makeQuizEssay(lv, topikLabel), approved: true })),
+      ...LVLS.map(lv => ({ tipe: 'flashcard', level: lv, content: makeFlashcard(lv, topikLabel), approved: true })),
+      { tipe: 'mindmap', level: null, content: { content: `[Mindmap] Topik: ${topikLabel}\n├─ Definisi\n│  ├─ Pengertian dasar\n│  └─ Komponen utama\n├─ Hubungan dengan ${elemenLabel}\n│  ├─ Keterkaitan konsep\n│  └─ Aplikasi konteks\n├─ Contoh & Penerapan\n│  ├─ Kasus nyata\n│  └─ Simulasi\n└─ Evaluasi\n   ├─ Latihan soal\n   └─ Indikator penguasaan` }, approved: true },
+      // game×3 — mirror GET /game/list agar total 16 sama dengan guru publish
+      ...LVLS.map(lv => ({ tipe: 'game', level: lv, content: makeGame(lv, topikLabel, mapelId), approved: true })),
     ];
+
     return HttpResponse.json([{
       publish_id: `pub_${mapelId}_${elemenId}_mock`,
       mapel_id: mapelId,
@@ -401,6 +739,11 @@ export const handlers = [
 
   // GET /content/progress
   // Params: { siswa_id }
+  // REVISI FASE 3: total_poin_quiz = akumulasi SEMUA skor quiz (MC + essay terkonversi)
+  //   dari SEMUA materi yang diakses siswa. Ini yang tampil di KPI & leaderboard.
+  //   Rumus per materi: rata-rata(mc_score, essay_score) jika keduanya ada,
+  //                     atau mc_score/essay_score jika hanya satu yang ada.
+  //   Backend mengagregasi semua materi → total_poin_quiz & rata_rata_quiz.
   http.get(url('/content/progress'), async () => {
     await d(300);
     return HttpResponse.json({
@@ -410,8 +753,11 @@ export const handlers = [
       dalam_proses: 3,
       belum_dimulai: 5,
       streak_hari: 7,
+      // total_poin_quiz = akumulasi agregasi MC + essay di semua materi yang diakses
+      // Di mock: 4 materi selesai × rata-rata 78 ≈ 312, 3 dalam proses × rata-rata 60 ≈ 180
       total_poin_quiz: 560,
       total_waktu_menit: 225,
+      // rata_rata_quiz = rata-rata agregasi (MC + essay) semua materi yang punya kedua quiz
       rata_rata_quiz: 78,
       by_mapel: [
         { mapel_id: 'mat', selesai: 2, progress_avg: 72 },
@@ -424,19 +770,137 @@ export const handlers = [
 
   // POST /content/quiz/submit
   // Body: { siswa_id, publish_id, mapel_id, elemen_id, elemen_label,
-  //          materi?, materi_id?, quiz_type, level, answers, score }
+  //          materi?, materi_id?, quiz_type, level, answers, score, essay_score? }
   // elemen_id WAJIB — backend pakai ini untuk update progress per elemen
   // publish_id WAJIB — backend pakai ini untuk tracing ke paket konten asal
+  //
+  // REVISI FASE 3 — Sistem Penilaian Agregasi:
+  //   • quiz_type "mc"    → score = 0–100 (dihitung frontend dari jawaban benar)
+  //   • quiz_type "essay" → score dikirim sebagai 0 saat submit, dinilai tim RAG secara async
+  //                         Backend kembalikan essay_score (0–100) saat RAG selesai
+  //   • Naik level jika rata-rata(mc_score, essay_score) >= KKM_BARU (75)
+  //   • Logika agregasi final ada di backend; mock mensimulasikan response RAG essay
   http.post(url('/content/quiz/submit'), async ({ request }) => {
-    const { score, quiz_type, elemen_id } = await request.json();
-    await d(300);
+    const body = await request.json();
+    const { score, quiz_type, elemen_id, siswa_id, level } = body;
+    await d(quiz_type === 'essay' ? 800 : 300); // essay butuh lebih lama (simulasi RAG)
+
+    // Untuk essay: mock Tim RAG memberi skor 60–95 secara acak (simulasi penilaian AI)
+    // Di produksi: backend antre ke RAG pipeline, hasil essay_score muncul async via webhook
+    const essayScore = quiz_type === 'essay'
+      ? Math.round(60 + Math.random() * 35) // RAG mock score 60–95
+      : null;
+
+    // Hitung agregasi jika essay — backend yang agregasi di produksi
+    // Mock ini hanya mensimulasikan respons backend pasca penilaian RAG
+    const KKM_BARU = 75; // KKM baru: rata-rata MC + essay >= 75
+    const aggregatedScore = quiz_type === 'essay' && essayScore != null
+      ? null // backend aggregate setelah mc_score tersimpan — tidak dihitung di sini
+      : score ?? 0;
+
     return HttpResponse.json({
       submitted: true,
-      score: score ?? 0,
+      score: aggregatedScore ?? 0,
       quiz_type: quiz_type || 'mc',
       elemen_id: elemen_id || '',
+      level: level || 'Low',
+      // essay_score: skor RAG untuk essay (null jika MC)
+      essay_score: essayScore,
+      // kkm: KKM baru yang dipakai untuk naik level (dikirim ke frontend untuk display)
+      kkm: KKM_BARU,
+      // pending_aggregation: true jika essay baru saja disubmit, perlu tunggu mc_score juga
+      pending_aggregation: quiz_type === 'essay',
       recorded_at: nowISO(),
     });
+  }),
+
+  // GET /content/riwayat
+  // Params: { guru_id, mapel_id? }
+  // Response: RiwayatKontenItem[] (urut published_at DESC)
+  // Dipakai RiwayatKontenSection. Jika store kosong, kembalikan seed dummy
+  // dengan shape IDENTIK agar UI konsisten saat mock dimatikan nanti.
+  http.get(url('/content/riwayat'), async ({ request }) => {
+    const p = new URL(request.url).searchParams;
+    const guruId = p.get('guru_id');
+    const mapelId = p.get('mapel_id');
+    await d(400);
+
+    let hasil = [...store.publishedKonten];
+    if (guruId) hasil = hasil.filter(r => r.guru_id === guruId);
+    if (mapelId) hasil = hasil.filter(r => r.mapel_id === mapelId);
+
+    // Fallback seed — shape identik RiwayatKontenItem
+    // konten_list berisi 16 item (5 tipe × level + game×3)
+    if (hasil.length === 0) {
+      const LVLS = ['Low', 'Mid', 'High'];
+      const makeKL = (seedSiswaSelesai = {}) => [
+        ...LVLS.map(lv => ({ tipe: 'bacaan', level: lv, content: { text: '' }, approved: true })),
+        ...LVLS.map(lv => ({ tipe: 'quiz_pg', level: lv, content: { soal: [] }, approved: true })),
+        ...LVLS.map(lv => ({ tipe: 'quiz_essay', level: lv, content: { pertanyaan: [] }, approved: true })),
+        ...LVLS.map(lv => ({ tipe: 'flashcard', level: lv, content: { cards: [] }, approved: true })),
+        { tipe: 'mindmap', level: null, content: { content: '' }, approved: true },
+        // game per level — siswa_selesai embedded di sini (bukan di /game/list)
+        ...LVLS.map(lv => ({
+          tipe: 'game', level: lv,
+          content: {
+            game_id: null, status: 'ready', html_url: null,
+            siswa_selesai: seedSiswaSelesai[lv] || [],
+          },
+          approved: true,
+        })),
+      ];
+      const seeds = [
+        {
+          publish_id: 'rk_seed_1', guru_id: guruId || 'g1',
+          mapel_id: 'mat', mapel_label: 'Matematika', mapel_icon: '📐', mapel_color: '#319795',
+          elemen_id: 'bil_aljabar', elemen_label: 'Bilangan dan Aljabar',
+          materi: 'Persamaan Linear', materi_id: 'mat__persamaan_linear',
+          kelas_id: 'x1', kelas_nama: 'X-1', jenjang: 'X',
+          atp: 'Siswa mampu menjelaskan konsep Persamaan Linear\nSiswa dapat menyelesaikan Persamaan Linear dengan satu langkah\nSiswa dapat mengaplikasikan pada soal cerita sederhana',
+          published_at: new Date('2026-04-14T09:32:00').toISOString(),
+          konten_list: makeKL({
+            // 5 siswa sudah menyelesaikan — cukup untuk test avatar stack + modal
+            Low: [
+              { siswa_id: 's1', selesai_at: '14 Apr, 09:45' },
+              { siswa_id: 's2', selesai_at: '14 Apr, 10:02' },
+              { siswa_id: 's3', selesai_at: '14 Apr, 10:15' },
+            ],
+            Mid: [
+              { siswa_id: 's4', selesai_at: '14 Apr, 10:30' },
+              { siswa_id: 's5', selesai_at: '14 Apr, 11:05' },
+            ],
+            High: [],
+          }),
+        },
+        {
+          publish_id: 'rk_seed_2', guru_id: guruId || 'g1',
+          mapel_id: 'mat', mapel_label: 'Matematika', mapel_icon: '📐', mapel_color: '#319795',
+          elemen_id: 'data_statistika', elemen_label: 'Data dan Statistika',
+          materi: 'Statistika Dasar', materi_id: 'mat__statistika_dasar',
+          kelas_id: 'x2', kelas_nama: 'X-2', jenjang: 'X',
+          atp: 'Siswa mampu menjelaskan konsep Statistika Dasar\nSiswa dapat mengolah data statistika sederhana',
+          published_at: new Date('2026-04-09T14:15:00').toISOString(),
+          konten_list: makeKL({
+            Low: [{ siswa_id: 's10', selesai_at: '9 Apr, 14:30' }],
+            Mid: [],
+            High: [],
+          }),
+        },
+        {
+          publish_id: 'rk_seed_3', guru_id: guruId || 'g1',
+          mapel_id: 'mat', mapel_label: 'Matematika', mapel_icon: '📐', mapel_color: '#319795',
+          elemen_id: 'geometri', elemen_label: 'Geometri dan Pengukuran',
+          materi: 'Fungsi Kuadrat', materi_id: 'mat__fungsi_kuadrat',
+          kelas_id: 'x3', kelas_nama: 'X-3', jenjang: 'X',
+          atp: 'Siswa mampu menjelaskan konsep Fungsi Kuadrat\nSiswa dapat menyelesaikan Fungsi Kuadrat\nSiswa dapat mengaplikasikan Fungsi Kuadrat pada soal cerita',
+          published_at: new Date('2026-04-04T11:00:00').toISOString(),
+          konten_list: makeKL(), // belum ada yang main
+        },
+      ];
+      hasil = mapelId ? seeds.filter(s => s.mapel_id === mapelId) : seeds;
+    }
+
+    return HttpResponse.json(hasil);
   }),
 
   // GET /content/recommend

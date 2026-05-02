@@ -21,7 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import ForceChangePasswordModal from '../shared/ForceChangePasswordModal';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { SUBJECTS, TEACHERS, SEEDED_TEACHER_ID, CLASSES, STUDENTS } from '../../data/masterData';
+import { SUBJECTS, TEACHERS, CLASSES, STUDENTS } from '../../data/masterData';
 import { kirimRekomendasi } from '../../api/admin'; // FIX P2: sambungkan POST /guru/rekomendasi
 
 import MonitoringSection from './sections/MonitoringSection';
@@ -41,7 +41,25 @@ const TeacherView = () => {
   const { isMobile, isTablet } = useBreakpoint();
   const isCompact = isMobile || isTablet;
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showForceChange, setShowForceChange] = useState(user?.is_first_login === true);
+
+  // Lookup teacher berdasarkan user.id dari AuthContext (sama persis dengan sistem siswa).
+  // Fallback ke t2 hanya jika user belum login / role tidak dikenali (seharusnya tidak terjadi).
+  const teacher = TEACHERS.find(t => t.id === user?.id) ?? TEACHERS.find(t => t.id === 't2');
+
+  // Revisi 1B: Normalize mapelId → selalu array agar support 1 mapel dan multi-mapel
+  const mapelIds = teacher?.mapelId
+    ? (Array.isArray(teacher.mapelId) ? teacher.mapelId : [teacher.mapelId])
+    : [];
+  const teacherMapels = mapelIds.map(id => SUBJECTS.find(s => s.id === id)).filter(Boolean);
+
+  // State mapel aktif (default: mapel pertama)
+  const [activeMapelId, setActiveMapelId] = useState(mapelIds[0] || null);
+  const teacherMapelActive = teacherMapels.find(m => m.id === activeMapelId) || teacherMapels[0] || null;
+  // Alias agar sharedMonitoring dan semua section tidak perlu diubah
+  const teacherMapel = teacherMapelActive;
+
+  // Revisi 1D: baca isFirstLogin dari TEACHERS sebagai fallback
+  const [showForceChange, setShowForceChange] = useState(user?.is_first_login === true || teacher?.isFirstLogin === true);
   const onNavigate = (screen) => {
     if (screen === 'login') { logout(); navigate('/login', { replace: true }); return; }
     if (screen === 'student') { navigate('/siswa'); return; }
@@ -59,9 +77,6 @@ const TeacherView = () => {
   const [barTooltip, setBarTooltip] = useState(null);
   const [pwdToast, setPwdToast] = useState(false);
 
-  const teacher = TEACHERS.find(t => t.id === SEEDED_TEACHER_ID);
-  const teacherMapel = SUBJECTS.find(s => s.id === teacher?.mapelId);
-
   // FIX 2
   const cls = CLASSES.find(c => c.id === activeClass) ?? CLASSES[0];
 
@@ -77,15 +92,15 @@ const TeacherView = () => {
       await kirimRekomendasi({
         guru_id: teacher?.id || 'g1',
         siswa_id: studentId,
-        mapel_id: teacher?.mapelId || teacherMapel?.id || '',
+        mapel_id: teacherMapel?.id || '',
         pesan: text,
       });
       setRecPipeline('done');
-      setSentToAI(p => ({ ...p, [studentId]: { mapelId: teacher?.mapelId, text, ts: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) } }));
+      setSentToAI(p => ({ ...p, [studentId]: { mapelId: teacherMapel?.id, text, ts: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) } }));
     } catch {
       // Fallback: rekomendasi tetap tersimpan lokal meski API gagal
       setRecPipeline('done');
-      setSentToAI(p => ({ ...p, [studentId]: { mapelId: teacher?.mapelId, text, ts: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) } }));
+      setSentToAI(p => ({ ...p, [studentId]: { mapelId: teacherMapel?.id, text, ts: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) } }));
     } finally {
       setTimeout(() => setRecPipeline(null), 2500);
     }
@@ -107,6 +122,19 @@ const TeacherView = () => {
 
   return (
     <>
+      {/* ForceChangePasswordModal — muncul jika is_first_login true, tidak bisa ditutup */}
+      {showForceChange && (
+        <ForceChangePasswordModal
+          userName={teacher?.name || user?.nama || ''}
+          role="guru"
+          userId={user?.id}
+          onSuccess={() => {
+            setShowForceChange(false);
+            completeFirstLogin?.();
+          }}
+        />
+      )}
+
       <div style={{ display: 'flex', height: '100vh', background: C.bg, overflow: 'hidden' }}>
 
         {/* ── Sidebar overlay (mobile & tablet) ── */}
@@ -160,9 +188,37 @@ const TeacherView = () => {
                 <div style={{ color: C.white, fontWeight: 700, fontSize: FS.md, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {teacher?.name || 'Guru'}
                 </div>
-                <div style={{ color: teacherMapel?.color || C.teal, fontSize: FS.xs, fontWeight: 700, marginTop: 1 }}>
-                  {teacherMapel?.icon} {teacherMapel?.label}
-                </div>
+                {/* Revisi 1C: single mapel inline, multi-mapel tampil switcher */}
+                {mapelIds.length === 1 ? (
+                  <div style={{ color: teacherMapelActive?.color || C.teal, fontSize: FS.xs, fontWeight: 700, marginTop: 1 }}>
+                    {teacherMapelActive?.icon} {teacherMapelActive?.label}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,.3)', fontWeight: 700, letterSpacing: .8, textTransform: 'uppercase' }}>
+                      Mata Pelajaran
+                    </div>
+                    {teacherMapels.map(m => (
+                      <button key={m.id}
+                        onClick={e => { e.stopPropagation(); setActiveMapelId(m.id); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '5px 8px', borderRadius: 7,
+                          background: activeMapelId === m.id ? 'rgba(13,92,99,.45)' : 'transparent',
+                          border: `1px solid ${activeMapelId === m.id ? 'rgba(13,92,99,.6)' : 'transparent'}`,
+                          cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
+                        }}
+                        onMouseEnter={e => { if (activeMapelId !== m.id) e.currentTarget.style.background = 'rgba(255,255,255,.06)'; }}
+                        onMouseLeave={e => { if (activeMapelId !== m.id) e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <span style={{ fontSize: 12 }}>{m.icon}</span>
+                        <span style={{ fontSize: FS.sm, fontWeight: activeMapelId === m.id ? 700 : 400, color: activeMapelId === m.id ? C.white : 'rgba(255,255,255,.55)' }}>
+                          {m.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <span style={{ color: 'rgba(255,255,255,.3)', fontSize: 22, lineHeight: 1 }}>›</span>
             </div>

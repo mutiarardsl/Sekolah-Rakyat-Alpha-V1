@@ -338,12 +338,21 @@ const QuizModal = ({
   const [submitted, setSubmitted] = useState(false);
   const bodyRef = useRef(null);
 
+  // ── REVISI FASE 3: State untuk skor essay dari RAG ─────────────────
+  // essay_score: skor essay yang dikembalikan backend (Tim RAG) setelah penilaian async
+  // Dalam mock: langsung tersedia dari response POST /content/quiz/submit
+  // Di produksi: bisa datang via webhook atau polling setelah beberapa detik
+  const [essayScore, setEssayScore] = useState(null); // 0–100 dari RAG
+  const [essayScoreLoading, setEssayScoreLoading] = useState(false);
+
   // Reset semua state setiap kali modal dibuka — ini fix untuk bug soal tidak reset
   useEffect(() => {
     if (!open) return;
     setMcAnswers({});
     setEssayAnswers({});
     setSubmitted(false);
+    setEssayScore(null);
+    setEssayScoreLoading(false);
     if (bodyRef.current) bodyRef.current.scrollTop = 0;
 
     // Soal baru: acak urutan. Soal lama (ulangi): pakai snapshot persis
@@ -370,8 +379,15 @@ const QuizModal = ({
 
   const mcCorrect = isMC ? mcSoal.filter((s, i) => mcAnswers[i] === s.jawaban).length : 0;
   const mcScore = isMC ? Math.round((mcCorrect / mcSoal.length) * 100) : 0;
-  const KKM = 80; // KKM quiz untuk naik level
-  const passed = mcScore >= KKM;
+
+  // ── REVISI FASE 3: KKM baru 75, sistem agregasi MC + Essay ─────────
+  // KKM_BARU: 75 (dari 80 sebelumnya)
+  // Logika naik level: rata-rata(mcScore, essayScore) >= KKM_BARU
+  // Jika hanya MC yang dikerjakan: mcScore >= KKM_BARU
+  // Jika hanya Essay: ditentukan dari essay_score RAG >= KKM_BARU
+  // Jika keduanya ada: rata-rata keduanya >= KKM_BARU
+  const KKM = 75; // KKM baru Fase 3
+  const passed = mcScore >= KKM; // untuk MC standalone
 
   const handleSubmit = async () => {
     if (isMC) {
@@ -413,32 +429,71 @@ const QuizModal = ({
         wrongItems,
         answers: { ...mcAnswers },
         soalSnapshot: mcSoal,
+        // REVISI FASE 3: sertakan KKM baru agar ChatSection bisa evaluasi level-up
+        kkm: KKM,
+        passed: mcScore >= KKM,
       });
     } else {
+      // ── REVISI FASE 3: Essay submit + terima skor RAG ──────────────
+      // 1. Tampilkan submitted segera (UX: tidak blokir user)
       setSubmitted(true);
+      setEssayScoreLoading(true);
 
-      // FIX P1: kirim essay ke backend — skor null (dinilai manual)
       const siswaId = chatMateri?.siswaId || 'usr_001';
       const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
-      submitQuiz({
-        siswa_id: siswaId,
-        mapel_id: chatMateri?.mapelId || '',
-        materi: chatMateri?.mapelLabel || materiId || '',
-        materi_id: materiId || chatMateri?.mapelId || '',
-        quiz_type: 'essay',
-        level: levelCapitalized,
-        answers: { ...essayAnswers },
-        score: 0,
-      }).catch(() => { /* silent */ });
 
-      onSubmit?.({
-        type: 'essay',
-        score: null,
-        materiId: materiId || chatMateri?.mapelLabel,
-        mapelLabel: chatMateri?.mapelLabel,
-        essayAnswers: { ...essayAnswers },
-        soalSnapshot: essaySoal,
-      });
+      try {
+        // 2. POST ke backend — mock langsung kembalikan essay_score dari RAG
+        // Di produksi: backend antre ke RAG pipeline, essay_score datang async
+        const response = await submitQuiz({
+          siswa_id: siswaId,
+          publish_id: chatMateri?.publishId || '',
+          mapel_id: chatMateri?.mapelId || '',
+          elemen_id: chatMateri?.elemenId || '',
+          elemen_label: chatMateri?.mapelLabel || '',
+          materi: chatMateri?.materiLabel || null,
+          materi_id: materiId || null,
+          quiz_type: 'essay',
+          level: levelCapitalized,
+          answers: { ...essayAnswers },
+          score: 0, // skor awal 0, dinilai RAG secara async
+        });
+
+        // 3. Ambil essay_score dari response (mock langsung ada, produksi bisa async)
+        const ragEssayScore = response?.essay_score ?? null;
+        setEssayScore(ragEssayScore);
+        setEssayScoreLoading(false);
+
+        onSubmit?.({
+          type: 'essay',
+          // essay_score: skor dari RAG (0–100). Null = masih pending (produksi)
+          score: ragEssayScore,
+          materiId: materiId || chatMateri?.mapelLabel,
+          mapelLabel: chatMateri?.mapelLabel,
+          essayAnswers: { ...essayAnswers },
+          soalSnapshot: essaySoal,
+          // REVISI FASE 3: flag agar ChatSection tahu ini essay dan perlu agregasi
+          isEssay: true,
+          kkm: KKM,
+          // Naik level dari essay ditentukan ChatSection setelah agregasi dengan MC
+          passed: ragEssayScore != null ? ragEssayScore >= KKM : false,
+        });
+      } catch {
+        // Fallback jika API gagal — essay tetap tersimpan lokal
+        setEssayScoreLoading(false);
+        setEssayScore(null);
+        onSubmit?.({
+          type: 'essay',
+          score: null,
+          materiId: materiId || chatMateri?.mapelLabel,
+          mapelLabel: chatMateri?.mapelLabel,
+          essayAnswers: { ...essayAnswers },
+          soalSnapshot: essaySoal,
+          isEssay: true,
+          kkm: KKM,
+          passed: false,
+        });
+      }
     }
   };
 
@@ -716,27 +771,27 @@ const QuizModal = ({
 
             return (
               <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
-                {/* Ikon hasil */}
-                <div style={{ fontSize: 52, marginBottom: 10 }}>
-                  {pass ? (isMaxLevel ? '🏆' : '🚀') : '💪'}
+                {/* ── Header seragam: ✅ + label + skor ── */}
+                <div style={{ fontSize: 52, marginBottom: 10 }}>✅</div>
+                <div style={{ fontWeight: 800, fontSize: 22, color: color, marginBottom: 4 }}>
+                  Jawaban Pilihan Ganda Terkirim
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 40, color: pass ? C.green : C.amber, marginBottom: 14 }}>
+                  {mcScore}
                 </div>
 
-                {/* Skor */}
-                <div style={{ fontWeight: 800, fontSize: 40, color: pass ? C.green : C.amber, marginBottom: 4 }}>
-                  {mcScore}/100
-                </div>
-
-                {/* Status lulus / tidak */}
-                <div style={{ fontSize: 15, fontWeight: 700, color: pass ? C.green : C.orange, marginBottom: 6 }}>
+                {/* ── REVISI FASE 3: Info sistem agregasi ─── */}
+                <div style={{
+                  background: '#EBF8FF', border: '1px solid #90CDF4',
+                  borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+                  fontSize: FS.xs, color: '#2B6CB0', lineHeight: 1.6, textAlign: 'left',
+                }}>
+                  <strong>📊 Sistem Penilaian Agregasi (Fase 3):</strong><br />
+                  Skor MC kamu: <strong>{mcScore}/100</strong><br />
+                  Naik level jika: rata-rata <strong>MC + Essay ≥ KKM ({KKM})</strong><br />
                   {pass
-                    ? isMaxLevel
-                      ? '🏆 Level tertinggi! Materi ini sudah dikuasai penuh.'
-                      : `🚀 Naik Level! Dari ${levelLabels[currentLevel]} → ${levelLabels[nextLevel]}`
-                    : `🔄 Belum mencapai KKM (${KKM}). Kamu bisa coba ulang di level ini.`
-                  }
-                </div>
-                <div style={{ fontSize: FS.md, color: C.darkL, marginBottom: 14 }}>
-                  {mcCorrect} dari {mcSoal.length} soal benar
+                    ? '✅ Skor MC sudah melampaui KKM — jika Essay juga ≥ KKM, kamu akan naik level.'
+                    : `📝 Kerjakan Essay juga agar rata-rata agregasi bisa ≥ ${KKM}.`}
                 </div>
 
                 {/* Banner naik level */}
@@ -770,10 +825,11 @@ const QuizModal = ({
                     <span style={{ fontSize: 26, flexShrink: 0 }}>📋</span>
                     <div>
                       <div style={{ fontWeight: 700, color: '#B7791F', fontSize: FS.md, marginBottom: 3 }}>
-                        KKM: {KKM} — Nilaimu: {mcScore}
+                        KKM Agregasi: {KKM} — Nilaimu: {mcScore}
                       </div>
                       <div style={{ fontSize: FS.sm, color: '#975A16', lineHeight: 1.6 }}>
-                        Nilai yang digunakan adalah nilai quiz <strong>terbaru</strong>. Kamu bisa mengulang quiz ini dengan soal yang sama sampai mencapai KKM.
+                        Nilai yang digunakan adalah nilai quiz <strong>terbaru</strong>. Kamu bisa mengulang quiz ini.
+                        Naik level ditentukan dari rata-rata nilai MC dan Essay — kerjakan keduanya untuk hasil terbaik!
                       </div>
                     </div>
                   </div>
@@ -816,14 +872,23 @@ const QuizModal = ({
           {/* ══ HASIL: ESSAY ══ */}
           {isEssay && submitted && (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              {/* ── Header seragam: ✅ + label + skor ── */}
               <div style={{ fontSize: 52, marginBottom: 12 }}>✅</div>
-              <div style={{ fontWeight: 800, fontSize: 22, color: C.purple, marginBottom: 8 }}>
-                Jawaban Essay Terkirim!
+              <div style={{ fontWeight: 800, fontSize: 22, color: C.purple, marginBottom: 4 }}>
+                Jawaban Essay Terkirim
               </div>
-              <div style={{ fontSize: FS.base, color: C.darkL, marginBottom: 20, lineHeight: 1.6 }}>
-                {essaySoal.length} jawaban essaymu sudah tersimpan.<br />
-                Kak Nusa akan memberi feedback personal di chat sebentar lagi.
-              </div>
+              {/* Nilai quiz essay — tampilkan skor tanpa /100 */}
+              {essayScoreLoading ? (
+                <div style={{ fontSize: FS.sm, color: C.purple, marginBottom: 14 }}>⏳ Sedang dinilai...</div>
+              ) : essayScore != null ? (
+                <div style={{ fontWeight: 800, fontSize: 40, color: essayScore >= KKM ? C.green : C.amber, marginBottom: 14 }}>
+                  {essayScore}
+                </div>
+              ) : (
+                <div style={{ marginBottom: 14 }} />
+              )}
+
+
               <div style={{
                 background: `${C.purple}0D`, border: `1px solid ${C.purple}33`,
                 borderRadius: 12, padding: '14px 18px', textAlign: 'left', marginBottom: 16,

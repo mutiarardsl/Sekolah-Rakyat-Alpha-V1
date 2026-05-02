@@ -64,18 +64,42 @@ const generatePlaceholderKonten = (type, level, config) => {
   const elemenLabel = config.elemenLabel || 'Elemen';
   const materi = config.materi || elemenLabel;
 
+  // Tipe terstruktur mengembalikan object sesuai shape API (KontenItem.content typedef di content.js).
+  // Menjaga kontenMap selalu konsisten antara placeholder dan data nyata dari API response.
+  if (type === 'quiz_pg') {
+    return {
+      soal: [
+        { pertanyaan: `[Placeholder] Pertanyaan ${level} tentang ${materi}?`, pilihan: ['Pilihan A', 'Pilihan B', 'Pilihan C', 'Pilihan D'], jawaban: 'Pilihan B' },
+        { pertanyaan: `[Placeholder] Soal lanjutan tentang ${elemenLabel}?`, pilihan: ['Pilihan A', 'Pilihan B', 'Pilihan C', 'Pilihan D'], jawaban: 'Pilihan C' },
+      ],
+    };
+  }
+  if (type === 'quiz_essay') {
+    return {
+      pertanyaan: [
+        `[Placeholder] Jelaskan konsep ${materi} dalam konteks ${elemenLabel}!`,
+        `[Placeholder] Analisis implikasi ${materi} pada level ${level}.`,
+      ],
+    };
+  }
+  if (type === 'flashcard') {
+    return {
+      cards: [
+        { depan: `[Placeholder] Apa yang dimaksud dengan ${materi}?`, belakang: `${materi} adalah konsep dalam ${mapelLabel} yang berkaitan dengan ${elemenLabel}.` },
+        { depan: `[Placeholder] Contoh ${materi} level ${level}?`, belakang: `Contoh penerapan ${materi} di kehidupan sehari-hari dalam konteks ${elemenLabel}.` },
+      ],
+    };
+  }
+
+  const levelDesc = {
+    Low: 'Pengantar sederhana dengan bahasa lugas dan contoh sehari-hari.',
+    Mid: 'Pembahasan mendalam dengan analogi kontekstual.',
+    High: 'Analisis tingkat lanjut mencakup aspek kritis dan komparasi.',
+  };
   const texts = {
-    bacaan: `[Konten Bacaan – ${level}]\nTeks bacaan tentang ${materi} dalam konteks ${mapelLabel}.\n\n${level === 'Low'
-      ? 'Pengantar sederhana dengan bahasa lugas dan contoh sehari-hari. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
-      : level === 'Mid'
-        ? 'Pembahasan dengan konsep yang lebih mendalam disertai analogi kontekstual. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore, dengan pendalaman materi yang relevan.'
-        : 'Analisis tingkat lanjut mencakup aspek kritis, komparasi, dan implikasi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.'
-      }`,
-    quiz_pg: `[Quiz Pilihan Ganda – ${level}]\n1. Pertanyaan tentang ${materi}?\n   a) Pilihan A\n   b) Pilihan B ✓\n   c) Pilihan C\n   d) Pilihan D\n\n2. Soal lanjutan tentang ${elemenLabel}?\n   a) Pilihan A\n   b) Pilihan B\n   c) Pilihan C ✓\n   d) Pilihan D`,
-    quiz_essay: `[Quiz Essay – ${level}]\nJelaskan konsep ${materi} dalam konteks ${elemenLabel}! Berikan contoh konkret dari kehidupan sehari-hari dan analisis implikasinya.`,
-    flashcard: `[Flashcard – ${level}]\nDepan: Apa yang dimaksud dengan ${materi}?\nBelakang: ${materi} adalah konsep dalam ${mapelLabel} yang berkaitan dengan ${elemenLabel}.`,
-    mindmap: `[Mindmap – ${mapelLabel}]\nTopik Utama: ${elemenLabel}\n├─ Subtopik 1: Definisi & Konsep Dasar\n│  ├─ Point A\n│  └─ Point B\n├─ Subtopik 2: ${materi}\n│  ├─ Contoh Kasus\n│  └─ Aplikasi\n└─ Subtopik 3: Evaluasi & Refleksi`,
-    game: `[Game Preview – ${level}]\nJenis: Kuis Interaktif berbasis skenario\nTopik: ${materi}\nLevel Kesulitan: ${level}\nEstimasi Durasi: ${level === 'Low' ? '10' : level === 'Mid' ? '20' : '30'} menit\n\nDeskripsi: Siswa akan menjawab serangkaian pertanyaan tentang ${elemenLabel} melalui tampilan game yang interaktif dan menyenangkan.`,
+    bacaan: `[Konten Bacaan - ${level}]\nTeks bacaan tentang ${materi} dalam konteks ${mapelLabel}.\n\n${levelDesc[level] || ''}`,
+    mindmap: `[Mindmap - ${mapelLabel}]\nTopik Utama: ${elemenLabel}\n- Subtopik 1: Definisi & Konsep Dasar\n  - Point A\n  - Point B\n- Subtopik 2: ${materi}\n  - Contoh Kasus\n  - Aplikasi\n- Subtopik 3: Evaluasi & Refleksi`,
+    game: `[Game Preview - ${level}]\nJenis: Kuis Interaktif\nTopik: ${materi}\nLevel: ${level}\nEstimasi Durasi: ${level === 'Low' ? '10' : level === 'Mid' ? '20' : '30'} menit\n\nSiswa menjawab pertanyaan tentang ${elemenLabel} melalui tampilan game interaktif.`,
   };
   return texts[type] || `Konten ${type} level ${level} untuk ${materi}.`;
 };
@@ -244,26 +268,6 @@ const CapaianPembelajaranBox = ({ mapelId, mapelColor, mapelLabel }) => {
             {cp.deskripsi.length > 220 ? cp.deskripsi.slice(0, 220) + '…' : cp.deskripsi}
           </div>
 
-          {/* Butir CP */}
-          {cp.butir && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <div style={{ fontSize: FS.xs, fontWeight: 700, color: '#8899AA', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>
-                Butir Capaian
-              </div>
-              {cp.butir.map((b, i) => (
-                <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
-                  <span style={{
-                    width: 16, height: 16, borderRadius: 4,
-                    background: `${mapelColor}18`, color: mapelColor,
-                    fontSize: FS.xs, fontWeight: 800,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0, marginTop: 1,
-                  }}>{i + 1}</span>
-                  <span style={{ fontSize: FS.sm, color: '#2D3E50', lineHeight: 1.55 }}>{b}</span>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Alignment note */}
           <div style={{
@@ -312,7 +316,12 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
     if (!editText.trim()) return;
     setRegenerating(key);
     setTimeout(() => {
-      setKontenMap(p => ({ ...p, [key]: `[Diperbarui sesuai permintaan: "${editText}"]\n\n${generatePlaceholderKonten(type.id, lv, config)}` }));
+      // Regenerasi: untuk tipe terstruktur gunakan placeholder object baru, untuk string concat label di depan.
+      const baseRegen = generatePlaceholderKonten(type.id, lv, config);
+      const regenResult = typeof baseRegen === 'object'
+        ? baseRegen  // object shape (quiz_pg/quiz_essay/flashcard) -- label edit tidak bisa di-concat ke object
+        : `[Diperbarui: "${editText}"]\n\n${baseRegen}`;
+      setKontenMap(p => ({ ...p, [key]: regenResult }));
       setRegenerating(null);
       setEditingKey(null);
       setEditText('');
@@ -345,12 +354,14 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                 return (
                   <button key={lv} onClick={() => setActiveLevel(lv)}
                     style={{
-                      padding: '5px 14px', borderRadius: 99, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                      padding: '5px 14px', borderRadius: 99, fontSize: FS.md, fontWeight: 700,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      display: 'flex', alignItems: 'center', gap: 5,
                       background: activeLevel === lv ? C.teal : approved ? '#F0FFF4' : C.white,
                       color: activeLevel === lv ? C.white : approved ? C.green : C.darkL,
                       border: `1.5px solid ${activeLevel === lv ? C.teal : approved ? '#9AE6B4' : C.tealXL}`,
                     }}>
-                    {lv} {approved ? '✓' : ''}
+                    {lv}{approved ? ' ✓' : ''}
                   </button>
                 );
               })}
@@ -364,12 +375,14 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
             const approved = approvedMap[key];
             const isEditing = editingKey === key;
             const isRegen = regenerating === key;
+            // Data selalu siap saat phase=result — handleSubmit await Promise.allSettled
+            // sebelum setPhase(result). Tidak ada per-item loading state di sini.
 
             return (
               <div>
                 {/* Judul level */}
                 {type.hasLevel
-                  ? <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Placeholder — Level {activeLevel}</div>
+                  ? <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Konten Level {activeLevel}</div>
                   : <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Konten</div>
                 }
 
@@ -380,12 +393,67 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                   </div>
                 ) : (
                   <div style={{ background: '#FAFEFF', borderRadius: 10, padding: 14, border: `1px solid ${C.tealXL}`, marginBottom: 10 }}>
-                    <pre style={{ fontFamily: 'inherit', fontSize: FS.md, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
-                      {type.id === 'game'
-                        ? (kontenMap[key]?.nama || kontenMap[key]?.deskripsi || '(game sedang disiapkan…)')
-                        : kontenMap[key]
-                      }
-                    </pre>
+                    {/* Structured renderer -- prevents "Objects are not valid as React child"
+                        quiz_pg    -> { soal: [{pertanyaan, pilihan, jawaban}] }
+                        quiz_essay -> { pertanyaan: string[] }
+                        flashcard  -> { cards: [{depan, belakang}] }
+                        bacaan / mindmap / game -> string */}
+                    {type.id === 'game' ? (
+                      <pre style={{ fontFamily: 'inherit', fontSize: FS.md, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
+                        {kontenMap[key]?.nama || kontenMap[key]?.deskripsi || '(game sedang disiapkan...)'}
+                      </pre>
+                    ) : type.id === 'quiz_pg' ? (
+                      <div>
+                        {!(kontenMap[key]?.soal?.length)
+                          ? <span style={{ color: C.slate, fontSize: FS.md }}>Soal sedang disiapkan...</span>
+                          : (kontenMap[key].soal).map((s, i) => (
+                            <div key={i} style={{ marginBottom: 14 }}>
+                              <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.md, marginBottom: 6 }}>{i + 1}. {s.pertanyaan}</div>
+                              {(s.pilihan || []).map((p, j) => (
+                                <div key={j} style={{ paddingLeft: 12, marginBottom: 3 }}>
+                                  <span style={{ fontSize: FS.md, color: p === s.jawaban ? C.green : C.darkL, fontWeight: p === s.jawaban ? 700 : 400 }}>
+                                    {String.fromCharCode(97 + j)}) {p} {p === s.jawaban ? ' (jawaban)' : ''}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ))
+                        }
+                      </div>
+                    ) : type.id === 'quiz_essay' ? (
+                      <div>
+                        {!(kontenMap[key]?.pertanyaan?.length)
+                          ? <span style={{ color: C.slate, fontSize: FS.md }}>Pertanyaan sedang disiapkan...</span>
+                          : (kontenMap[key].pertanyaan).map((p, i) => (
+                            <div key={i} style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: FS.md, color: C.darkL, lineHeight: 1.7 }}>{i + 1}. {p}</div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    ) : type.id === 'flashcard' ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {!(kontenMap[key]?.cards?.length)
+                          ? <span style={{ color: C.slate, fontSize: FS.md }}>Kartu sedang disiapkan...</span>
+                          : (kontenMap[key].cards).map((c, i) => (
+                            <div key={i} style={{ border: `1px solid ${C.tealXL}`, borderRadius: 8, overflow: 'hidden' }}>
+                              <div style={{ background: `${C.teal}18`, padding: '6px 12px', fontSize: FS.sm, fontWeight: 700, color: C.teal, borderBottom: `1px solid ${C.tealXL}` }}>
+                                [Depan]
+                              </div>
+                              <div style={{ padding: '8px 12px', fontSize: FS.md, color: C.dark }}>{c.depan}</div>
+                              <div style={{ background: '#F0FFF4', padding: '6px 12px', fontSize: FS.sm, fontWeight: 700, color: C.green, borderTop: `1px solid ${C.tealXL}`, borderBottom: `1px solid ${C.tealXL}` }}>
+                                [Belakang]
+                              </div>
+                              <div style={{ padding: '8px 12px', fontSize: FS.md, color: C.darkL }}>{c.belakang}</div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    ) : (
+                      <pre style={{ fontFamily: 'inherit', fontSize: FS.md, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
+                        {typeof kontenMap[key] === 'string' ? kontenMap[key] : JSON.stringify(kontenMap[key], null, 2)}
+                      </pre>
+                    )}
                   </div>
                 )}
 
@@ -459,7 +527,6 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
   );
 };
 
-/* ── AtpPointInput — input ATP per poin seperti admin tambah elemen ── */
 const AtpPointInput = ({ poinList, onChange }) => {
   const addPoin = () => onChange([...poinList, '']);
   const updatePoin = (i, val) => {
@@ -578,83 +645,111 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     if (!mapelId || !elemenId) return;
     setPhase('loading');
     setApprovedMap({});
+    setKontenMap({});
 
-    // Init kontenMap dengan placeholder dulu — semua tipe + level
-    const initMap = {};
-    KONTEN_TYPES.forEach(type => {
-      const levels = type.hasLevel ? LEVELS : [''];
-      levels.forEach(lv => {
-        initMap[`${type.id}__${lv}`] = generatePlaceholderKonten(type.id, lv, config);
-      });
-    });
-    setKontenMap(initMap);
-
-    // Fire API calls:
-    // - Tipe non-game (bacaan, quiz_pg, quiz_essay, flashcard, mindmap) → POST /content/generate (Tim 3)
-    // - Tipe game (Low/Mid/High) → POST /game/generate (Tim 4), 3 kali per level
-    // Semua fire-and-forget — UI tidak blocking, placeholder sudah tampil
+    // basePayload: basis semua generate calls ke Tim 3 & Tim 4
+    // elemen_id SELALU ada. materi/materi_id hanya diisi jika guru mengisi field materi.
+    // materi_id dibangun dari mapel_id + snake_case(materi) jika materi ada.
+    const snakeMateri = materi ? materi.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : null;
     const basePayload = {
+      guru_id: guru?.id || 'g1',
       mapel_id: mapelId,
       elemen_id: elemenId,
       elemen_label: config.elemenLabel,
-      materi: materi || config.elemenLabel,
+      materi: materi || null,
+      materi_id: snakeMateri ? `${mapelId}__${snakeMateri}` : null,
       jenjang,
-      kelas_id: kelasId || null,
+      atp: atpPoin.filter(p => p.trim()).join('\n'),
     };
 
+    // Kumpulkan semua API promises — TIDAK fire-and-forget.
+    // Spinner global (phase='loading') tampil sampai SEMUA selesai.
+    // Setelah Promise.allSettled resolve, kontenMap sudah penuh → setPhase('result').
+    const resultMap = {};
+
+    const promises = [];
+
     // POST /content/generate untuk bacaan — per level (Low/Mid/High)
+    // response: { tipe, level, content: { text }, generated_at }
     LEVELS.forEach(level => {
-      generateContent({
-        ...basePayload,
-        tipe: 'bacaan',
-        level,
-      }).then(res => {
-        if (res?.content) {
-          const key = `bacaan__${level}`;
-          setKontenMap(prev => ({ ...prev, [key]: res.content?.text || prev[key] }));
-        }
-      }).catch(() => {/* silent — tetap pakai placeholder */ });
+      promises.push(
+        generateContent({ ...basePayload, tipe: 'bacaan', level })
+          .then(res => {
+            resultMap[`bacaan__${level}`] = res?.content?.text
+              ? res.content.text
+              : generatePlaceholderKonten('bacaan', level, config);
+          })
+          .catch(() => {
+            resultMap[`bacaan__${level}`] = generatePlaceholderKonten('bacaan', level, config);
+          })
+      );
     });
 
     // POST /content/generate untuk mindmap (tanpa level)
-    generateContent({
-      ...basePayload,
-      tipe: 'mindmap',
-    }).then(res => {
-      if (res?.content?.content) {
-        setKontenMap(prev => ({ ...prev, 'mindmap__': res.content.content || prev['mindmap__'] }));
-      }
-    }).catch(() => {/* silent */ });
+    promises.push(
+      generateContent({ ...basePayload, tipe: 'mindmap' })
+        .then(res => {
+          resultMap['mindmap__'] = res?.content?.content
+            ? res.content.content
+            : generatePlaceholderKonten('mindmap', '', config);
+        })
+        .catch(() => {
+          resultMap['mindmap__'] = generatePlaceholderKonten('mindmap', '', config);
+        })
+    );
 
     // POST /content/generate untuk quiz_pg, quiz_essay, flashcard — per level
+    // response shape per tipe:
+    //   quiz_pg    → { soal: Array<{pertanyaan, pilihan, jawaban}> }
+    //   quiz_essay → { pertanyaan: string[] }
+    //   flashcard  → { cards: Array<{depan, belakang}> }
     ['quiz_pg', 'quiz_essay', 'flashcard'].forEach(tipe => {
       LEVELS.forEach(level => {
-        generateContent({
-          ...basePayload,
-          tipe,
-          level,
-        }).then(res => {
-          if (res?.content) {
-            const key = `${tipe}__${level}`;
-            setKontenMap(prev => ({ ...prev, [key]: res.content?.text || prev[key] }));
-          }
-        }).catch(() => {/* silent */ });
+        promises.push(
+          generateContent({ ...basePayload, tipe, level })
+            .then(res => {
+              resultMap[`${tipe}__${level}`] = res?.content
+                ? res.content
+                : generatePlaceholderKonten(tipe, level, config);
+            })
+            .catch(() => {
+              resultMap[`${tipe}__${level}`] = generatePlaceholderKonten(tipe, level, config);
+            })
+        );
       });
     });
 
     // POST /game/generate untuk 3 level — Tim 4 deliver HTML
+    // game.js payload: mapel_id, elemen_id, elemen_label, materi?, materi_id?, kelas_id, level, jenjang?
     LEVELS.forEach(level => {
-      generateGame({
-        ...basePayload,
-        level,
-      }).then(res => {
-        if (res?.game_id) {
-          const key = `game__${level}`;
-          setKontenMap(prev => ({ ...prev, [key]: res }));
-        }
-      }).catch(() => {/* silent — game preview tetap pakai iframe placeholder */ });
+      promises.push(
+        generateGame({
+          mapel_id: basePayload.mapel_id,
+          elemen_id: basePayload.elemen_id,
+          elemen_label: basePayload.elemen_label,
+          materi: basePayload.materi,
+          materi_id: basePayload.materi_id,
+          kelas_id: kelasId || '__semua__',
+          jenjang: basePayload.jenjang,
+          level,
+        })
+          .then(res => {
+            resultMap[`game__${level}`] = res?.game_id
+              ? res
+              : generatePlaceholderKonten('game', level, config);
+          })
+          .catch(() => {
+            resultMap[`game__${level}`] = generatePlaceholderKonten('game', level, config);
+          })
+      );
     });
 
+    // Tunggu semua API selesai (baik sukses maupun gagal) sebelum tampilkan result.
+    // Spinner global (phase='loading') aktif selama ini.
+    // Setelah ini, kontenMap sudah berisi data lengkap → card tampil langsung tanpa loading per-item.
+    await Promise.allSettled(promises);
+
+    setKontenMap(resultMap);
     setPhase('result');
   };
 
@@ -677,15 +772,19 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     if (!allApproved || publishing) return;
     setPublishing(true);
     try {
-      // Bangun konten_list dari semua KONTEN_TYPES yang disetujui
+      // Bangun konten_list dari semua KONTEN_TYPES yang disetujui guru
+      // Field "tipe" (bukan "type") — konsisten dengan KontenItem typedef di content.js
+      const snakeM = config.materi
+        ? config.materi.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+        : null;
       const kontenList = KONTEN_TYPES.flatMap(type => {
         const levels = type.hasLevel ? LEVELS : [''];
         return levels
           .filter(lv => approvedMap[`${type.id}__${lv}`])
           .map(lv => ({
-            type: type.id,
-            level: lv || null,
-            content: kontenMap[`${type.id}__${lv}`] || '',
+            tipe: type.id,          // "tipe" bukan "type"
+            level: lv || null,       // null untuk mindmap
+            content: kontenMap[`${type.id}__${lv}`] || {},
             approved: true,
           }));
       });
@@ -694,9 +793,11 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
         elemen_id: config.elemenId,
         elemen_label: config.elemenLabel,
         materi: config.materi || null,
+        materi_id: snakeM ? `${config.mapelId}__${snakeM}` : null,
         kelas_id: config.kelasId || '__semua__',
         jenjang: config.jenjang,
-        atp: config.atp,
+        guru_id: guru?.id || 'g1',
+        atp: config.atp || '',
         konten_list: kontenList,
       });
     } catch {

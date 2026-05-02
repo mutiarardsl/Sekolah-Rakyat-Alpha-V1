@@ -1,53 +1,74 @@
 /**
  * SR MVP — RiwayatKontenSection (Portal Guru) — REVISI FASE 3
  *
- * Menggantikan GameSection (Buat Game).
- * Berisi data konten belajar yang sudah dibuat dan dipublish.
- * Guru bisa melihat kembali konten-konten yang dihasilkan sebelumnya.
- * Poin 4: "Lihat Konten" menampilkan isi lengkap + level tabs, sama seperti review di KelolaBelajarSection.
- * Game: guru bisa preview fullscreen (container Tim 4) dan lihat siswa yang selesai.
+ * Load riwayat publish dari GET /content/riwayat (api/content.js → getRiwayatGuru).
+ * Shape respons: RiwayatKontenItem[] — identik dengan PublishPayload + display fields.
+ *
+ * Poin-poin yang diperbaiki:
+ *  1. Tidak ada lagi dummy hardcoded RIWAYAT_KONTEN — semua dari API / mock store
+ *  2. Field names konsisten: tipe (bukan type), konten_list (bukan konten), atp string
+ *  3. Renderer konten structured (quiz_pg/essay/flashcard) — tidak lagi <pre> object mentah
+ *  4. ATP ditampilkan sebagai baris bernomor (split '\n'), bukan template literal {materi}
+ *  5. publishedAt di-format dari ISO8601, bukan hardcoded string Indonesia
+ *  6. game diperlakukan sebagai tipe dalam konten_list (dari /game/generate),
+ *     bukan entity terpisah — siswa_selesai embedded di konten_list[tipe=game].content
  */
 import { useState, useEffect } from 'react';
-import { Card, Btn, Avatar } from '../../shared/UI';
+import { Card, Avatar } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
-// FIX P2: load riwayat konten real dari backend
-import { getGameList } from '../../../api/game';
-import { getLearningProgress } from '../../../api/content';
+import { getRiwayatGuru } from '../../../api/content';
 import {
   ADMIN_MAPEL_LIST,
   ADMIN_KELAS_INIT,
   ADMIN_SISWA_INIT,
-  CAPAIAN_PEMBELAJARAN,
+  ADMIN_GURU_INIT,
+  TEACHERS,
+  SEEDED_TEACHER_ID,
 } from '../../../data/masterData';
 
-/* ── Placeholder teks konten ─────────────────────────────────────── */
-const getPlaceholderText = (type, level, riwayat) => {
-  const mapel = riwayat.mapelLabel;
-  const elemen = riwayat.elemenLabel;
-  const materi = riwayat.materi || elemen;
-  const t = {
-    bacaan: `[Konten Bacaan – ${level}]\nTeks bacaan tentang ${materi} dalam konteks ${mapel}.\n\n${level === 'Low'
-      ? 'Pengantar sederhana dengan bahasa lugas dan contoh sehari-hari. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
-      : level === 'Mid'
-        ? 'Pembahasan dengan konsep lebih mendalam disertai analogi kontekstual. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore, dengan pendalaman materi yang relevan.'
-        : 'Analisis tingkat lanjut mencakup aspek kritis, komparasi, dan implikasi. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.'
-      }`,
-    quiz_pg: `[Quiz Pilihan Ganda – ${level}]\n1. Pertanyaan tentang ${materi}?\n   a) Pilihan A\n   b) Pilihan B ✓\n   c) Pilihan C\n   d) Pilihan D\n\n2. Soal lanjutan tentang ${elemen}?\n   a) Pilihan A\n   b) Pilihan B\n   c) Pilihan C ✓\n   d) Pilihan D`,
-    quiz_essay: `[Quiz Essay – ${level}]\nJelaskan konsep ${materi} dalam konteks ${elemen}! Berikan contoh konkret dari kehidupan sehari-hari.`,
-    flashcard: `[Flashcard – ${level}]\nDepan: Apa yang dimaksud dengan ${materi}?\nBelakang: ${materi} adalah konsep dalam ${mapel} yang berkaitan dengan ${elemen}.`,
-    mindmap: `[Mindmap – ${mapel}]\nTopik Utama: ${elemen}\n├─ Subtopik 1: Definisi & Konsep\n│  ├─ Point A\n│  └─ Point B\n├─ Subtopik 2: ${materi}\n│  ├─ Contoh Kasus\n│  └─ Aplikasi\n└─ Subtopik 3: Evaluasi`,
-    game: `[Game – Level ${level}]\nJenis: Kuis Interaktif Skenario\nTopik: ${materi}\nDurasi: ${level === 'Low' ? '10' : level === 'Mid' ? '20' : '30'} menit`,
-  };
-  return t[type] || `Konten ${type} level ${level} untuk ${materi}.`;
+/* ── Helpers ─────────────────────────────────────────────────────── */
+// Format ISO8601 → "Senin, 14 Apr 2026 · 09:32"
+const fmtPublishedAt = (iso) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('id-ID', {
+      weekday: 'long', day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    }).replace(',', ',').replace(/\./g, ':').replace(' pukul ', ' · ');
+  } catch { return iso; }
 };
 
-/* ── Game Preview Modal (container Tim 4) ────────────────────────── */
-const GamePreviewRiwayat = ({ riwayat, level, onClose }) => {
-  const gameParams = new URLSearchParams({
-    mapelId: ADMIN_MAPEL_LIST.find(m => m.label === riwayat.mapelLabel)?.id || '',
-    elemen: riwayat.elemenLabel, materi: riwayat.materi || '', level, mode: 'preview',
+// ATP string (multiline) → array baris non-kosong
+const atpLines = (atp) => (atp || '').split('\n').map(s => s.trim()).filter(Boolean);
+
+/* ── Konstanta ───────────────────────────────────────────────────── */
+const KONTEN_ICON = {
+  bacaan: '📖', quiz_pg: '✅', quiz_essay: '📝',
+  flashcard: '🃏', mindmap: '🧠', game: '🎮',
+};
+const KONTEN_LABEL = {
+  bacaan: 'Konten Bacaan', quiz_pg: 'Kuiz Pilihan Ganda', quiz_essay: 'Kuiz Essay',
+  flashcard: 'Flashcard', mindmap: 'Mindmap', game: 'Game',
+};
+
+const LEVEL_COLOR = { Low: '#276749', Mid: '#B7791F', High: '#9B2C2C' };
+const LEVEL_BG = { Low: '#F0FFF4', Mid: '#FFFBF0', High: '#FFF5F5' };
+const LEVEL_BORDER = { Low: '#9AE6B4', Mid: '#F6AD55', High: '#FEB2B2' };
+
+/* ── GamePreviewModal (sama dengan KelolaBelajarSection) ─────────── */
+const GamePreviewModal = ({ konten, riwayat, onClose }) => {
+  const GAME_BASE = 'https://game.sekolahrakyat.id/play';
+  const fallback = new URLSearchParams({
+    mapel_id: riwayat.mapel_id,
+    elemen_id: riwayat.elemen_id,
+    elemen: riwayat.elemen_label,
+    materi: riwayat.materi || '',
+    level: konten.level || 'Low',
+    mode: 'preview',
   }).toString();
-  const gameUrl = `https://game.sekolahrakyat.id/play?${gameParams}`;
+  const gameUrl = konten.html_url || `${GAME_BASE}?${fallback}`;
+  const isReady = !!konten.html_url;
+  const isGenerating = !konten.html_url && konten.status === 'generating';
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.75)', zIndex: 1300, display: 'flex', flexDirection: 'column', backdropFilter: 'blur(4px)' }} onClick={onClose}>
@@ -55,24 +76,29 @@ const GamePreviewRiwayat = ({ riwayat, level, onClose }) => {
         <div style={{ background: C.teal, padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <span style={{ fontSize: 20 }}>🎮</span>
           <div style={{ flex: 1 }}>
-            <div style={{ color: C.white, fontWeight: 700, fontSize: 14 }}>Preview Game — Level {level}</div>
+            <div style={{ color: C.white, fontWeight: 700, fontSize: 14 }}>Preview Game — Level {konten.level}</div>
             <div style={{ color: 'rgba(255,255,255,.65)', fontSize: FS.sm, marginTop: 1 }}>
-              {riwayat.mapelLabel} · {riwayat.elemenLabel}
+              {riwayat.mapel_label} · {riwayat.elemen_label}
               <span style={{ marginLeft: 8, background: 'rgba(255,255,255,.15)', padding: '1px 8px', borderRadius: 99, fontSize: 10 }}>Mode Preview</span>
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,.2)', border: 'none', borderRadius: 8, width: 30, height: 30, color: C.white, cursor: 'pointer', fontSize: 15 }}>✕</button>
         </div>
-        <div style={{ flex: 1, background: '#0f172a', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
-            <div style={{ fontSize: 56, opacity: .3 }}>🎮</div>
-            <div style={{ color: 'rgba(255,255,255,.5)', fontSize: FS.lg, fontWeight: 600 }}>Container Game Tim 4</div>
-            <div style={{ color: 'rgba(255,255,255,.3)', fontSize: FS.md, textAlign: 'center', maxWidth: 360, lineHeight: 1.6 }}>
-              Game akan ditampilkan di sini setelah integrasi dengan Tim 4.<br />
-              <strong style={{ color: 'rgba(255,255,255,.5)' }}>{riwayat.elemenLabel}</strong> · Level <strong style={{ color: 'rgba(255,255,255,.5)' }}>{level}</strong>
+        <div style={{ flex: 1, background: '#0f172a', position: 'relative' }}>
+          {isGenerating && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
+              <div style={{ width: 48, height: 48, border: '4px solid rgba(255,255,255,.1)', borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .9s linear infinite' }} />
+              <div style={{ color: 'rgba(255,255,255,.6)', fontSize: FS.lg, fontWeight: 600 }}>Sedang generate game…</div>
             </div>
-            <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 10, padding: '8px 16px', fontSize: FS.xs, color: 'rgba(255,255,255,.35)', fontFamily: 'monospace', maxWidth: 400, wordBreak: 'break-all', textAlign: 'center' }}>{gameUrl}</div>
-          </div>
+          )}
+          {isReady && <iframe src={gameUrl} style={{ width: '100%', height: '100%', border: 'none' }} title={`Preview Game ${riwayat.elemen_label} Level ${konten.level}`} sandbox="allow-scripts allow-same-origin allow-forms" allow="fullscreen" />}
+          {!isReady && !isGenerating && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 14 }}>
+              <div style={{ fontSize: 56, opacity: .3 }}>🎮</div>
+              <div style={{ color: 'rgba(255,255,255,.5)', fontSize: FS.lg, fontWeight: 600 }}>Game HTML Tim 4</div>
+              <div style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 10, padding: '8px 16px', fontSize: FS.xs, color: 'rgba(255,255,255,.35)', fontFamily: 'monospace', maxWidth: 420, wordBreak: 'break-all', textAlign: 'center' }}>{gameUrl}</div>
+            </div>
+          )}
         </div>
         <div style={{ background: C.dark, padding: '10px 18px', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
           <button onClick={onClose} style={{ padding: '7px 18px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: 'transparent', color: C.white, fontSize: FS.md, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Tutup Preview</button>
@@ -82,36 +108,108 @@ const GamePreviewRiwayat = ({ riwayat, level, onClose }) => {
   );
 };
 
-/* ── KontenReviewInline — tampilkan isi konten seperti di KelolaBelajar ── */
-const KontenReviewInline = ({ k, riwayat }) => {
-  const [activeLevel, setActiveLevel] = useState(k.levels?.[0] || '');
+/* ── KontenItemRenderer — render isi konten sesuai tipe ──────────── */
+// Sama persis dengan renderer di KelolaBelajarSection agar konsisten.
+// Input: item KontenItem { tipe, level, content, approved }
+const KontenItemRenderer = ({ item }) => {
+  const { tipe, content } = item;
+
+  if (tipe === 'bacaan' || tipe === 'mindmap') {
+    const text = typeof content === 'string'
+      ? content                                          // dari placeholder / regenerate
+      : (tipe === 'bacaan' ? content?.text : content?.content);  // dari API shape
+    return (
+      <pre style={{ fontFamily: 'inherit', fontSize: FS.sm, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
+        {text || '(konten kosong)'}
+      </pre>
+    );
+  }
+
+  if (tipe === 'quiz_pg') {
+    if (!content?.soal?.length) return <span style={{ color: C.slate, fontSize: FS.sm }}>Soal belum tersedia.</span>;
+    return (
+      <div>
+        {content.soal.map((s, i) => (
+          <div key={i} style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.sm, marginBottom: 5 }}>{i + 1}. {s.pertanyaan}</div>
+            {(s.pilihan || []).map((p, j) => (
+              <div key={j} style={{ paddingLeft: 12, marginBottom: 2 }}>
+                <span style={{ fontSize: FS.sm, color: p === s.jawaban ? C.green : C.darkL, fontWeight: p === s.jawaban ? 700 : 400 }}>
+                  {String.fromCharCode(97 + j)}) {p} {p === s.jawaban ? ' (jawaban)' : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (tipe === 'quiz_essay') {
+    if (!content?.pertanyaan?.length) return <span style={{ color: C.slate, fontSize: FS.sm }}>Pertanyaan belum tersedia.</span>;
+    return (
+      <div>
+        {content.pertanyaan.map((p, i) => (
+          <div key={i} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.7 }}>{i + 1}. {p}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (tipe === 'flashcard') {
+    if (!content?.cards?.length) return <span style={{ color: C.slate, fontSize: FS.sm }}>Kartu belum tersedia.</span>;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {content.cards.map((c, i) => (
+          <div key={i} style={{ border: `1px solid ${C.tealXL}`, borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ background: `${C.teal}18`, padding: '5px 10px', fontSize: FS.xs, fontWeight: 700, color: C.teal, borderBottom: `1px solid ${C.tealXL}` }}>[Depan]</div>
+            <div style={{ padding: '7px 10px', fontSize: FS.sm, color: C.dark }}>{c.depan}</div>
+            <div style={{ background: '#F0FFF4', padding: '5px 10px', fontSize: FS.xs, fontWeight: 700, color: C.green, borderTop: `1px solid ${C.tealXL}`, borderBottom: `1px solid ${C.tealXL}` }}>[Belakang]</div>
+            <div style={{ padding: '7px 10px', fontSize: FS.sm, color: C.darkL }}>{c.belakang}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // game — tampilkan nama/deskripsi dari konten game
+  return (
+    <pre style={{ fontFamily: 'inherit', fontSize: FS.sm, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
+      {content?.nama || content?.deskripsi || '(game sedang disiapkan)'}
+    </pre>
+  );
+};
+
+/* ── KontenGroupReview — satu tipe konten dengan level tabs ──────── */
+// Mengambil semua KontenItem satu tipe dari konten_list dan render dengan tab level.
+const KontenGroupReview = ({ tipe, items, riwayat }) => {
+  const levelsAvail = items.map(it => it.level).filter(Boolean);
+  const [activeLevel, setActiveLevel] = useState(levelsAvail[0] || '');
   const [gamePreview, setGamePreview] = useState(null);
+
+  const activeItem = levelsAvail.length > 0
+    ? items.find(it => it.level === activeLevel)
+    : items[0];
+
+  // html_url dan siswa_selesai sudah embedded di konten_list dari /content/riwayat
+  // Tidak perlu augment dari /game/list lagi
+  const displayItem = activeItem;
 
   return (
     <div style={{ background: C.white, borderRadius: 10, border: `1.5px solid ${C.tealXL}`, marginBottom: 10, overflow: 'hidden' }}>
-      {/* Header konten */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 13px', background: `${C.teal}06`, borderBottom: `1px solid ${C.tealXL}` }}>
-        <span style={{ fontSize: 16 }}>{KONTEN_ICON[k.type]}</span>
-        <span style={{ fontSize: FS.md, fontWeight: 700, color: C.dark }}>{k.label}</span>
-        {k.type === 'game' && k.siswaSelesai?.length > 0 && (
-          <span style={{ fontSize: FS.xs, padding: '2px 8px', borderRadius: 99, background: '#F0F7FF', color: '#2B6CB0', fontWeight: 700, border: '1px solid #BEE3F8', marginLeft: 'auto' }}>
-            🎮 {k.siswaSelesai.length} selesai
-          </span>
-        )}
+      {/* Header tipe */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 13px', background: `${C.teal}06`, borderBottom: `1px solid ${C.tealXL}` }}>
+        <span style={{ fontSize: 15 }}>{KONTEN_ICON[tipe]}</span>
+        <span style={{ fontSize: FS.md, fontWeight: 700, color: C.dark }}>{KONTEN_LABEL[tipe] || tipe}</span>
       </div>
 
-      <div style={{ padding: '12px 13px' }}>
-
-        {/* Label judul */}
-        {k.levels?.length > 0
-          ? <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Placeholder — Level {activeLevel}</div>
-          : <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>Teks Konten</div>
-        }
-
-        {/* Level tabs — untuk semua konten yang memiliki levels */}
-        {k.levels?.length > 0 && (
+      <div style={{ padding: '10px 13px' }}>
+        {/* Level tabs */}
+        {levelsAvail.length > 0 && (
           <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
-            {k.levels.map(lv => (
+            {levelsAvail.map(lv => (
               <button key={lv} onClick={() => setActiveLevel(lv)}
                 style={{ padding: '4px 12px', borderRadius: 99, fontSize: FS.sm, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', background: activeLevel === lv ? C.teal : LEVEL_BG[lv], color: activeLevel === lv ? C.white : LEVEL_COLOR[lv], border: `1.5px solid ${activeLevel === lv ? C.teal : LEVEL_BORDER[lv]}` }}>
                 {lv}
@@ -121,166 +219,141 @@ const KontenReviewInline = ({ k, riwayat }) => {
         )}
 
         {/* Isi konten */}
-        <div style={{ background: '#FAFEFF', borderRadius: 8, padding: '10px 12px', border: `1px solid ${C.tealXL}`, marginBottom: 8 }}>
-          <pre style={{ fontFamily: 'inherit', fontSize: FS.sm, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
-            {getPlaceholderText(k.type, activeLevel, riwayat)}
-          </pre>
+        <div style={{ background: '#FAFEFF', borderRadius: 8, padding: '10px 12px', border: `1px solid ${C.tealXL}`, marginBottom: tipe === 'game' ? 8 : 0 }}>
+          {displayItem
+            ? <KontenItemRenderer item={displayItem} />
+            : <span style={{ color: C.slate, fontSize: FS.sm }}>Konten tidak tersedia.</span>
+          }
         </div>
 
-        {/* Aksi game */}
-        {k.type === 'game' && (
-          <button onClick={() => setGamePreview(activeLevel)}
-            style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.sm, color: C.teal, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+        {/* Preview game button */}
+        {tipe === 'game' && (
+          <button onClick={() => setGamePreview(displayItem || {})}
+            style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.sm, color: C.teal, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
             🔍 Preview Game Level {activeLevel}
           </button>
         )}
       </div>
 
-      {gamePreview && <GamePreviewRiwayat riwayat={riwayat} level={gamePreview} onClose={() => setGamePreview(null)} />}
+      {gamePreview && <GamePreviewModal konten={gamePreview} riwayat={riwayat} onClose={() => setGamePreview(null)} />}
     </div>
   );
 };
 
-/* ── Dummy riwayat konten published ─────────────────────────────── */
-const RIWAYAT_KONTEN = [
-  {
-    id: 'rk1',
-    jenjang: 'X', kelas: 'X-1', kelasId: 'x1',
-    mapelId: 'mat', mapelLabel: 'Matematika', mapelIcon: '📐', mapelColor: '#319795',
-    elemenLabel: 'Bilangan dan Aljabar',
-    materi: 'Persamaan Linear',
-    publishedAt: 'Senin, 14 Apr 2026 · 09:32',
-    atp: [
-      'Siswa mampu menjelaskan konsep {materi}',
-      'Siswa dapat menyelesaikan {materi} dengan satu langkah',
-      'Siswa dapat mengaplikasikan {materi} pada soal cerita sederhana',
-    ],
-    konten: [
-      { type: 'bacaan', label: 'Konten Bacaan', levels: ['Low', 'Mid', 'High'] },
-      {
-        type: 'game', label: 'Game', levels: ['Low', 'Mid', 'High'],
-        siswaSelesai: [
-          { siswaId: 's2', level: 'High', selesaiAt: '09:45' },
-          { siswaId: 's4', level: 'Mid', selesaiAt: '10:12' },
-          { siswaId: 's5', level: 'Low', selesaiAt: '10:30' },
-          { siswaId: 's9', level: 'Mid', selesaiAt: '11:05' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'rk2',
-    jenjang: 'X', kelas: 'X-2', kelasId: 'x2',
-    mapelId: 'mat', mapelLabel: 'Matematika', mapelIcon: '📐', mapelColor: '#319795',
-    elemenLabel: 'Data dan Statistika',
-    materi: 'Statistika Dasar',
-    publishedAt: 'Rabu, 9 Apr 2026 · 14:15',
-    atp: [
-      'Siswa mampu menjelaskan konsep {materi}',
-      'Siswa dapat menyelesaikan {materi} dengan satu langkah',
-      'Siswa dapat mengaplikasikan {materi} pada soal cerita sederhana',
-    ],
-    konten: [
-      { type: 'bacaan', label: 'Konten Bacaan', levels: ['Low', 'Mid', 'High'] },
-      { type: 'quiz_pg', label: 'Kuiz Pilihan Ganda', levels: ['Low', 'Mid', 'High'] },
-      { type: 'flashcard', label: 'Flashcard', levels: ['Low', 'Mid', 'High'] },
-      { type: 'mindmap', label: 'Mindmap', levels: [] },
-      {
-        type: 'game', label: 'Game', levels: ['Low', 'Mid', 'High'],
-        siswaSelesai: [
-          { siswaId: 's10', level: 'Mid', selesaiAt: '14:45' },
-          { siswaId: 's12', level: 'Low', selesaiAt: '15:20' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'rk3',
-    jenjang: 'X', kelas: 'X-3', kelasId: 'x3',
-    mapelId: 'mat', mapelLabel: 'Matematika', mapelIcon: '📐', mapelColor: '#319795',
-    elemenLabel: 'Geometri dan Pengukuran',
-    materi: 'Fungsi Kuadrat',
-    publishedAt: 'Jumat, 4 Apr 2026 · 11:00',
-    atp: [
-      'Siswa mampu menjelaskan konsep {materi}',
-      'Siswa dapat menyelesaikan {materi} dengan satu langkah',
-      'Siswa dapat mengaplikasikan {materi} pada soal cerita sederhana',
-    ],
-    konten: [
-      { type: 'bacaan', label: 'Konten Bacaan', levels: ['Low', 'Mid', 'High'] },
-      { type: 'quiz_pg', label: 'Kuiz Pilihan Ganda', levels: ['Low', 'Mid', 'High'] },
-      { type: 'quiz_essay', label: 'Kuiz Essay', levels: ['Low', 'Mid', 'High'] },
-      { type: 'flashcard', label: 'Flashcard', levels: ['Low', 'Mid', 'High'] },
-      { type: 'mindmap', label: 'Mindmap', levels: [] },
-      {
-        type: 'game', label: 'Game', levels: ['Low', 'Mid', 'High'],
-        siswaSelesai: [
-          { siswaId: 's15', level: 'High', selesaiAt: '11:30' },
-          { siswaId: 's16', level: 'High', selesaiAt: '11:45' },
-          { siswaId: 's18', level: 'Mid', selesaiAt: '12:10' },
-          { siswaId: 's21', level: 'Low', selesaiAt: '12:25' },
-          { siswaId: 's19', level: 'Mid', selesaiAt: '13:00' },
-        ],
-      },
-    ],
-  },
-];
-
-const KONTEN_ICON = {
-  bacaan: '📖', quiz_pg: '✅', quiz_essay: '📝',
-  flashcard: '🃏', mindmap: '🧠', game: '🎮',
+/* ── GameDetailModal — progress per siswa dengan badge Low/Mid/High ─ */
+const LEVEL_BADGE = {
+  Low:  { active: { bg: '#EBF8FF', color: '#2B6CB0', border: '#90CDF4' }, label: 'Low'  },
+  Mid:  { active: { bg: '#FEFCBF', color: '#B7791F', border: '#F6E05E' }, label: 'Mid'  },
+  High: { active: { bg: '#FFF5F5', color: '#C53030', border: '#FEB2B2' }, label: 'High' },
 };
+const LEVELS_ORDER = ['Low', 'Mid', 'High'];
 
-const LEVEL_COLOR = { Low: '#276749', Mid: '#B7791F', High: '#9B2C2C' };
-const LEVEL_BG = { Low: '#F0FFF4', Mid: '#FFFBF0', High: '#FFF5F5' };
-const LEVEL_BORDER = { Low: '#9AE6B4', Mid: '#F6AD55', High: '#FEB2B2' };
+const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
+  // Siswa yang relevan = dari kelas yang sama dengan konten ini
+  const kelasSiswa = ADMIN_SISWA_INIT.filter(s => s.kelasId === riwayat.kelas_id);
+  // Fallback: jika kelas_id tidak match (misal seed berbeda), tampilkan semua
+  const displaySiswa = kelasSiswa.length > 0 ? kelasSiswa : ADMIN_SISWA_INIT;
 
-/* ── GameDetailModal ─────────────────────────────────────────────── */
-const GameDetailModal = ({ riwayat, onClose }) => {
-  const gameKonten = riwayat.konten.find(k => k.type === 'game');
-  if (!gameKonten) return null;
-  const siswaMap = Object.fromEntries(ADMIN_SISWA_INIT.map(s => [s.id, s]));
+  // Build set per level: siswa_id → selesai_at
+  const selesaiPerLevel = {}; // { Low: { siswa_id: selesai_at }, Mid: {...}, High: {...} }
+  LEVELS_ORDER.forEach(lv => { selesaiPerLevel[lv] = {}; });
+  (gameItems || []).forEach(it => {
+    const lv = it.level;
+    if (!lv || !selesaiPerLevel[lv]) return;
+    (it.content?.siswa_selesai || []).forEach(ss => {
+      selesaiPerLevel[lv][ss.siswa_id] = ss.selesai_at || '';
+    });
+  });
+
+  // Hitung total unik siswa yang sudah memainkan minimal 1 level
+  const totalUnik = displaySiswa.filter(s =>
+    LEVELS_ORDER.some(lv => selesaiPerLevel[lv][s.id] != null)
+  ).length;
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div className="bounce-in" style={{ background: C.white, borderRadius: 16, width: 'min(480px, calc(100vw - 24px))', maxHeight: '85vh', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: C.white, borderRadius: 16, width: 'min(520px, calc(100vw - 24px))', maxHeight: '85vh', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,.2)' }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
         <div style={{ padding: '16px 20px 14px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontFamily: FONTS.serif, fontSize: FS.xl, fontWeight: 700, color: C.dark }}>🎮 Detail Game</div>
-            <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>{riwayat.mapelLabel} · {riwayat.elemenLabel} · {riwayat.materi}</div>
+            <div style={{ fontFamily: FONTS.serif, fontSize: FS.xl, fontWeight: 700, color: C.dark }}>🎮 Progress Game</div>
+            <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>
+              {riwayat.mapel_label} · {riwayat.elemen_label}{riwayat.materi ? ` · ${riwayat.materi}` : ''}
+            </div>
           </div>
           <button onClick={onClose} style={{ background: C.white, border: '2px solid #EDF2F7', borderRadius: 8, width: 28, height: 28, cursor: 'pointer', fontSize: FS.lg, color: C.slate }}>✕</button>
         </div>
 
-        <div style={{ padding: '16px 20px', overflowY: 'auto', maxHeight: 'calc(85vh - 70px)' }}>
-          {/* Siswa yang selesai */}
-          <div>
-            <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, marginBottom: 8 }}>
-              Siswa yang Menyelesaikan ({gameKonten.siswaSelesai?.length || 0} siswa)
-            </div>
-            {!gameKonten.siswaSelesai?.length ? (
-              <div style={{ fontSize: FS.md, color: C.slate, textAlign: 'center', padding: '20px 0' }}>Belum ada siswa yang menyelesaikan game</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {gameKonten.siswaSelesai.map((ss, i) => {
-                  const siswa = siswaMap[ss.siswaId];
-                  if (!siswa) return null;
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, border: `1px solid ${LEVEL_BORDER[ss.level]}`, background: LEVEL_BG[ss.level] }}>
-                      <Avatar initials={siswa.avatar} bg={siswa.avatarBg} size={32} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark }}>{siswa.nama}</div>
-                        <div style={{ fontSize: FS.xs, color: C.slate }}>Selesai pukul {ss.selesaiAt}</div>
-                      </div>
-                      <span style={{ fontSize: FS.sm, padding: '3px 10px', borderRadius: 99, fontWeight: 700, background: C.white, color: LEVEL_COLOR[ss.level], border: `1px solid ${LEVEL_BORDER[ss.level]}` }}>
-                        Level {ss.level}
-                      </span>
-                    </div>
-                  );
-                })}
+        {/* Legenda + ringkasan */}
+        <div style={{ padding: '10px 20px', borderBottom: `1px solid rgba(13,92,99,.06)`, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: FS.xs, color: C.slate }}>
+            {totalUnik} / {displaySiswa.length} siswa sudah memainkan
+          </span>
+          <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+            {LEVELS_ORDER.map(lv => (
+              <div key={lv} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 3, background: LEVEL_BADGE[lv].active.bg, border: `1.5px solid ${LEVEL_BADGE[lv].active.border}` }} />
+                <span style={{ fontSize: 10, color: C.slate }}>{lv}</span>
               </div>
-            )}
+            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: '#F7FAFC', border: '1.5px solid #E2E8F0' }} />
+              <span style={{ fontSize: 10, color: C.slate }}>Belum</span>
+            </div>
           </div>
+        </div>
+
+        {/* List siswa */}
+        <div style={{ overflowY: 'auto', maxHeight: 'calc(85vh - 120px)', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {displaySiswa.map(siswa => {
+            const playedAny = LEVELS_ORDER.some(lv => selesaiPerLevel[lv][siswa.id] != null);
+            return (
+              <div key={siswa.id} style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '9px 12px', borderRadius: 10,
+                background: playedAny ? `${C.teal}04` : '#FAFAFA',
+                border: `1px solid ${playedAny ? `${C.teal}18` : '#EDF2F7'}`,
+              }}>
+                <Avatar initials={siswa.avatar} bg={siswa.avatarBg} size={30} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {siswa.nama}
+                  </div>
+                  {/* Waktu terakhir selesai — level tertinggi yang sudah dimainkan */}
+                  {playedAny && (() => {
+                    const lastLv = [...LEVELS_ORDER].reverse().find(lv => selesaiPerLevel[lv][siswa.id] != null);
+                    return (
+                      <div style={{ fontSize: 10, color: C.slate }}>
+                        Terakhir: Level {lastLv} · {selesaiPerLevel[lastLv][siswa.id]}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* 3 badge Low/Mid/High */}
+                <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
+                  {LEVELS_ORDER.map(lv => {
+                    const done = selesaiPerLevel[lv][siswa.id] != null;
+                    const badge = LEVEL_BADGE[lv];
+                    return (
+                      <span key={lv} title={done ? `Selesai: ${selesaiPerLevel[lv][siswa.id]}` : `Belum memainkan level ${lv}`}
+                        style={{
+                          fontSize: 10, fontWeight: 700,
+                          padding: '3px 8px', borderRadius: 99,
+                          background: done ? badge.active.bg : '#F7FAFC',
+                          color: done ? badge.active.color : '#A0AEC0',
+                          border: `1px solid ${done ? badge.active.border : '#E2E8F0'}`,
+                          transition: 'all .15s',
+                        }}>
+                        {lv}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -288,46 +361,120 @@ const GameDetailModal = ({ riwayat, onClose }) => {
 };
 
 /* ── RiwayatCard ─────────────────────────────────────────────────── */
+// riwayat: RiwayatKontenItem (dari GET /content/riwayat)
+// siswa_selesai sudah embedded di konten_list[tipe=game].content.siswa_selesai
 const RiwayatCard = ({ riwayat }) => {
   const [expanded, setExpanded] = useState(false);
   const [gameModal, setGameModal] = useState(false);
-  const gameKonten = riwayat.konten.find(k => k.type === 'game');
-  const totalSelesai = gameKonten?.siswaSelesai?.length || 0;
-  const hasCP = !!CAPAIAN_PEMBELAJARAN[riwayat.mapelId];
+
+  const kontenList = riwayat.konten_list || [];
+
+  // Kelompokkan konten_list per tipe
+  const tipeGroups = {};
+  kontenList.forEach(item => {
+    if (!tipeGroups[item.tipe]) tipeGroups[item.tipe] = [];
+    tipeGroups[item.tipe].push(item);
+  });
+
+  const siswaMap = Object.fromEntries(ADMIN_SISWA_INIT.map(s => [s.id, s]));
+  const gameItems = tipeGroups['game'] || [];
+
+  // Gabungkan siswa_selesai dari semua level game (sudah embedded di konten_list)
+  const allSelesai = gameItems.flatMap(it => it.content?.siswa_selesai || []);
+  const totalSelesai = allSelesai.length;
+
+  // AvatarStack: maks 4 avatar + "+N lainnya"
+  const MAX_AVATAR_STACK = 4;
+  const stackSiswa = allSelesai.slice(0, MAX_AVATAR_STACK);
+  const remainCount = totalSelesai - stackSiswa.length;
+  const atpArr = atpLines(riwayat.atp);
+
+  // Urutan tampil konten
+  const DISPLAY_ORDER = ['bacaan', 'quiz_pg', 'quiz_essay', 'flashcard', 'mindmap', 'game'];
 
   return (
     <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
       {/* Header */}
       <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ width: 40, height: 40, borderRadius: 10, background: riwayat.mapelColor + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, flexShrink: 0 }}>
-          {riwayat.mapelIcon}
+        <div style={{ width: 40, height: 40, borderRadius: 10, background: (riwayat.mapel_color || '#319795') + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, flexShrink: 0 }}>
+          {riwayat.mapel_icon || '📚'}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: FS.lg, color: C.dark }}>{riwayat.mapelLabel} — {riwayat.elemenLabel}</div>
+          <div style={{ fontWeight: 700, fontSize: FS.lg, color: C.dark }}>
+            {riwayat.mapel_label} — {riwayat.elemen_label}
+          </div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5 }}>
             {riwayat.materi && <><strong>{riwayat.materi}</strong> · </>}
-            {riwayat.jenjang} · {riwayat.kelas}
+            {riwayat.jenjang} · {riwayat.kelas_nama}
           </div>
-          <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 3 }}>📅 {riwayat.publishedAt}</div>
+          <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 3 }}>
+            📅 {fmtPublishedAt(riwayat.published_at)}
+          </div>
         </div>
-        {/* Badges row */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-          {totalSelesai > 0 && (
-            <span style={{ fontSize: FS.sm, padding: '3px 10px', borderRadius: 99, background: '#F0F7FF', color: '#2B6CB0', fontWeight: 700, border: '1px solid #BEE3F8', whiteSpace: 'nowrap' }}>
-              🎮 {totalSelesai} siswa memainkan
+        {/* Revisi 5: Avatar stack siswa selesai — klik buka GameDetailModal */}
+        {totalSelesai > 0 && (
+          <button
+            onClick={() => setGameModal(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              padding: 0, flexShrink: 0,
+            }}
+            title={`${totalSelesai} siswa memainkan game`}
+          >
+            {/* Stack avatar — overlap kanan ke kiri */}
+            <div style={{ display: 'flex', flexDirection: 'row-reverse', alignItems: 'center' }}>
+              {remainCount > 0 && (
+                <div style={{
+                  width: 28, height: 28, borderRadius: '50%',
+                  background: '#EDF2F7', border: '2px solid #fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 9, fontWeight: 800, color: C.slate,
+                  marginLeft: -8, zIndex: 1,
+                }}>+{remainCount}</div>
+              )}
+              {[...stackSiswa].reverse().map((ss, i) => {
+                const s = siswaMap[ss.siswa_id || ss.siswaId];
+                if (!s) return null;
+                const colors = ['#319795', '#805AD5', '#D69E2E', '#C53030', '#2B6CB0'];
+                const bg = colors[i % colors.length];
+                return (
+                  <div key={i} style={{
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: bg, border: '2px solid #fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 9, fontWeight: 800, color: '#fff',
+                    marginLeft: i === 0 ? 0 : -8,
+                    zIndex: stackSiswa.length - i + 1,
+                    flexShrink: 0,
+                  }}>
+                    {(s.nama || s.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('')}
+                  </div>
+                );
+              })}
+            </div>
+            <span style={{ fontSize: FS.xs, color: '#2B6CB0', fontWeight: 700 }}>
+              🎮 {totalSelesai} selesai
             </span>
-          )}
-        </div>
+          </button>
+        )}
       </div>
 
-      {/* Konten chips */}
+      {/* Konten chips — dari konten_list */}
       <div style={{ padding: '0 16px 12px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {riwayat.konten.map(k => (
-          <span key={k.type} style={{ fontSize: FS.sm, padding: '3px 10px', borderRadius: 99, background: `${C.teal}10`, color: C.teal, fontWeight: 600, border: `1px solid ${C.tealXL}` }}>
-            {KONTEN_ICON[k.type]} {k.label}
-            {k.levels?.length > 0 && <span style={{ marginLeft: 4, opacity: .7 }}>{k.levels.join('/')}</span>}
-          </span>
-        ))}
+        {DISPLAY_ORDER
+          .filter(tipe => tipeGroups[tipe]?.length > 0)
+          .map(tipe => {
+            const items = tipeGroups[tipe];
+            const levels = items.map(it => it.level).filter(Boolean);
+            return (
+              <span key={tipe} style={{ fontSize: FS.sm, padding: '3px 10px', borderRadius: 99, background: `${C.teal}10`, color: C.teal, fontWeight: 600, border: `1px solid ${C.tealXL}` }}>
+                {KONTEN_ICON[tipe]} {KONTEN_LABEL[tipe] || tipe}
+                {levels.length > 0 && <span style={{ marginLeft: 4, opacity: .7 }}>{levels.join('/')}</span>}
+              </span>
+            );
+          })
+        }
       </div>
 
       {/* Aksi */}
@@ -336,7 +483,7 @@ const RiwayatCard = ({ riwayat }) => {
           style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.teal, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
           {expanded ? '▲ Sembunyikan' : '▼ Lihat Konten'}
         </button>
-        {gameKonten && (
+        {gameItems.length > 0 && (
           <button onClick={() => setGameModal(true)}
             style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #BEE3F8', background: '#F0F7FF', fontSize: FS.md, color: '#2B6CB0', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             🎮 Detail Game
@@ -344,98 +491,121 @@ const RiwayatCard = ({ riwayat }) => {
         )}
       </div>
 
-      {/* Konten expanded — isi lengkap per konten dengan level tabs */}
-      {expanded && (() => {
-        const mapelEntry = ADMIN_MAPEL_LIST.find(m => m.id === riwayat.mapelId);
-        const cp = CAPAIAN_PEMBELAJARAN[riwayat.mapelId];
-        return (
-          <div style={{ padding: '14px 16px 16px', borderTop: `1px solid rgba(13,92,99,.07)`, background: '#FAFEFF' }}>
+      {/* Expanded detail */}
+      {expanded && (
+        <div style={{ padding: '14px 16px 16px', borderTop: `1px solid rgba(13,92,99,.07)`, background: '#FAFEFF' }}>
 
-            {riwayat.atp?.length > 0 && (
-              <div style={{
-                marginBottom: 14, padding: '12px 14px',
-                borderRadius: 10, border: `1.5px solid ${C.tealXL}`,
-                background: C.white,
-              }}>
-                <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>
-                  📋 Alur Tujuan Pembelajaran (ATP)
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {riwayat.atp.map((poin, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                      <span style={{
-                        width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-                        background: `${C.teal}18`, color: C.teal,
-                        fontSize: FS.xs, fontWeight: 800,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        marginTop: 1,
-                      }}>{i + 1}</span>
-                      <span style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.6 }}>{poin}</span>
-                    </div>
-                  ))}
-                </div>
+          {/* ATP — tampilkan baris bernomor dari string multiline */}
+          {atpArr.length > 0 && (
+            <div style={{ marginBottom: 14, padding: '12px 14px', borderRadius: 10, border: `1.5px solid ${C.tealXL}`, background: C.white }}>
+              <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>
+                📋 Alur Tujuan Pembelajaran (ATP)
               </div>
-            )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {atpArr.map((poin, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <span style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, background: `${C.teal}18`, color: C.teal, fontSize: FS.xs, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                      {i + 1}
+                    </span>
+                    <span style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.6 }}>{poin}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-            <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, marginBottom: 12 }}>Isi Konten Terpublish</div>
-            {riwayat.konten.map(k => (
-              <KontenReviewInline key={k.type} k={k} riwayat={riwayat} />
-            ))}
-          </div>
-        );
-      })()}
+          <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, marginBottom: 12 }}>Isi Konten Terpublish</div>
 
-      {gameModal && <GameDetailModal riwayat={riwayat} onClose={() => setGameModal(false)} />}
+          {/* Render semua tipe konten dari konten_list */}
+          {DISPLAY_ORDER
+            .filter(tipe => tipeGroups[tipe]?.length > 0)
+            .map(tipe => (
+              <KontenGroupReview
+                key={tipe}
+                tipe={tipe}
+                items={tipeGroups[tipe]}
+                riwayat={riwayat}
+                gameAugment={null}
+              />
+            ))
+          }
+        </div>
+      )}
+
+      {gameModal && (
+        <GameDetailModal
+          riwayat={riwayat}
+          gameItems={gameItems}
+          onClose={() => setGameModal(false)}
+        />
+      )}
     </Card>
   );
 };
 
 /* ════════════════════════════════════════════════════════════════════ */
-const RiwayatKontenSection = () => {
+const RiwayatKontenSection = ({ publishedList = [] }) => {
+  // Resolve guru yang sedang login — sama seperti KelolaBelajarSection
+  const teacherFromTeachers = TEACHERS.find(t => t.id === SEEDED_TEACHER_ID);
+  const guru = ADMIN_GURU_INIT.find(g =>
+    g.id === 'g1' ||
+    (teacherFromTeachers?.name && g.nama.includes(
+      teacherFromTeachers.name.split(',')[0].replace('Bpk. ', '').replace('Ibu ', '').trim()
+    ))
+  ) || ADMIN_GURU_INIT[0];
+
+  const [riwayat, setRiwayat] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filterKelas, setFilterKelas] = useState('semua');
   const [search, setSearch] = useState('');
 
-  // FIX P2: augment RIWAYAT_KONTEN dengan data game real dari backend
-  // API getGameList() mengembalikan game yang sudah di-generate Tim 4 + status + siswa selesai
-  const [apiGames, setApiGames] = useState([]);
-  const [apiLoading, setApiLoading] = useState(true);
   useEffect(() => {
-    (async () => {
+    const load = async () => {
       try {
-        const data = await getGameList();
-        if (Array.isArray(data) && data.length > 0) setApiGames(data);
-      } catch { /* silent — pakai RIWAYAT_KONTEN dummy */ }
-      finally { setApiLoading(false); }
-    })();
-  }, []);
-
-  // Merge: API games override entry dummy yang sama (match by mapelId+elemenId)
-  const mergedRiwayat = RIWAYAT_KONTEN.map(r => {
-    const match = apiGames.find(g => g.mapel_id === r.mapelId && g.elemen_id === r.elemenId);
-    if (!match) return r;
-    return {
-      ...r,
-      konten: r.konten.map(k =>
-        k.type === 'game'
-          ? { ...k, html_url: match.html_url, status: match.status, siswaSelesai: match.siswa_selesai || k.siswaSelesai || [] }
-          : k
-      ),
+        // GET /content/riwayat — game sudah embedded di konten_list, tidak perlu /game/list lagi
+        const data = await getRiwayatGuru({ guru_id: guru?.id || 'g1' });
+        if (Array.isArray(data)) setRiwayat(data);
+      } catch { /* silent */ } finally { setLoading(false); }
     };
-  });
+    load();
+  }, [guru?.id]);
+
+  // Konversi publishedList (camelCase dari KelolaBelajar) → snake_case agar konsisten
+  // dengan shape RiwayatKontenItem dari API
+  const normalizedPublished = publishedList.map(p => ({
+    publish_id: p.id,
+    guru_id: p.guru_id || 'g1',
+    mapel_id: p.mapelId,
+    mapel_label: p.mapelLabel,
+    mapel_icon: p.mapelIcon,
+    mapel_color: p.mapelColor,
+    elemen_id: p.elemenId,
+    elemen_label: p.elemenLabel,
+    materi: p.materi || null,
+    kelas_id: p.kelasId,
+    kelas_nama: p.kelas,
+    jenjang: p.jenjang,
+    atp: Array.isArray(p.atp) ? p.atp.join('\n') : (p.atp || ''),
+    published_at: new Date().toISOString(),
+    konten_list: p.kontenList || [],   // lihat patch KelolaBelajar di bawah
+  }));
+
+  // Merge: publishedList session ini di depan, API di belakang (dedup by publish_id)
+  const apiIds = new Set(riwayat.map(r => r.publish_id));
+  const mergedRiwayat = [
+    ...normalizedPublished.filter(p => !apiIds.has(p.publish_id)),
+    ...riwayat,
+  ];
 
   const filtered = mergedRiwayat.filter(r => {
-    const matchKelas = filterKelas === 'semua' || r.kelasId === filterKelas;
+    const matchKelas = filterKelas === 'semua' || r.kelas_id === filterKelas;
+    const q = search.toLowerCase();
     const matchSearch = !search
-      || r.mapelLabel.toLowerCase().includes(search.toLowerCase())
-      || r.elemenLabel.toLowerCase().includes(search.toLowerCase())
-      || (r.materi || '').toLowerCase().includes(search.toLowerCase());
+      || (r.mapel_label || '').toLowerCase().includes(q)
+      || (r.elemen_label || '').toLowerCase().includes(q)
+      || (r.materi || '').toLowerCase().includes(q);
     return matchKelas && matchSearch;
   });
-
-  const totalGame = mergedRiwayat.reduce((acc, r) => {
-    const g = r.konten.find(k => k.type === 'game');
-    return acc + (g?.siswaSelesai?.length || 0);
-  }, 0);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg }}>
@@ -444,42 +614,51 @@ const RiwayatKontenSection = () => {
         <div style={{ flex: 1, minWidth: 160 }}>
           <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>📚 Riwayat Konten</div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>
-            {mergedRiwayat.length} konten dipublish{apiLoading ? ' · memuat...' : ''}
+            {loading ? 'Memuat…' : `${mergedRiwayat.length} konten dipublish`}
           </div>
         </div>
 
-        {/* Filter kelas */}
         <select value={filterKelas} onChange={e => setFilterKelas(e.target.value)}
           style={{ padding: '7px 12px', borderRadius: 8, border: `1.5px solid ${C.tealXL}`, fontSize: FS.md, background: C.white, color: C.dark, fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
           <option value="semua">Semua Kelas</option>
           {ADMIN_KELAS_INIT.map(k => <option key={k.id} value={k.id}>{k.nama}</option>)}
         </select>
 
-        {/* Search */}
         <div style={{ position: 'relative' }}>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari mapel / elemen / materi..."
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Cari mapel / elemen / materi..."
             style={{ padding: '7px 10px 7px 30px', borderRadius: 99, border: `1.5px solid ${C.tealXL}`, fontSize: FS.md, width: 230, fontFamily: 'inherit', outline: 'none' }}
-            onFocus={e => e.target.style.borderColor = C.teal} onBlur={e => e.target.style.borderColor = C.tealXL} />
+            onFocus={e => e.target.style.borderColor = C.teal}
+            onBlur={e => e.target.style.borderColor = C.tealXL} />
           <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: FS.md, color: C.slate }}>🔍</span>
         </div>
       </div>
 
-      {/* Daftar riwayat */}
+      {/* Daftar */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <div style={{ width: 36, height: 36, border: `3px solid ${C.tealXL}`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .9s linear infinite', margin: '0 auto 12px' }} />
+            <div style={{ fontSize: FS.lg, color: C.slate }}>Memuat riwayat konten…</div>
+          </div>
+        ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 0' }}>
             <div style={{ fontSize: 36, opacity: .3, marginBottom: 10 }}>📭</div>
             <div style={{ fontSize: FS.lg, fontWeight: 600, color: C.darkL }}>
-              {RIWAYAT_KONTEN.length === 0 ? 'Belum ada konten dipublish' : 'Tidak ada hasil ditemukan'}
+              {mergedRiwayat.length === 0 ? 'Belum ada konten dipublish' : 'Tidak ada hasil ditemukan'}
             </div>
             <div style={{ fontSize: FS.md, color: C.slate, marginTop: 4 }}>
-              {RIWAYAT_KONTEN.length === 0 ? 'Buat konten baru di menu Kelola Konten Belajar' : 'Coba ubah filter atau kata kunci'}
+              {mergedRiwayat.length === 0 ? 'Buat konten baru di menu Kelola Konten Belajar' : 'Coba ubah filter atau kata kunci'}
             </div>
           </div>
         ) : (
-          filtered.map(r => <RiwayatCard key={r.id} riwayat={r} />)
+          filtered.map(r => (
+            <RiwayatCard key={r.publish_id} riwayat={r} />
+          ))
         )}
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 };

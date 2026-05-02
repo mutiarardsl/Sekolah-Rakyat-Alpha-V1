@@ -375,12 +375,37 @@ export const CLASSES = [
 
 // ─── TEACHERS ──────────────────────────────────────────────────────
 export const TEACHERS = [
-  { id: "t1", name: "Sri Dewi, S.Pd.", initials: "SD", mapelId: ["bio", "fis", "kim"], bg: `linear-gradient(135deg,${C.amber},${C.orange})` },
-  { id: "t2", name: "Bpk. Hendra, M.Pd.", initials: "BH", mapelId: "mat", bg: `linear-gradient(135deg,${C.teal},${C.tealL})` },
-  { id: "t3", name: "Ibu Ratna, S.Pd.", initials: "IR", mapelId: "bin", bg: `linear-gradient(135deg,${C.purple},#9B72DB)` },
-  { id: "t4", name: "Bpk. Yoga, S.Pd.", initials: "BY", mapelId: ["eko", "sos", "geo"], bg: `linear-gradient(135deg,${C.green},#48BB78)` },
-]
-export const SEEDED_TEACHER_ID = "t2"
+  // t1: multi-mapel (bio/fis/kim), bukan first login — untuk test multi-mapel
+  {
+    id: "t1", name: "Sri Dewi, S.Pd.", initials: "SD",
+    mapelId: ["bio", "fis", "kim"],
+    bg: `linear-gradient(135deg,${C.amber},${C.orange})`,
+    isFirstLogin: false,
+  },
+  // t2: 1 mapel (mat), bukan first login — DEFAULT seeded
+  {
+    id: "t2", name: "Bpk. Hendra, M.Pd.", initials: "BH",
+    mapelId: "mat",
+    bg: `linear-gradient(135deg,${C.teal},${C.tealL})`,
+    isFirstLogin: false,
+  },
+  // t3: 1 mapel (bin), IS first login — untuk test ForceChangePassword
+  {
+    id: "t3", name: "Ibu Ratna, S.Pd.", initials: "IR",
+    mapelId: "bin",
+    bg: `linear-gradient(135deg,${C.purple},#9B72DB)`,
+    isFirstLogin: true,
+  },
+  // t4: multi-mapel (eko/sos/geo), bukan first login
+  {
+    id: "t4", name: "Bpk. Yoga, S.Pd.", initials: "BY",
+    mapelId: ["eko", "sos", "geo"],
+    bg: `linear-gradient(135deg,${C.green},#48BB78)`,
+    isFirstLogin: false,
+  },
+];
+export const SEEDED_TEACHER_ID = "t2";       // default: 1 mapel — ganti ke "t1" untuk test multi
+export const SEEDED_TEACHER_ID_MULTI = "t1"; // referensi cepat untuk developer
 
 // ─── STUDENTS ─────────────────────────────────────────────────────
 // riwayat[].materiId  → id materi (dari KURIKULUM[mapelId])
@@ -397,14 +422,17 @@ export const STUDENTS = [
     emotionKey: "bingung",
     status: "Perhatian", lastActive: "4 hari lalu",
     todayActive: false,
-    todayStudyHours: null, todayQuizScore: null, todayQuizTotal: null,
+    todayStudyHours: null, todayLastQuiz: null,
     todayMapelId: null, todayMateriId: null, todayLevel: null,
     riwayat: [
       {
         tanggal: "Senin, 10 Mar 2026",
         mapelId: "mat", materiId: "Aljabar Dasar",
-        level: "mid",
-        durasi: 0.5, quiz: 30, quizTotal: 100,
+        durasi: 0.5,
+        quiz_results: [
+          { type: "mc", level: "mid", score: 30, ts: "09:25" },
+          // essay belum dikerjakan
+        ],
         emosiSesi: [{ jam: "09:00", emosi: "tidak_terdeteksi" }, { jam: "09:10", emosi: "bingung" }, { jam: "09:20", emosi: "frustrasi" }, { jam: "09:30", emosi: "frustrasi" }],
         violations: [
           { detail: "Membuka Aplikasi / Window Lain", timestamp: "09:08" },
@@ -414,62 +442,80 @@ export const STUDENTS = [
       {
         tanggal: "Rabu, 5 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "low",
-        durasi: 0.7, quiz: 40, quizTotal: 100,
+        durasi: 0.7,
+        quiz_results: [
+          { type: "mc", level: "low", score: 40, ts: "10:35" },
+        ],
         emosiSesi: [{ jam: "10:00", emosi: "bingung" }, { jam: "10:15", emosi: "bingung" }, { jam: "10:30", emosi: "frustrasi" }, { jam: "10:42", emosi: "frustrasi" }],
         violations: []
       },
     ]
   },
-  // ─── s2: Dewi Rahayu — berprestasi, konsisten ───
+  // ─── s2: Dewi Rahayu — berprestasi, konsisten, sudah kerjakan MC+Essay di beberapa level ───
   {
     id: "s2", name: "Dewi Rahayu", nis: "2025002", avatar: "DR", avatarBg: C.teal,
     kelasId: "x1",
     emotionKey: "antusias",
     status: "Normal", lastActive: "Hari ini 13:45",
-    todayActive: true, todayStudyHours: 1.5, todayQuizScore: 80, todayQuizTotal: 100,
+    todayActive: true, todayStudyHours: 1.5,
+    todayLastQuiz: { type: "essay", level: "high", mc_score: 80, essay_score: 84, aggregated: 81 },
     todayMapelId: "mat", todayMateriId: "Fungsi Kuadrat", todayLevel: "high",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Fungsi Kuadrat",
-        level: "high",
-        durasi: 1.5, quiz: 80, quizTotal: 100,
+        durasi: 1.5,
+        quiz_results: [
+          { type: "mc", level: "low", score: 85, ts: "08:30" },
+          { type: "essay", level: "low", score: 80, ts: "08:55" },
+          { type: "mc", level: "mid", score: 82, ts: "11:10" },
+          { type: "essay", level: "mid", score: 78, ts: "11:35" },
+          { type: "mc", level: "high", score: 80, ts: "13:20" },
+          { type: "essay", level: "high", score: 84, ts: "13:45" },
+        ],
         emosiSesi: [{ jam: "13:00", emosi: "bingung" }, { jam: "13:30", emosi: "tidak_terdeteksi" }, { jam: "13:45", emosi: "antusias" }, { jam: "15:00", emosi: "antusias" }],
         violations: [{ detail: "Browser Diperkecil / Split Screen", timestamp: "13:45" }]
       },
       {
         tanggal: "Jumat, 14 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        level: "low",
-        durasi: 1.8, quiz: 90, quizTotal: 100,
+        durasi: 1.8,
+        quiz_results: [
+          { type: "mc", level: "low", score: 90, ts: "08:40" },
+          { type: "essay", level: "low", score: 88, ts: "09:05" },
+        ],
         emosiSesi: [{ jam: "08:00", emosi: "bosan" }, { jam: "08:20", emosi: "antusias" }, { jam: "09:20", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Kamis, 13 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "mid",
-        durasi: 2.0, quiz: 80, quizTotal: 100,
+        durasi: 2.0,
+        quiz_results: [
+          { type: "mc", level: "mid", score: 80, ts: "14:30" },
+          { type: "essay", level: "mid", score: 82, ts: "14:55" },
+        ],
         emosiSesi: [{ jam: "14:00", emosi: "bosan" }, { jam: "14:45", emosi: "antusias" }, { jam: "15:00", emosi: "antusias" }, { jam: "15:20", emosi: "antusias" }],
         violations: []
       },
     ]
   },
-  // ─── s3: Rizki Pratama — nilai sangat rendah, tren emosi buruk ───
+  // ─── s3: Rizki Pratama — nilai sangat rendah, tren emosi buruk, hanya MC ───
   {
     id: "s3", name: "Rizki Pratama", nis: "2025003", avatar: "RP", avatarBg: C.amber,
     kelasId: "x1",
     emotionKey: "frustrasi",
     status: "Perhatian", lastActive: "3 hari lalu",
-    todayActive: false, todayStudyHours: null, todayQuizScore: null, todayQuizTotal: null,
+    todayActive: false, todayStudyHours: null, todayLastQuiz: null,
     todayMapelId: null, todayMateriId: null, todayLevel: null,
     riwayat: [
       {
         tanggal: "Jumat, 13 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "low",
-        durasi: 0.6, quiz: 40, quizTotal: 100,
+        durasi: 0.6,
+        quiz_results: [
+          { type: "mc", level: "low", score: 40, ts: "11:30" },
+        ],
         emosiSesi: [{ jam: "11:00", emosi: "bingung" }, { jam: "11:10", emosi: "frustrasi" }, { jam: "11:20", emosi: "tidak_terdeteksi" }, { jam: "11:36", emosi: "frustrasi" }],
         violations: [
           { detail: "Membuka Aplikasi / Window Lain", timestamp: "11:05" },
@@ -479,175 +525,211 @@ export const STUDENTS = [
       {
         tanggal: "Rabu, 11 Mar 2026",
         mapelId: "mat", materiId: "Aljabar Dasar",
-        level: "low",
-        durasi: 0.5, quiz: 30, quizTotal: 100,
+        durasi: 0.5,
+        quiz_results: [
+          { type: "mc", level: "low", score: 30, ts: "09:25" },
+        ],
         emosiSesi: [{ jam: "09:00", emosi: "bingung" }, { jam: "09:15", emosi: "frustrasi" }, { jam: "09:30", emosi: "frustrasi" }],
         violations: [{ detail: "Berpindah Tab / Menyembunyikan Halaman", timestamp: "09:21" }]
       },
     ]
   },
-  // ─── s4: Siti Nurhaliza — rajin, nilai sangat baik ───
+  // ─── s4: Siti Nurhaliza — rajin, nilai sangat baik, MC+Essay semua level ───
   {
     id: "s4", name: "Siti Nurhaliza", nis: "2025004", avatar: "SN", avatarBg: C.purple,
     kelasId: "x1",
     emotionKey: "antusias",
     status: "Normal", lastActive: "Hari ini 14:30",
-    todayActive: true, todayStudyHours: 2.0, todayQuizScore: 100, todayQuizTotal: 100,
+    todayActive: true, todayStudyHours: 2.0,
+    todayLastQuiz: { type: "essay", level: "high", mc_score: 100, essay_score: 96, aggregated: 99 },
     todayMapelId: "mat", todayMateriId: "Statistika", todayLevel: "high",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        level: "high",
-        durasi: 2.0, quiz: 100, quizTotal: 100,
+        durasi: 2.0,
+        quiz_results: [
+          { type: "mc", level: "low", score: 100, ts: "08:20" },
+          { type: "essay", level: "low", score: 92, ts: "08:45" },
+          { type: "mc", level: "mid", score: 100, ts: "11:00" },
+          { type: "essay", level: "mid", score: 94, ts: "11:25" },
+          { type: "mc", level: "high", score: 100, ts: "14:00" },
+          { type: "essay", level: "high", score: 96, ts: "14:30" },
+        ],
         emosiSesi: [{ jam: "14:00", emosi: "tidak_terdeteksi" }, { jam: "14:15", emosi: "bingung" }, { jam: "14:45", emosi: "antusias" }, { jam: "16:00", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Fungsi Kuadrat",
-        level: "high",
-        durasi: 1.5, quiz: 90, quizTotal: 100,
+        durasi: 1.5,
+        quiz_results: [
+          { type: "mc", level: "high", score: 90, ts: "10:30" },
+          { type: "essay", level: "high", score: 88, ts: "10:55" },
+        ],
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:20", emosi: "bingung" }, { jam: "10:40", emosi: "antusias" }, { jam: "11:20", emosi: "antusias" }],
-        violations: []
-      },
-      {
-        tanggal: "Jumat, 14 Mar 2026",
-        mapelId: "mat", materiId: "Fungsi Kuadrat",
-        level: "high",
-        durasi: 2.5, quiz: 100, quizTotal: 100,
-        emosiSesi: [{ jam: "09:00", emosi: "bosan" }, { jam: "09:20", emosi: "antusias" }, { jam: "10:30", emosi: "tidak_terdeteksi" }, { jam: "11:00", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Kamis, 13 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "high",
-        durasi: 1.5, quiz: 90, quizTotal: 100,
+        durasi: 1.5,
+        quiz_results: [
+          { type: "mc", level: "high", score: 90, ts: "13:30" },
+          { type: "essay", level: "high", score: 92, ts: "13:55" },
+        ],
         emosiSesi: [{ jam: "13:00", emosi: "bingung" }, { jam: "13:20", emosi: "antusias" }, { jam: "14:30", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Rabu, 12 Mar 2026",
         mapelId: "mat", materiId: "Aljabar Dasar",
-        level: "high",
-        durasi: 2.0, quiz: 100, quizTotal: 100,
+        durasi: 2.0,
+        quiz_results: [
+          { type: "mc", level: "high", score: 100, ts: "09:15" },
+          { type: "essay", level: "high", score: 95, ts: "09:40" },
+        ],
         emosiSesi: [{ jam: "08:00", emosi: "bosan" }, { jam: "08:20", emosi: "antusias" }, { jam: "08:45", emosi: "bingung" }, { jam: "09:15", emosi: "antusias" }, { jam: "09:30", emosi: "antusias" }, { jam: "10:00", emosi: "antusias" }],
         violations: []
       },
     ]
   },
-  // ─── s5: Bagas Firmansyah — aktif tapi boredom, skor pas-pasan ───
+  // ─── s5: Bagas Firmansyah — aktif tapi boredom, skor pas-pasan, hanya MC ───
   {
     id: "s5", name: "Bagas Firmansyah", nis: "2025005", avatar: "BF", avatarBg: C.green,
     kelasId: "x1",
     emotionKey: "bosan",
     status: "Normal", lastActive: "Hari ini 11:20",
-    todayActive: true, todayStudyHours: 1.0, todayQuizScore: 70, todayQuizTotal: 100,
+    todayActive: true, todayStudyHours: 1.0,
+    todayLastQuiz: { type: "mc", level: "high", mc_score: 70, essay_score: null, aggregated: null },
     todayMapelId: "mat", todayMateriId: "Persamaan Linear", todayLevel: "high",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "high",
-        durasi: 1.0, quiz: 70, quizTotal: 100,
+        durasi: 1.0,
+        quiz_results: [
+          { type: "mc", level: "high", score: 70, ts: "10:50" },
+          // essay belum dikerjakan
+        ],
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:15", emosi: "tidak_terdeteksi" }, { jam: "10:30", emosi: "bosan" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "bosan" }],
         violations: [{ detail: "Browser Diperkecil / Split Screen", timestamp: "10:22" }]
       },
       {
         tanggal: "Jumat, 14 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        level: "high",
-        durasi: 1.5, quiz: 60, quizTotal: 100,
+        durasi: 1.5,
+        quiz_results: [
+          { type: "mc", level: "high", score: 60, ts: "13:50" },
+          { type: "essay", level: "high", score: 55, ts: "14:15" },
+        ],
         emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "14:00", emosi: "bosan" }, { jam: "14:30", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Rabu, 12 Mar 2026",
         mapelId: "mat", materiId: "Aljabar Dasar",
-        level: "high",
-        durasi: 1.3, quiz: 70, quizTotal: 100,
+        durasi: 1.3,
+        quiz_results: [
+          { type: "mc", level: "high", score: 70, ts: "09:55" },
+        ],
         emosiSesi: [{ jam: "09:00", emosi: "bingung" }, { jam: "09:20", emosi: "bosan" }, { jam: "09:40", emosi: "antusias" }, { jam: "10:20", emosi: "antusias" }],
         violations: []
       },
     ]
   },
-  // ─── s6: Lina Kartika — nilai rendah, emosi negatif ───
+  // ─── s6: Lina Kartika — nilai rendah, emosi negatif, stuck di level low ───
   {
     id: "s6", name: "Lina Kartika", nis: "2025006", avatar: "LK", avatarBg: "#B7791F",
     kelasId: "x1",
     emotionKey: "bingung",
     status: "Normal", lastActive: "Hari ini 12:30",
-    todayActive: true, todayStudyHours: 0.5, todayQuizScore: 40, todayQuizTotal: 100,
+    todayActive: true, todayStudyHours: 0.5,
+    todayLastQuiz: { type: "mc", level: "low", mc_score: 40, essay_score: null, aggregated: null },
     todayMapelId: "mat", todayMateriId: "Persamaan Linear", todayLevel: "low",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "low",
-        durasi: 0.5, quiz: 40, quizTotal: 100,
+        durasi: 0.5,
+        quiz_results: [
+          { type: "mc", level: "low", score: 40, ts: "12:25" },
+        ],
         emosiSesi: [{ jam: "12:00", emosi: "bingung" }, { jam: "12:20", emosi: "frustrasi" }, { jam: "12:30", emosi: "bingung" }],
         violations: []
       },
       {
         tanggal: "Minggu, 15 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        level: "low",
-        durasi: 0.8, quiz: 40, quizTotal: 100,
+        durasi: 0.8,
+        quiz_results: [
+          { type: "mc", level: "low", score: 40, ts: "10:45" },
+        ],
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:15", emosi: "bingung" }, { jam: "10:48", emosi: "bingung" }],
         violations: []
       },
       {
         tanggal: "Jumat, 13 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "low",
-        durasi: 1.0, quiz: 50, quizTotal: 100,
+        durasi: 1.0,
+        quiz_results: [
+          { type: "mc", level: "low", score: 50, ts: "14:40" },
+          { type: "essay", level: "low", score: 45, ts: "15:00" },
+        ],
         emosiSesi: [{ jam: "14:00", emosi: "bingung" }, { jam: "14:30", emosi: "antusias" }, { jam: "14:45", emosi: "bingung" }, { jam: "15:00", emosi: "bingung" }],
         violations: [{ detail: "Berpindah Tab / Menyembunyikan Halaman", timestamp: "14:17" }]
       },
     ]
   },
-  // ─── s7: Dino Prasetyo — tidak aktif kemarin ───
+  // ─── s7: Dino Prasetyo — tidak aktif kemarin, hanya MC level low ───
   {
     id: "s7", name: "Dino Prasetyo", nis: "2025007", avatar: "DP", avatarBg: "#2B6CB0",
     kelasId: "x1",
     emotionKey: "bosan",
     status: "Normal", lastActive: "1 Hari lalu",
-    todayActive: false, todayStudyHours: null, todayQuizScore: null, todayQuizTotal: null,
+    todayActive: false, todayStudyHours: null, todayLastQuiz: null,
     todayMapelId: null, todayMateriId: null, todayLevel: null,
     riwayat: [
       {
         tanggal: "Minggu, 15 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "low",
-        durasi: 1.0, quiz: 70, quizTotal: 100,
+        durasi: 1.0,
+        quiz_results: [
+          { type: "mc", level: "low", score: 70, ts: "10:40" },
+          { type: "essay", level: "low", score: 65, ts: "11:00" },
+        ],
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:30", emosi: "tidak_terdeteksi" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "bosan" }],
         violations: []
       },
       {
         tanggal: "Sabtu, 14 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        level: "low",
-        durasi: 1.5, quiz: 60, quizTotal: 100,
+        durasi: 1.5,
+        quiz_results: [
+          { type: "mc", level: "low", score: 60, ts: "14:20" },
+        ],
         emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "13:40", emosi: "bosan" }, { jam: "14:30", emosi: "antusias" }],
         violations: []
       },
     ]
   },
-  // ─── s8: Ayu Maharani ───
+  // ─── s8: Ayu Maharani — tidak aktif, ada pelanggaran, nilai sedang ───
   {
     id: "s8", name: "Ayu Maharani", nis: "2025008", avatar: "AM", avatarBg: "#0D5C63",
     kelasId: "x1",
     emotionKey: "bosan",
     status: "Normal", lastActive: "1 Hari lalu",
-    todayActive: false, todayStudyHours: null, todayQuizScore: null, todayQuizTotal: null,
+    todayActive: false, todayStudyHours: null, todayLastQuiz: null,
     todayMapelId: null, todayMateriId: null, todayLevel: null,
     riwayat: [
       {
         tanggal: "Minggu, 15 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "low",
-        durasi: 1.0, quiz: 70, quizTotal: 100,
+        durasi: 1.0,
+        quiz_results: [
+          { type: "mc", level: "low", score: 70, ts: "10:40" },
+          { type: "essay", level: "low", score: 62, ts: "11:00" },
+        ],
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:30", emosi: "bosan" }, { jam: "10:45", emosi: "antusias" }, { jam: "11:00", emosi: "antusias" }],
         violations: [
           { detail: "Berpindah Tab / Menyembunyikan Halaman", timestamp: "10:18" },
@@ -656,43 +738,59 @@ export const STUDENTS = [
       {
         tanggal: "Sabtu, 14 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        level: "low",
-        durasi: 1.5, quiz: 60, quizTotal: 100,
+        durasi: 1.5,
+        quiz_results: [
+          { type: "mc", level: "low", score: 60, ts: "14:20" },
+        ],
         emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "13:40", emosi: "frustrasi" }, { jam: "14:00", emosi: "tidak_terdeteksi" }, { jam: "14:30", emosi: "bosan" }],
         violations: []
       },
     ]
   },
-  // ─── s9: Budi Santoso — aktif hari ini ───
+  // ─── s9: Budi Santoso — aktif hari ini, sedang naik dari low ke mid ───
   {
     id: "s9", name: "Budi Santoso", nis: "2025009", avatar: "BS", avatarBg: "#0D5C63",
     kelasId: "x1",
     emotionKey: "bosan",
     status: "Normal", lastActive: "Hari ini 11:20",
-    todayActive: true, todayStudyHours: 1.0, todayQuizScore: 70, todayQuizTotal: 100,
-    todayMapelId: "mat", todayMateriId: "Persamaan Linear", todayLevel: "high",
+    todayActive: true, todayStudyHours: 1.0,
+    todayLastQuiz: { type: "essay", level: "mid", mc_score: 80, essay_score: 86, aggregated: 82 },
+    todayMapelId: "mat", todayMateriId: "Persamaan Linear", todayLevel: "mid",
     riwayat: [
       {
         tanggal: "Senin, 16 Mar 2026",
         mapelId: "mat", materiId: "Persamaan Linear",
-        level: "high",
-        durasi: 1.0, quiz: 70, quizTotal: 100,
+        durasi: 1.0,
+        quiz_results: [
+          { type: "mc", level: "low", score: 78, ts: "09:30" },
+          { type: "essay", level: "low", score: 72, ts: "09:55" },
+          { type: "mc", level: "mid", score: 80, ts: "10:50" },
+          { type: "essay", level: "mid", score: 86, ts: "11:15" },
+        ],
         emosiSesi: [{ jam: "10:00", emosi: "bosan" }, { jam: "10:15", emosi: "bosan" }, { jam: "10:40", emosi: "frustrasi" }, { jam: "11:00", emosi: "antusias" }],
         violations: []
       },
       {
         tanggal: "Minggu, 15 Mar 2026",
         mapelId: "mat", materiId: "Statistika",
-        level: "mid",
-        durasi: 1.5, quiz: 60, quizTotal: 100,
+        durasi: 1.5,
+        quiz_results: [
+          { type: "mc", level: "low", score: 72, ts: "13:40" },
+          { type: "essay", level: "low", score: 65, ts: "14:05" },
+        ],
         emosiSesi: [{ jam: "13:00", emosi: "bosan" }, { jam: "13:20", emosi: "bingung" }, { jam: "13:40", emosi: "bosan" }, { jam: "14:30", emosi: "tidak_terdeteksi" }],
         violations: []
       },
       {
         tanggal: "Sabtu, 14 Mar 2026",
         mapelId: "mat", materiId: "Fungsi Kuadrat",
-        level: "high",
-        durasi: 2.0, quiz: 90, quizTotal: 100,
+        durasi: 2.0,
+        quiz_results: [
+          { type: "mc", level: "low", score: 85, ts: "13:30" },
+          { type: "essay", level: "low", score: 80, ts: "13:55" },
+          { type: "mc", level: "mid", score: 88, ts: "15:10" },
+          { type: "essay", level: "mid", score: 82, ts: "15:35" },
+        ],
         emosiSesi: [{ jam: "13:00", emosi: "tidak_terdeteksi" }, { jam: "13:20", emosi: "bingung" }, { jam: "14:00", emosi: "antusias" }, { jam: "15:00", emosi: "antusias" }],
         violations: []
       },
@@ -860,11 +958,24 @@ export const QUIZ_DATA = {}
 
 // ─── Dummy Accounts ────────────────────────────────────────────────
 export const DUMMY_ACCOUNTS = [
-  // Siswa — password temp = SR + NIS, is_first_login = true untuk yg belum aktivasi
+  // ── Siswa ──────────────────────────────────────────────────────────────────
+  // password temp = SR + NIS; is_first_login = true → wajib aktivasi dulu
   { id: 's2', email: 'dewi@siswa.sr.id', nis: '2025002', password: 'siswa123', role: 'siswa', nama: 'Dewi Rahayu', sekolah_id: 'sr_malang_001', avatar: 'DR', avatarBg: '#1D9E75', is_first_login: true },
   { id: 's4', email: 'budi@siswa.sr.id', nis: '2025004', password: 'siswa123', role: 'siswa', nama: 'Budi Santoso', sekolah_id: 'sr_malang_001', avatar: 'BS', avatarBg: '#534AB7', is_first_login: false },
-  { id: 't2', email: 'hendra@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Bpk. Hendra, M.Pd.', sekolah_id: 'sr_malang_001', avatar: 'BH', avatarBg: 'linear-gradient(135deg,#0D5C63,#1A8A94)', is_first_login: true },
+
+  // ── Guru ───────────────────────────────────────────────────────────────────
+  // id harus cocok dengan TEACHERS[x].id agar TeacherView bisa lookup by user.id
+  //
+  //  t2 · Hendra  → 1 mapel (mat), sudah ganti password, login langsung masuk portal normal
+  { id: 't2', email: 'hendra@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Bpk. Hendra, M.Pd.', sekolah_id: 'sr_malang_001', avatar: 'BH', avatarBg: 'linear-gradient(135deg,#0D5C63,#1A8A94)', is_first_login: false },
+  //  t1 · Sri Dewi → multi-mapel (bio/fis/kim), sudah login sebelumnya (is_first_login false)
   { id: 't1', email: 'sridewi@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Sri Dewi, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'SD', avatarBg: 'linear-gradient(135deg,#F4A435,#DD6B20)', is_first_login: false },
+  //  t3 · Ratna   → 1 mapel (bin), BELUM ganti password → force change password muncul
+  { id: 't3', email: 'ratna@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Ibu Ratna, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'IR', avatarBg: 'linear-gradient(135deg,#805AD5,#9B72DB)', is_first_login: true },
+  //  t4 · Yoga    → multi-mapel (eko/sos/geo), sudah login sebelumnya
+  { id: 't4', email: 'yoga@guru.sr.id', password: 'guru123', role: 'guru', nama: 'Bpk. Yoga, S.Pd.', sekolah_id: 'sr_malang_001', avatar: 'BY', avatarBg: 'linear-gradient(135deg,#276749,#48BB78)', is_first_login: false },
+
+  // ── Admin ──────────────────────────────────────────────────────────────────
   { id: 'a1', email: 'admin@sr.id', password: 'admin123', role: 'admin', nama: 'Admin Sekolah Rakyat', sekolah_id: 'sr_malang_001', avatar: 'AD' },
 ];
 

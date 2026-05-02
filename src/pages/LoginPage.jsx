@@ -268,7 +268,7 @@ export default function LoginPage() {
             {/* Password */}
             <div>
               <label style={LBL}>Password</label>
-              <div style={{ position: 'relative' }}>
+              <div style={{ position: 'relative', marginBottom: 10 }}>
                 <input
                   className="lg-inp"
                   style={inp({ paddingRight: 42 })}
@@ -292,11 +292,6 @@ export default function LoginPage() {
             {/* Error */}
             {error && <div className="lg-err">⚠ {error}</div>}
 
-            {/* Button */}
-            <button className="lg-btn" onClick={handleLogin} disabled={loading}>
-              {loading ? <><Spinner size={15} color="#fff" /> Masuk...</> : 'Masuk →'}
-            </button>
-
             {/* T&C */}
             <div
               style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}
@@ -317,6 +312,11 @@ export default function LoginPage() {
                 {' '}penggunaan platform Sekolah Rakyat.
               </span>
             </div>
+
+            {/* Button */}
+            <button className="lg-btn" onClick={handleLogin} disabled={loading}>
+              {loading ? <><Spinner size={15} color="#fff" /> Masuk...</> : 'Masuk →'}
+            </button>
 
           </div>
         </div>

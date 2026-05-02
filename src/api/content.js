@@ -46,17 +46,36 @@ import { apiClient } from "./client";
 // ─── Types ────────────────────────────────────────────────────────────
 /**
  * @typedef {"Low"|"Mid"|"High"} Level
- * @typedef {"bacaan"|"quiz_pg"|"quiz_essay"|"flashcard"|"mindmap"} KontenTipe
+ * @typedef {"bacaan"|"quiz_pg"|"quiz_essay"|"flashcard"|"mindmap"|"game"} KontenTipe
+ *
+ * REVISI FASE 3: konten_list = 16 item (bukan 13)
+ *   bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 + game×3 = 16
+ *   game disertakan di sini (mirror GET /game/list Tim 4) agar GET /content/siswa
+ *   mengembalikan jumlah yang sama dengan guru POST /content/publish (16 item).
+ *
+ * SISTEM BACAAN MARKDOWN:
+ *   Field content.text pada tipe 'bacaan' berformat MARKDOWN (bukan plain text).
+ *   Frontend merender via renderMarkdown() yang sudah ada di ChatSection.
+ *   Tiap level (Low/Mid/High) punya bacaan dengan kedalaman berbeda:
+ *     Low  → pengantar, konsep dasar, 1 contoh sederhana
+ *     Mid  → pembahasan mendalam, analogi, 2 contoh kontekstual, ringkasan
+ *     High → analisis kritis, tabel perbandingan, implikasi, evaluasi mandiri
+ *
+ * SISTEM PENILAIAN AGREGASI:
+ *   KKM baru: 75 (dari 80)
+ *   Naik level: avg(mc_score, essay_score) >= 75
+ *   essay_score dinilai Tim RAG secara async, dikembalikan via POST /content/quiz/submit
  *
  * @typedef {Object} KontenItem
  * @property {KontenTipe} tipe    - Tipe konten ("tipe" bukan "type")
  * @property {Level|null} level   - null hanya untuk tipe "mindmap"
  * @property {Object}     content - Struktur isi per tipe:
- *   bacaan    → { text: string }
+ *   bacaan    → { text: string }  // REVISI FASE 3: FORMAT MARKDOWN — dirender via renderMarkdown()
  *   quiz_pg   → { soal: Array<{ pertanyaan: string, pilihan: string[], jawaban: string }> }
  *   quiz_essay→ { pertanyaan: string[] }
  *   flashcard → { cards: Array<{ depan: string, belakang: string }> }
  *   mindmap   → { content: string }
+ *   game      → { game_id, nama, html_url, level, status }  // REVISI FASE 3: game ada di konten_list
  * @property {boolean}    approved - true jika guru sudah approve
  *
  * @typedef {Object} PublishPayload
@@ -69,7 +88,7 @@ import { apiClient } from "./client";
  * @property {string}       jenjang        - "X" | "XI" | "XII"
  * @property {string}       guru_id        - ID guru yang publish
  * @property {string}       atp            - Alur Tujuan Pembelajaran (boleh string kosong)
- * @property {KontenItem[]} konten_list    - Max 14 item (5 tipe × 3 level, minus mindmap × 2)
+ * @property {KontenItem[]} konten_list    - 16 item: bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 + game×3
  *
  * @typedef {Object} PaketKonten
  * @property {string}       publish_id
@@ -191,8 +210,26 @@ export async function getLearningProgress(params) {
  * Dipanggil QuizModal setelah siswa submit quiz MC atau essay.
  * publish_id dipakai backend untuk tracing konten asal dan update progress per paket.
  *
- * Success 200 → { submitted: boolean, score: number, recorded_at: string }
- * Error   422 → siswa_id / elemen_id tidak valid
+ * REVISI FASE 3: Sistem Penilaian Agregasi
+ *   - quiz_type "mc"    → score = 0–100 (dihitung frontend)
+ *   - quiz_type "essay" → score = 0 (dinilai Tim RAG async)
+ *                         Backend kembalikan essay_score (0–100) di response
+ *   - Naik level: avg(mc_score, essay_score) >= KKM_BARU (75)
+ *   - Backend agregasi final; mock mensimulasikan response RAG
+ *   - total_poin_quiz di progress = akumulasi agregasi SEMUA materi yang diakses siswa
+ *
+ * Success 200 → {
+ *   submitted:           boolean,
+ *   score:               number,    - MC: skor aktual; Essay: 0 (sebelum RAG)
+ *   quiz_type:           "mc"|"essay",
+ *   elemen_id:           string,
+ *   level:               Level,
+ *   essay_score:         number|null, - REVISI FASE 3: skor RAG untuk essay (null jika MC)
+ *   kkm:                 number,      - KKM baru yang dipakai (75)
+ *   pending_aggregation: boolean,     - true jika essay baru submit, perlu tunggu mc_score
+ *   recorded_at:         string,
+ * }
+ * Error 422 → siswa_id / elemen_id tidak valid
  *
  * @param {{
  *   siswa_id:     string,
@@ -205,9 +242,13 @@ export async function getLearningProgress(params) {
  *   quiz_type:    "mc"|"essay",
  *   level:        Level,
  *   answers:      Record<string, string>,
- *   score:        number,         - 0–100. Essay: 0, dinilai AI secara async
+ *   score:        number,         - 0–100. Essay: selalu 0 (dinilai RAG), MC: skor aktual
  * }} payload
- * @returns {Promise<{ submitted: boolean, score: number, recorded_at: string }>}
+ * @returns {Promise<{
+ *   submitted: boolean, score: number, quiz_type: string, elemen_id: string,
+ *   level: string, essay_score: number|null, kkm: number,
+ *   pending_aggregation: boolean, recorded_at: string
+ * }>}
  */
 export async function submitQuiz(payload) {
   const { data } = await apiClient.post("/content/quiz/submit", payload);
@@ -234,5 +275,44 @@ export async function submitQuiz(payload) {
  */
 export async function getRecommendations(params) {
   const { data } = await apiClient.get("/content/recommend", { params });
+  return data;
+}
+
+// ─── GET /content/riwayat ─────────────────────────────────────────────
+/**
+ * Guru ambil semua paket konten yang pernah dia publish.
+ * Dipakai RiwayatKontenSection untuk menampilkan daftar riwayat publish.
+ * Response shape identik dengan PaketKonten[] + field guru-specific:
+ *   atp          : string   - Alur Tujuan Pembelajaran (dari publish payload)
+ *   kelas_nama   : string   - nama kelas untuk display (mis. "X-1" atau "Semua Kelas X")
+ *   mapel_label  : string   - label mapel untuk display
+ *   mapel_icon   : string   - icon emoji mapel
+ *   mapel_color  : string   - warna hex mapel
+ *
+ * Success 200 → RiwayatKontenItem[]  (urut published_at DESC)
+ * Error   403 → role bukan guru
+ *
+ * @typedef {Object} RiwayatKontenItem
+ * @property {string}       publish_id
+ * @property {string}       mapel_id
+ * @property {string}       mapel_label
+ * @property {string}       mapel_icon
+ * @property {string}       mapel_color
+ * @property {string}       elemen_id
+ * @property {string}       elemen_label
+ * @property {string|null}  materi
+ * @property {string|null}  materi_id
+ * @property {string}       kelas_id
+ * @property {string}       kelas_nama     - nama kelas untuk display
+ * @property {string}       jenjang
+ * @property {string}       atp            - string multiline (join dari atpPoin)
+ * @property {string}       published_at   - ISO8601
+ * @property {KontenItem[]} konten_list    - semua item konten yang dipublish
+ *
+ * @param {{ guru_id: string, mapel_id?: string }} params
+ * @returns {Promise<RiwayatKontenItem[]>}
+ */
+export async function getRiwayatGuru(params) {
+  const { data } = await apiClient.get("/content/riwayat", { params });
   return data;
 }

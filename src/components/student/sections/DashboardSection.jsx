@@ -24,6 +24,10 @@ import { useStudentStore } from '../../../stores/studentStore';
 /* ── Siswa yang login (hardcoded Budi Santoso = s9) ── */
 const CURRENT_STUDENT_ID = 's9';
 
+//bobot 
+const MC_WEIGHT = 0.7;
+const ESSAY_WEIGHT = 0.3;
+
 /* ── Fallback rekomendasi awal dari mapel pilihan siswa ─────────────────── */
 // Diambil dari elemen pertama masing-masing mapel yang dipilih siswa saat onboarding.
 // Akan digantikan oleh rekomendasi dinamis setelah pretest elemen selesai.
@@ -731,18 +735,49 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
     return () => { active = false; };
   }, [selectedMapels.join(',')]); // re-fetch jika selectedMapels berubah (setelah aktivasi)
 
-  // Prioritas kalkulasi lokal (dari masterData/store) — API hanya fallback jika lokal benar-benar kosong
-  const localQuizScore = (studentData?.riwayat || []).reduce((sum, r) => {
-    const score = r.quizTotal > 0 ? Math.round((r.quiz / r.quizTotal) * 100) : 0;
-    return sum + score;
-  }, 0);
+  // REVISI FASE 3: localQuizScore = akumulasi agregasi (MC 70% + Essay 30%) semua materi
+  // Baca dari quiz_results[] per sesi riwayat — format baru selaras dengan quizHistory store
+  const localQuizScore = (() => {
+    const riwayatArr = studentData?.riwayat || [];
+    const grupMap = {};
+    riwayatArr.forEach(r => {
+      (r.quiz_results || []).forEach(qr => {
+        const key = `${r.materiId || 'umum'}__${qr.level || 'low'}`;
+        if (!grupMap[key]) grupMap[key] = { mc: null, essay: null };
+        if (qr.type === 'essay') grupMap[key].essay = qr.score ?? null;
+        else grupMap[key].mc = qr.score ?? null;
+      });
+    });
+    return Object.values(grupMap).reduce((sum, { mc, essay }) => {
+      if (mc != null && essay != null) return sum + Math.round(mc * MC_WEIGHT + essay * ESSAY_WEIGHT);
+      if (mc != null) return sum + mc;
+      if (essay != null) return sum + essay;
+      return sum;
+    }, 0);
+  })();
   const totalScore = (progressData?.total_poin_quiz ?? localQuizScore) || apiProgress?.total_poin_quiz || 0;
   const streakDays = hitungStreak(riwayat) || apiProgress?.streak_hari || 0;
   const localSesiHours = riwayat.reduce((s, r) => s + (r.durasi || 0), 0).toFixed(1);
   const totalSesiHours = localSesiHours || (apiProgress ? (apiProgress.total_waktu_menit / 60).toFixed(1) : '0.0');
-  const localAvgQuiz = riwayat.length > 0
-    ? Math.round(riwayat.reduce((s, r) => s + ((r.quiz / r.quizTotal) * 100 || 0), 0) / riwayat.length)
-    : 0;
+  // REVISI FASE 3: localAvgQuiz = rata-rata agregasi (MC 70% + Essay 30%) per materi+level
+  const localAvgQuiz = (() => {
+    const riwayatArr = studentData?.riwayat || [];
+    if (!riwayatArr.length) return 0;
+    const grupMap = {};
+    riwayatArr.forEach(r => {
+      (r.quiz_results || []).forEach(qr => {
+        const key = `${r.materiId || 'umum'}__${qr.level || 'low'}`;
+        if (!grupMap[key]) grupMap[key] = { mc: null, essay: null };
+        if (qr.type === 'essay') grupMap[key].essay = qr.score ?? null;
+        else grupMap[key].mc = qr.score ?? null;
+      });
+    });
+    const scores = Object.values(grupMap).map(({ mc, essay }) => {
+      if (mc != null && essay != null) return Math.round(mc * MC_WEIGHT + essay * ESSAY_WEIGHT);
+      return mc ?? essay ?? null;
+    }).filter(s => s != null);
+    return scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  })();
   const avgQuiz = localAvgQuiz || apiProgress?.rata_rata_quiz || 0;
   const topMapel = (() => {
     if (!riwayat || riwayat.length === 0) return null;
