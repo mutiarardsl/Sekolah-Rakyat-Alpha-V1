@@ -95,7 +95,7 @@ export default function ActivasiPage() {
     /* ── Step 2: Pilih Mapel ───────────────────────────────────── */
     const handlePilihMapel = () => {
         if (selectedMapelsDraft.length === 3) {
-            setSelectedMapels(selectedMapelsDraft);
+            setSelectedMapels(selectedMapelsDraft, user?.id);
             navigate('/siswa', { replace: true });
         }
     };

@@ -9,32 +9,39 @@
 
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import * as authApi from '../api/auth';
+import { useStudentStore } from '../stores/studentStore';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const resetForUser = useStudentStore(s => s.resetForUser);
 
   useEffect(() => {
     const saved = localStorage.getItem('sr_user');
     if (saved) {
-      try { setUser(JSON.parse(saved)); } catch { localStorage.removeItem('sr_user'); }
+      try {
+        const restoredUser = JSON.parse(saved);
+        setUser(restoredUser);
+        resetForUser(restoredUser?.id ?? null); // load selectedMapels user ini saat reload
+      } catch { localStorage.removeItem('sr_user'); }
     }
     setIsLoading(false);
 
-    const onUnauth = () => setUser(null);
+    const onUnauth = () => { resetForUser(null); setUser(null); };
     window.addEventListener('sr:unauthorized', onUnauth);
     return () => window.removeEventListener('sr:unauthorized', onUnauth);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // FIX ③a: authApi.login() sudah memanggil _saveSession() → simpan sr_access_token + sr_user
   //  AuthContext cukup update state React, tidak perlu setItem ulang.
   const login = useCallback(async (email, password) => {
     const res = await authApi.login({ email, password });
+    resetForUser(res.user?.id ?? null);
     setUser(res.user);
     return res.user;
-  }, []);
+  }, [resetForUser]);
 
   // Google login dihapus — semua akun diatur admin, tidak ada self-register.
 
@@ -47,8 +54,9 @@ export function AuthProvider({ children }) {
     try { await authApi.logout(); } catch { /* abaikan error network saat logout */ }
     localStorage.removeItem('sr_access_token');
     localStorage.removeItem('sr_user');
+    resetForUser(null); // wipe seluruh store — data tidak bocor ke user berikutnya
     setUser(null);
-  }, []);
+  }, [resetForUser]);
 
   const updateUser = useCallback((partial) => {
     setUser(prev => {

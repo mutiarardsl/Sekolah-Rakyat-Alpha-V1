@@ -28,17 +28,13 @@ const PRETEST_DONE_MAPELS_INIT = new Set(['mat', 'kim']);
 export const useStudentStore = create((set, get) => ({
 
   // ── Mapel pilihan siswa (onboarding) ─────────────────────────────
-  // PENTING: baca dari localStorage agar tidak hilang saat reload / re-login
-  // Key: sr_selected_mapels_{user_id} → agar beda siswa tidak tercampur
-  selectedMapels: (() => {
-    try {
-      const saved = localStorage.getItem('sr_selected_mapels');
-      if (saved) return JSON.parse(saved);
-    } catch { /* ignore */ }
-    return [];
-  })(),
-  setSelectedMapels: (mapels) => {
-    try { localStorage.setItem('sr_selected_mapels', JSON.stringify(mapels)); } catch { /* ignore */ }
+  // Key: sr_selected_mapels_{userId} → tiap siswa punya key terpisah
+  // Dibaca saat resetForUser() dipanggil setelah login, bukan saat modul dimuat.
+  selectedMapels: [],
+  setSelectedMapels: (mapels, userId) => {
+    if (userId) {
+      try { localStorage.setItem(`sr_selected_mapels_${userId}`, JSON.stringify(mapels)); } catch { /* ignore */ }
+    }
     set({ selectedMapels: mapels });
   },
 
@@ -244,4 +240,48 @@ export const useStudentStore = create((set, get) => ({
   lastQuizResult: null,
   setQuizAnalysisNeeded: (result) => set({ needsQuizAnalysis: true, lastQuizResult: result }),
   clearQuizAnalysis: () => set({ needsQuizAnalysis: false }),
+
+  // ── Reset store saat ganti user (logout / login user lain) ──────
+  // Dipanggil oleh AuthContext: resetForUser(userId) saat login,
+  // resetForUser(null) saat logout.
+  resetForUser: (userId) => {
+    // Baca selectedMapels milik user ini dari localStorage
+    let mapels = [];
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`sr_selected_mapels_${userId}`);
+        if (saved) mapels = JSON.parse(saved);
+      } catch { /* ignore */ }
+    }
+
+    set({
+      selectedMapels: mapels,
+
+      // Pretest — reset ke kosong (bukan seed hardcoded)
+      pretestDoneElemen: new Set(),
+      pretestDoneMateri: new Set(),
+      pretestDoneMapels: new Set(),
+      studentLevels: {},
+
+      // Progress belajar
+      progressData: { belumSelesai: [], sudahSelesai: [] },
+
+      // Aktivitas & quiz
+      recentActivity: [],
+      quizHistory: {},
+      levelMap: {},
+
+      // Chat & konten
+      msgsByKey: {},
+      confContent: {},
+      chatMateri: null,
+
+      // Game
+      gameCompleted: {},
+
+      // Quiz analysis
+      needsQuizAnalysis: false,
+      lastQuizResult: null,
+    });
+  },
 }));
