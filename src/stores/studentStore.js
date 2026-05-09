@@ -143,17 +143,8 @@ export const useStudentStore = create((set, get) => ({
     return get().studentLevels[makeKey(mapelId, elemenId)] || 'low';
   },
 
-  tryLevelUp: (mapelId, elemenId, quizScore, quizTotal, gameCompleted) => {
-    const pct = quizTotal > 0 ? quizScore / quizTotal : 0;
-    if (pct <= 0.7 || !gameCompleted) return null;
-    const current = get().studentLevels[makeKey(mapelId, elemenId)] || 'low';
-    const next = current === 'low' ? 'mid' : current === 'mid' ? 'high' : 'high';
-    if (next === current) return null;
-    set(state => ({
-      studentLevels: { ...state.studentLevels, [makeKey(mapelId, elemenId)]: next },
-    }));
-    return next;
-  },
+  // tryLevelUp() dihapus — tidak dipakai dari komponen manapun.
+  // Logika naik level ada di markPretestElemenDone() dan markPretestMateriDone() di bawah.
 
   gameCompleted: {},
   markGameComplete: (mapelId, elemenId, level) => set(state => ({
@@ -233,6 +224,11 @@ export const useStudentStore = create((set, get) => ({
     confContent: { ...state.confContent, [materiKey]: { ...(state.confContent[materiKey] ?? {}), [type]: data } },
   })),
 
+  // ── Emosi siswa (diupdate oleh useWebcamEmotion via StudentView) ──
+  // Dibaca oleh ChatSection untuk payload context.emosi ke API mentor
+  currentEmosi: null,
+  setCurrentEmosi: (emosi) => set({ currentEmosi: emosi }),
+
   chatMateri: null,
   setChatMateri: (m) => set({ chatMateri: m }),
 
@@ -240,6 +236,11 @@ export const useStudentStore = create((set, get) => ({
   lastQuizResult: null,
   setQuizAnalysisNeeded: (result) => set({ needsQuizAnalysis: true, lastQuizResult: result }),
   clearQuizAnalysis: () => set({ needsQuizAnalysis: false }),
+
+  // V3.1: hasil_quiz_id untuk CTA "Tanya Kak Nusa" — disimpan setelah submit quiz
+  ctaHasilQuizId: null,
+  setCtaHasilQuizId: (id) => set({ ctaHasilQuizId: id ?? null }),
+  clearCtaHasilQuizId: () => set({ ctaHasilQuizId: null }),
 
   // ── Reset store saat ganti user (logout / login user lain) ──────
   // Dipanggil oleh AuthContext: resetForUser(userId) saat login,
@@ -275,6 +276,7 @@ export const useStudentStore = create((set, get) => ({
       msgsByKey: {},
       confContent: {},
       chatMateri: null,
+      currentEmosi: null,
 
       // Game
       gameCompleted: {},
@@ -282,6 +284,9 @@ export const useStudentStore = create((set, get) => ({
       // Quiz analysis
       needsQuizAnalysis: false,
       lastQuizResult: null,
+
+      // V3.1: CTA
+      ctaHasilQuizId: null,
     });
   },
 }));

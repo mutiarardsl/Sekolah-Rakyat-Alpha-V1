@@ -52,7 +52,7 @@ import { submitQuiz } from '../../../api/content'; // FIX P1: simpan hasil quiz 
  *     Tim 3 menyediakan rubrik penilaian per topik.
  *     Tim 5 Mentor AI menilai essay dengan rubrik tersebut,
  *     menghasilkan skor 0–30 per soal (misal: 3 soal × 10 poin).
- *     Total skor = (MC benar / 10 × 70) + (essay score / 30 × 30)
+ *     Total skor = (MC benar / 10 × 60) + (essay score / 100 × 40)
  *
  *   Opsi B — Penilaian Guru Manual:
  *     Essay jawaban siswa dikirim ke dashboard guru.
@@ -244,10 +244,10 @@ export const getQuizV2 = (key) => QUIZ_BANK_V2[key] || QUIZ_BANK_V2['_default'];
  * Fase 2 menggunakan gambar placeholder berbasis deskripsi teks.
  * Fase 3: ganti dengan <img src={gambar.url} ... />
  * ═══════════════════════════════════════════════════════════════════ */
-const ImagePlaceholder = ({ gambar, mapelColor }) => (
+const ImagePlaceholder = ({ gambar }) => (
   <div style={{
-    background: `${mapelColor}0D`,
-    border: `1.5px dashed ${mapelColor}55`,
+    background: `${C.teal}0D`,
+    border: `1.5px dashed ${C.teal}55`,
     borderRadius: 10,
     padding: '12px 16px',
     marginBottom: 12,
@@ -257,7 +257,7 @@ const ImagePlaceholder = ({ gambar, mapelColor }) => (
   }}>
     <span style={{ fontSize: FS.h2, flexShrink: 0 }}>🖼️</span>
     <div>
-      <div style={{ fontSize: FS.xs, fontWeight: 700, color: mapelColor, marginBottom: 3, textTransform: 'uppercase', letterSpacing: .5 }}>
+      <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.teal, marginBottom: 3, textTransform: 'uppercase', letterSpacing: .5 }}>
         Ilustrasi Soal
       </div>
       <div style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.6 }}>{gambar.desc}</div>
@@ -271,11 +271,11 @@ const ImagePlaceholder = ({ gambar, mapelColor }) => (
 /* ═══════════════════════════════════════════════════════════════════
  * HELPER: KonteksBox — untuk soal literasi numerasi
  * ═══════════════════════════════════════════════════════════════════ */
-const KonteksBox = ({ konteks, mapelColor }) => (
+const KonteksBox = ({ konteks }) => (
   <div style={{
-    background: `${mapelColor}08`,
-    border: `1px solid ${mapelColor}33`,
-    borderLeft: `3px solid ${mapelColor}`,
+    background: `${C.teal}08`,
+    border: `1px solid ${C.teal}33`,
+    borderLeft: `3px solid ${C.teal}`,
     borderRadius: '0 8px 8px 0',
     padding: '10px 14px',
     marginBottom: 12,
@@ -300,7 +300,7 @@ const KonteksBox = ({ konteks, mapelColor }) => (
  * Props:
  *   open           : boolean — tampilkan modal
  *   onClose        : () => void
- *   chatMateri     : { mapelColor, mapelLabel }
+ *   chatMateri     : { mapelLabel }
  *   materiId      : string
  *   activeKey      : string — key untuk QUIZ_BANK_V2
  *   quizType       : 'mc' | 'essay' — jenis soal yang ditampilkan
@@ -326,6 +326,7 @@ const QuizModal = ({
   quizType = 'mc',
   soalSnapshot = null,  // null = soal baru (diacak); array = soal yang sama dari riwayat
   currentLevel = 'low', // level siswa saat ini di elemen/materi ini ('low'|'mid'|'high')
+  apiSoal = null,       // FIX T2: soal dari API (quiz_pg.byLevel / quiz_essay.byLevel); override QUIZ_BANK_V2
   onSubmit,
 }) => {
   const quizData = getQuizV2(activeKey);
@@ -358,6 +359,33 @@ const QuizModal = ({
     // Soal baru: acak urutan. Soal lama (ulangi): pakai snapshot persis
     if (soalSnapshot) {
       setActiveSoal(soalSnapshot);
+    } else if (Array.isArray(apiSoal) && apiSoal.length > 0) {
+      // FIX T2: API soal tersedia → normalisasi ke shape internal QuizModal lalu acak
+      // API quiz_pg shape:    { soal, pilihan: string[], jawaban: number(index) }  — 10 soal
+      // API quiz_essay shape: { soal, rubrik, placeholder }                         — 5 soal
+      // Fallback s.pertanyaan dipertahankan untuk kompatibilitas backward (BE mungkin beda key)
+      const normalized = apiSoal.map((s, idx) => {
+        if (quizType === 'essay') {
+          // essay: baca s.soal (shape baru) dengan fallback s.pertanyaan (shape lama/BE)
+          return {
+            id: s.id ?? idx + 1,
+            soal: s.soal || s.pertanyaan || '',
+            placeholder: s.placeholder || 'Tulis jawabanmu di sini...',
+            rubrik: s.rubrik || null,
+          };
+        }
+        // mc: jawaban adalah index (number), bukan string — sesuai shape handler
+        return {
+          id: s.id ?? idx + 1,
+          jenis: s.jenis || 'singkat',
+          soal: s.soal || '',
+          pilihan: Array.isArray(s.pilihan) ? s.pilihan : [],
+          jawaban: typeof s.jawaban === 'number' ? s.jawaban : 0,
+          konteks: s.konteks || null,
+          gambar: s.gambar || null,
+        };
+      });
+      setActiveSoal(shuffleArray(normalized));
     } else {
       const pool = quizType === 'mc' ? quizData.multipleChoice : quizData.essay;
       setActiveSoal(shuffleArray(pool));
@@ -405,33 +433,53 @@ const QuizModal = ({
       // Fire-and-forget — tidak block UI jika API gagal
       const siswaId = chatMateri?.siswaId || 'usr_001';
       const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
+      // V3.1: capture hasil_quiz_id dari response untuk CTA "Tanya Kak Nusa"
       submitQuiz({
         siswa_id: siswaId,
         publish_id: chatMateri?.publishId || '',      // ID paket konten asal (dari PaketKonten)
         mapel_id: chatMateri?.mapelId || '',
         elemen_id: chatMateri?.elemenId || '',       // WAJIB — selalu ada
-        elemen_label: chatMateri?.mapelLabel || '',
+        elemen_label: chatMateri?.elemenLabel || chatMateri?.mapelLabel || '',  // FIX: pakai elemenLabel bukan mapelLabel
         materi: chatMateri?.materiLabel || null,
         materi_id: materiId || null,
         quiz_type: 'mc',
         level: levelCapitalized,
         answers: { ...mcAnswers },
         score: mcScore,
-      }).catch(() => { /* silent — progress lokal tetap tersimpan di store */ });
-
-      onSubmit?.({
-        type: 'mc',
-        score: mcScore,
-        correct: mcCorrect,
-        total: mcSoal.length,
-        materiId: materiId || chatMateri?.mapelLabel,
-        mapelLabel: chatMateri?.mapelLabel,
-        wrongItems,
-        answers: { ...mcAnswers },
-        soalSnapshot: mcSoal,
-        // REVISI FASE 3: sertakan KKM baru agar ChatSection bisa evaluasi level-up
-        kkm: KKM,
-        passed: mcScore >= KKM,
+      }).then((res) => {
+        const hasilQuizId = res?.hasil_quiz_id ?? null;
+        onSubmit?.({
+          type: 'mc',
+          score: mcScore,
+          correct: mcCorrect,
+          total: mcSoal.length,
+          materiId: materiId || chatMateri?.mapelLabel,
+          mapelLabel: chatMateri?.mapelLabel,
+          wrongItems,
+          answers: { ...mcAnswers },
+          soalSnapshot: mcSoal,
+          // REVISI FASE 3: sertakan KKM baru agar ChatSection bisa evaluasi level-up
+          kkm: KKM,
+          passed: mcScore >= KKM,
+          // V3.1: opaque ID untuk CTA "Tanya Kak Nusa"
+          hasil_quiz_id: hasilQuizId,
+        });
+      }).catch(() => {
+        // Fallback jika API gagal — tetap panggil onSubmit tanpa hasil_quiz_id
+        onSubmit?.({
+          type: 'mc',
+          score: mcScore,
+          correct: mcCorrect,
+          total: mcSoal.length,
+          materiId: materiId || chatMateri?.mapelLabel,
+          mapelLabel: chatMateri?.mapelLabel,
+          wrongItems,
+          answers: { ...mcAnswers },
+          soalSnapshot: mcSoal,
+          kkm: KKM,
+          passed: mcScore >= KKM,
+          hasil_quiz_id: null,
+        });
       });
     } else {
       // ── REVISI FASE 3: Essay submit + terima skor RAG ──────────────
@@ -450,7 +498,7 @@ const QuizModal = ({
           publish_id: chatMateri?.publishId || '',
           mapel_id: chatMateri?.mapelId || '',
           elemen_id: chatMateri?.elemenId || '',
-          elemen_label: chatMateri?.mapelLabel || '',
+          elemen_label: chatMateri?.elemenLabel || chatMateri?.mapelLabel || '',  // FIX: pakai elemenLabel bukan mapelLabel
           materi: chatMateri?.materiLabel || null,
           materi_id: materiId || null,
           quiz_type: 'essay',
@@ -459,8 +507,10 @@ const QuizModal = ({
           score: 0, // skor awal 0, dinilai RAG secara async
         });
 
-        // 3. Ambil essay_score dari response (mock langsung ada, produksi bisa async)
+        // 3. Ambil essay_score dan hasil_quiz_id dari response
         const ragEssayScore = response?.essay_score ?? null;
+        // V3.1: opaque ID untuk CTA "Tanya Kak Nusa"
+        const hasilQuizId = response?.hasil_quiz_id ?? null;
         setEssayScore(ragEssayScore);
         setEssayScoreLoading(false);
 
@@ -477,6 +527,8 @@ const QuizModal = ({
           kkm: KKM,
           // Naik level dari essay ditentukan ChatSection setelah agregasi dengan MC
           passed: ragEssayScore != null ? ragEssayScore >= KKM : false,
+          // V3.1: opaque ID untuk CTA "Tanya Kak Nusa"
+          hasil_quiz_id: hasilQuizId,
         });
       } catch {
         // Fallback jika API gagal — essay tetap tersimpan lokal
@@ -492,6 +544,8 @@ const QuizModal = ({
           isEssay: true,
           kkm: KKM,
           passed: false,
+          // V3.1: null jika API gagal
+          hasil_quiz_id: null,
         });
       }
     }
@@ -504,7 +558,7 @@ const QuizModal = ({
   };
 
   // Warna header: amber untuk MC, ungu untuk essay
-  const color = isMC ? (chatMateri?.mapelColor || C.amber) : C.purple;
+  const color = isMC ? `linear-gradient(135deg,${C.teal},${C.tealL})` : `linear-gradient(135deg,${C.teal},${C.tealL})`;
   const headerIcon = isMC ? '🔘' : '✍️';
   const headerLabel = isMC ? `Pilihan Ganda — ${materiId}` : `Essay — ${materiId}`;
 
@@ -516,7 +570,7 @@ const QuizModal = ({
         backdropFilter: 'blur(4px)',
         zIndex: 100,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 24,
+        padding: '16px',
       }}
       onClick={onClose}
     >
@@ -524,9 +578,9 @@ const QuizModal = ({
         className="bounce-in"
         onClick={e => e.stopPropagation()}
         style={{
-          background: C.white, borderRadius: 18,
-          width: '100%', maxWidth: 720,
-          maxHeight: '90vh',
+          background: C.white, borderRadius: 16,
+          width: '70vw', maxWidth: '70vw',
+          height: 'calc(100vh - 32px)', maxHeight: 'calc(100vh - 32px)',
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 24px 64px rgba(0,0,0,.28)',
           overflow: 'hidden',
@@ -560,7 +614,7 @@ const QuizModal = ({
           <button
             onClick={onClose}
             style={{
-              background: 'rgba(255,255,255,.2)', border: 'none',
+              background: "transparent", border: 'none',
               borderRadius: 8, width: 32, height: 32,
               color: C.white, cursor: 'pointer', fontSize: FS.h3,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -606,12 +660,12 @@ const QuizModal = ({
 
                   {/* Konteks numerasi */}
                   {s.jenis === 'literasi_numerasi' && s.konteks && (
-                    <KonteksBox konteks={s.konteks} mapelColor={color} />
+                    <KonteksBox konteks={s.konteks} />
                   )}
 
                   {/* Gambar soal */}
                   {s.jenis === 'bergambar' && s.gambar && (
-                    <ImagePlaceholder gambar={s.gambar} mapelColor={color} />
+                    <ImagePlaceholder gambar={s.gambar} />
                   )}
 
                   {/* Pertanyaan */}
@@ -677,10 +731,10 @@ const QuizModal = ({
             <>
               {/* Info penilaian essay */}
               <div style={{
-                background: `${C.purple}0D`,
-                border: `1px solid ${C.purple}33`,
+                background: `${C.teal}0D`,
+                border: `1px solid ${C.teal}33`,
                 borderRadius: 10, padding: '10px 14px', marginBottom: 20,
-                fontSize: FS.sm, color: '#4A2D8A',
+                fontSize: FS.sm, color: C.teal,
                 display: 'flex', gap: 8, alignItems: 'flex-start',
               }}>
                 <span>🤖</span>
@@ -702,8 +756,8 @@ const QuizModal = ({
                       marginBottom: 8, flexWrap: 'wrap',
                     }}>
                       <span style={{
-                        fontSize: FS.sm, color: C.purple, fontWeight: 800,
-                        background: `${C.purple}12`, padding: '2px 8px', borderRadius: 99,
+                        fontSize: FS.sm, color: C.teal, fontWeight: 800,
+                        background: `${C.teal}12`, padding: '2px 8px', borderRadius: 99,
                       }}>
                         Essay {si + 1}
                       </span>
@@ -711,12 +765,12 @@ const QuizModal = ({
 
                     {/* Konteks */}
                     {s.jenis === 'literasi_numerasi' && s.konteks && (
-                      <KonteksBox konteks={s.konteks} mapelColor={C.purple} />
+                      <KonteksBox konteks={s.konteks} />
                     )}
 
                     {/* Gambar */}
                     {s.jenis === 'bergambar' && s.gambar && (
-                      <ImagePlaceholder gambar={s.gambar} mapelColor={C.purple} />
+                      <ImagePlaceholder gambar={s.gambar} />
                     )}
 
                     {/* Pertanyaan */}
@@ -782,9 +836,9 @@ const QuizModal = ({
 
                 {/* ── REVISI FASE 3: Info sistem agregasi ─── */}
                 <div style={{
-                  background: '#EBF8FF', border: '1px solid #90CDF4',
+                  background: '#F0FDFA', border: '1px solid #90CDF4',
                   borderRadius: 10, padding: '10px 14px', marginBottom: 14,
-                  fontSize: FS.xs, color: '#2B6CB0', lineHeight: 1.6, textAlign: 'left',
+                  fontSize: FS.xs, color: '#0D5C63', lineHeight: 1.6, textAlign: 'left',
                 }}>
                   <strong>📊 Sistem Penilaian Agregasi (Fase 3):</strong><br />
                   Skor MC kamu: <strong>{mcScore}/100</strong><br />
@@ -874,12 +928,12 @@ const QuizModal = ({
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               {/* ── Header seragam: ✅ + label + skor ── */}
               <div style={{ fontSize: 52, marginBottom: 12 }}>✅</div>
-              <div style={{ fontWeight: 800, fontSize: 22, color: C.purple, marginBottom: 4 }}>
+              <div style={{ fontWeight: 800, fontSize: 22, color: C.teal, marginBottom: 4 }}>
                 Jawaban Essay Terkirim
               </div>
               {/* Nilai quiz essay — tampilkan skor tanpa /100 */}
               {essayScoreLoading ? (
-                <div style={{ fontSize: FS.sm, color: C.purple, marginBottom: 14 }}>⏳ Sedang dinilai...</div>
+                <div style={{ fontSize: FS.sm, color: C.teal, marginBottom: 14 }}>⏳ Sedang dinilai...</div>
               ) : essayScore != null ? (
                 <div style={{ fontWeight: 800, fontSize: 40, color: essayScore >= KKM ? C.green : C.amber, marginBottom: 14 }}>
                   {essayScore}
@@ -890,15 +944,15 @@ const QuizModal = ({
 
 
               <div style={{
-                background: `${C.purple}0D`, border: `1px solid ${C.purple}33`,
+                background: `${C.teal}0D`, border: `1px solid ${C.teal}33`,
                 borderRadius: 12, padding: '14px 18px', textAlign: 'left', marginBottom: 16,
               }}>
-                <div style={{ fontWeight: 700, fontSize: FS.md, color: C.purple, marginBottom: 8 }}>📋 Ringkasan Jawabanmu</div>
+                <div style={{ fontWeight: 700, fontSize: FS.md, color: C.teal, marginBottom: 8 }}>📋 Ringkasan Jawabanmu</div>
                 {essaySoal.map((s, si) => {
                   const jawaban = essayAnswers[s.id] || '';
                   const wc = jawaban.trim().split(/\s+/).filter(Boolean).length;
                   return (
-                    <div key={s.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: si < essaySoal.length - 1 ? `1px solid ${C.purple}22` : 'none' }}>
+                    <div key={s.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: si < essaySoal.length - 1 ? `1px solid ${C.teal}22` : 'none' }}>
                       <div style={{ fontSize: FS.sm, fontWeight: 600, color: C.dark, marginBottom: 4 }}>Essay {si + 1}: {s.soal.slice(0, 60)}...</div>
                       <div style={{ fontSize: FS.xs, color: jawaban ? C.green : C.red }}>
                         {jawaban ? `✓ ${wc} kata ditulis` : '✗ Belum dijawab'}
@@ -933,7 +987,7 @@ const QuizModal = ({
                   disabled={!allMcAnswered}
                   style={{
                     fontSize: FS.md, padding: '9px 22px',
-                    background: allMcAnswered ? `linear-gradient(135deg,${color},${color}cc)` : undefined,
+                    background: allMcAnswered ? `linear-gradient(135deg,${C.teal},${C.tealL})` : `linear-gradient(135deg,${C.teal},${C.tealL})`,
                   }}
                 >
                   Kumpulkan Jawaban ✓
@@ -950,7 +1004,7 @@ const QuizModal = ({
                   onClick={handleSubmit}
                   style={{
                     fontSize: FS.md, padding: '9px 22px',
-                    background: `linear-gradient(135deg,${C.purple},${C.purple}cc)`,
+                    background: `linear-gradient(135deg,${C.teal},${C.teal}cc)`,
                   }}
                 >
                   Kumpulkan Essay ✓

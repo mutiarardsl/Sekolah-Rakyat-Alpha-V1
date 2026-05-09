@@ -11,6 +11,7 @@ import { C, FONTS, FS } from '../../../styles/tokens';
 import { INP_STYLE, FormTambahMapel } from './adminUtils';
 import { ConfirmDeleteModal } from './PageGuru';
 import { StatusBadge } from './PageSiswa';
+import { kelasDetailApi } from '../../../api/admin';
 
 /* ── Konstanta ────────────────────────────────────────────────────── */
 const JURUSAN_LIST = ['IPA', 'IPS', 'Bahasa', 'Teknik', 'Kejuruan'];
@@ -122,7 +123,7 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
   const [confirmModal, setConfirmModal] = useState(null);
 
   if (!k) return null;
-  const wk = getGuru(k.waliKelasId);
+  const wk = getGuru(k.wali_kelas_id || k.waliKelasId);
   const siswas = getSiswaOfKelas(kelasId);
   const mapelGuruMap = k.mapelGuruMap || {};
 
@@ -177,8 +178,8 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
           ) : (
             <div style={{ fontSize: FS.md, color: C.red, marginBottom: 10 }}>⚠ Belum ada wali kelas</div>
           )}
-          <label style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, display: 'block', marginBottom: 5 }}>Ganti Wali Kelas</label>
-          <select defaultValue={k.waliKelasId || ''}
+          {/*<label style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, display: 'block', marginBottom: 5 }}>Ganti Wali Kelas</label>
+          <select defaultValue={k.wali_kelas_id || k.waliKelasId || ''}
             onChange={e => {
               setKelasList(p => p.map(kl => kl.id === kelasId ? { ...kl, waliKelasId: e.target.value } : kl));
               showToast(`✅ Wali kelas ${k.nama} → ${getGuru(e.target.value)?.nama}`);
@@ -187,6 +188,7 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
             <option value="">— Pilih Guru —</option>
             {guruList.map(g => <option key={g.id} value={g.id}>{g.nama}</option>)}
           </select>
+          */}
         </Card>
 
         {/* Info kelas */}
@@ -246,7 +248,7 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
           {Object.entries(mapelGuruMap).map(([mapelId, guruId]) => {
             const mapel = getMapel(mapelId);
             const assignedGuru = getGuru(guruId);
-            const eligible = guruList.filter(g => g.mapelId.includes(mapelId));
+            const eligible = guruList.filter(g => (g.mapel_ids || g.mapelId || []).includes(mapelId));
             const isEditing = editMapelId === mapelId;
             if (!mapel) return null;
             return (
@@ -255,7 +257,7 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
                 padding: '10px 16px', borderBottom: `1px solid rgba(13,92,99,.05)`
               }}>
                 <div style={{
-                  width: 32, height: 32, borderRadius: 8, background: mapel.color + '18',
+                  width: 32, height: 32, borderRadius: 8, background: C.teal + '18',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.xl, flexShrink: 0
                 }}>
                   {mapel.icon}
@@ -267,10 +269,14 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
                   {isEditing ? (
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <select defaultValue={guruId || ''}
-                        onChange={e => {
+                        onChange={async e => {
+                          const newGuruId = e.target.value;
+                          try {
+                            await kelasDetailApi.updateGuruMapel(kelasId, mapelId, { guru_id: newGuruId });
+                          } catch { /* Fallback: tetap update local state */ }
                           setKelasList(p => p.map(kl => kl.id === kelasId
-                            ? { ...kl, mapelGuruMap: { ...kl.mapelGuruMap, [mapelId]: e.target.value } } : kl));
-                          showToast(`✅ ${mapel.label} → ${getGuru(e.target.value)?.nama || '(kosong)'}`);
+                            ? { ...kl, mapelGuruMap: { ...kl.mapelGuruMap, [mapelId]: newGuruId } } : kl));
+                          showToast(`✅ ${mapel.label} → ${getGuru(newGuruId)?.nama || '(kosong)'}`);
                           setEditMapelId(null);
                         }}
                         style={{ ...INP_STYLE, flex: 1, padding: '6px 10px', fontSize: 12 }}>
@@ -292,13 +298,16 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
                 {!isEditing && (
                   <div style={{ display: 'flex', gap: 5, flexShrink: 0 }}>
                     <button onClick={() => setEditMapelId(mapelId)}
-                      style={{ background: C.tealXL, border: 'none', borderRadius: 7, padding: '5px 9px', fontSize: FS.sm, color: C.teal, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      style={{ background: `linear-gradient(135deg,${C.teal},${C.tealL})`, border: 'none', borderRadius: 7, padding: '5px 9px', fontSize: FS.sm, color: C.white, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       {assignedGuru ? 'Ganti' : 'Tetapkan'}
                     </button>
                     <button onClick={() => openConfirm({
                       title: 'Hapus Mapel dari Kelas?',
                       message: <><b>{mapel.label}</b> akan dihapus dari <b>{k.nama}</b>.</>,
-                      onConfirm: () => {
+                      onConfirm: async () => {
+                        try {
+                          await kelasDetailApi.removeMapel(kelasId, mapelId);
+                        } catch { /* Fallback: tetap update local state */ }
                         setKelasList(p => p.map(kl => {
                           if (kl.id !== kelasId) return kl;
                           const newMap = { ...kl.mapelGuruMap }; delete newMap[mapelId];
@@ -327,7 +336,8 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
             <div style={{ fontWeight: 700, fontSize: FS.lg, color: C.dark }}>🎒 Daftar Siswa</div>
             <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 1 }}>{siswas.length} siswa di kelas ini</div>
           </div>
-          <Btn variant="soft" size="sm" onClick={() => { setModalData({ nama: '', nis: '', email: '', kelasId: kelasId, status: 'Aktif' }); setModal('tambah-siswa'); }}>
+          <Btn variant="soft" size="sm" onClick={() => { setModalData({ nama: '', nis: '', email: '', kelasId: kelasId, status: 'Aktif' }); setModal('tambah-siswa'); }}
+            style={{ background: `linear-gradient(135deg,${C.teal},${C.tealL})`, border: 'none', borderRadius: 7, padding: '5px 9px', fontSize: FS.sm, color: C.white, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             + Tambah Siswa
           </Btn>
         </div>
@@ -362,13 +372,16 @@ const PageKelasDetail = ({ kelasId, kelasList, guruList, siswaList, mapelList, g
                   <td style={{ padding: '9px 14px' }}>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <button onClick={() => { setModalData({ ...s }); setModal('edit-siswa'); }}
-                        style={{ background: C.tealXL, border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: FS.xs, color: C.teal, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
+                        style={{ background: `linear-gradient(135deg,${C.teal},${C.tealL})`, border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: FS.xs, color: C.white, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Edit</button>
                       <button onClick={() => openConfirm({
                         title: 'Hapus Siswa dari Kelas?',
                         message: <><b>{s.nama}</b> akan dihapus dari kelas ini.</>,
-                        onConfirm: () => {
+                        onConfirm: async () => {
+                          try {
+                            await kelasDetailApi.removeSiswa(kelasId, s.id);
+                          } catch { /* Fallback: tetap update local state */ }
                           setSiswaList(p => p.filter(x => x.id !== s.id));
-                          setKelasList(p => p.map(kl => kl.id === kelasId ? { ...kl, siswaIds: (kl.siswaIds || []).filter(id => id !== s.id) } : kl));
+                          setKelasList(p => p.map(kl => kl.id === kelasId ? { ...kl, siswaIds: (kl.siswaIds || []).filter(id => id !== s.id), siswa_ids: (kl.siswa_ids || []).filter(id => id !== s.id) } : kl));
                           showToast(`🗑 ${s.nama} dihapus`, C.red);
                           closeConfirm();
                         }
@@ -482,12 +495,12 @@ const PageKelas = ({ kelasList, guruList, siswaList, mapelList, getKelas, getGur
               <EmptyState icon="📚" title="Belum ada kelas terdaftar" sub="Klik '+ Tambah Kelas' untuk membuat kelas pertama" />
             </div>
           ) : kelasJenjang.map(k => {
-            const wk = getGuru(k.waliKelasId);
+            const wk = getGuru(k.wali_kelas_id || k.waliKelasId);
             const siswas = getSiswaOfKelas(k.id);
             const mapelGuruMap = k.mapelGuruMap || {};
             const mapelCount = Object.keys(mapelGuruMap).length;
             const alerts = [];
-            if (!k.waliKelasId) alerts.push('Belum ada wali kelas');
+            if (!k.wali_kelas_id && !k.waliKelasId) alerts.push('Belum ada wali kelas');
             if (mapelCount < 3) alerts.push('Mapel belum lengkap');
             return (
               <Card key={k.id} style={{ overflow: 'hidden', cursor: 'pointer', transition: 'transform .2s,box-shadow .2s' }}

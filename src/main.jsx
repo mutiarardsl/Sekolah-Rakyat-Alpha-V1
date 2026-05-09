@@ -13,6 +13,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
+// KaTeX CSS: import global di sini agar tersedia saat math di-render di komponen manapun,
+// terlepas dari urutan lazy-load. Dibutuhkan oleh rehype-katex di ChatSection.
+import 'katex/dist/katex.min.css';
 
 async function enableMocking() {
   if (import.meta.env.VITE_USE_MSW !== 'true') return;

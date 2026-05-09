@@ -29,10 +29,10 @@ import KelolaBelajarSection from './sections/KelolaBelajarSection';
 import RiwayatKontenSection from './sections/RiwayatKontenSection';
 import TeacherProfileSection from './sections/TeacherProfileSection';
 
-// FIX 1: derive count dari STUDENTS
+// FIX 1 + FIX B1: derive count dari STUDENTS — pakai kelas_id (snake_case sesuai masterData)
 const classesWithCount = CLASSES.map(c => ({
   ...c,
-  count: STUDENTS.filter(s => s.kelasId === c.id).length,
+  count: STUDENTS.filter(s => s.kelas_id === c.id).length,
 }));
 
 const TeacherView = () => {
@@ -47,8 +47,8 @@ const TeacherView = () => {
   const teacher = TEACHERS.find(t => t.id === user?.id) ?? TEACHERS.find(t => t.id === 't2');
 
   // Revisi 1B: Normalize mapelId → selalu array agar support 1 mapel dan multi-mapel
-  const mapelIds = teacher?.mapelId
-    ? (Array.isArray(teacher.mapelId) ? teacher.mapelId : [teacher.mapelId])
+  const mapelIds = (teacher?.mapel_ids || teacher?.mapelId)
+    ? (Array.isArray(teacher.mapel_ids || teacher.mapelId) ? (teacher.mapel_ids || teacher.mapelId) : [teacher.mapel_ids || teacher.mapelId])
     : [];
   const teacherMapels = mapelIds.map(id => SUBJECTS.find(s => s.id === id)).filter(Boolean);
 
@@ -174,16 +174,26 @@ const TeacherView = () => {
             onMouseLeave={e => { if (activePage !== 'profile') e.currentTarget.style.background = 'transparent'; }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: '50%',
-                background: teacher?.bg || `linear-gradient(135deg,${C.teal},${C.tealL})`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fff', fontWeight: 700, fontSize: FS.lg,
-                border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.35)'}`,
-                flexShrink: 0, transition: 'border-color .15s',
-              }}>
-                {teacher?.initials || 'GR'}
-              </div>
+              {/* Avatar — render <img> jika URL (setelah upload), inisial teks jika belum */}
+              {(user?.avatar && (user.avatar.startsWith('http') || user.avatar.startsWith('data:'))) ? (
+                <div style={{
+                  width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+                  border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.35)'}`,
+                }}>
+                  <img src={user.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </div>
+              ) : (
+                <div style={{
+                  width: 40, height: 40, borderRadius: '50%',
+                  background: teacher?.bg || `linear-gradient(135deg,${C.teal},${C.tealL})`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: 700, fontSize: FS.lg,
+                  border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.35)'}`,
+                  flexShrink: 0, transition: 'border-color .15s',
+                }}>
+                  {teacher?.initials || 'GR'}
+                </div>
+              )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ color: C.white, fontWeight: 700, fontSize: FS.md, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {teacher?.name || 'Guru'}

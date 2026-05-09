@@ -18,6 +18,7 @@ import { C, FONTS, FS } from '../../../styles/tokens';
 import ChangePasswordModal from '../../shared/ChangePasswordModal';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { useAuth } from '../../../context/AuthContext';
+import { uploadAvatar } from '../../../api/auth';
 import {
   ADMIN_GURU_INIT,
   ADMIN_KELAS_INIT,
@@ -95,20 +96,20 @@ const MapelBlock = ({ mapelId, kelasList }) => {
   if (!mapel || kelasList.length === 0) return null;
   return (
     <div style={{
-      padding: '10px 14px', borderRadius: 12,
-      background: `${mapel.color}0C`, border: `1.5px solid ${mapel.color}28`,
+      padding: '10px 14px',
+      background: C.bg, borderRadius: 10,
+      border: `1.5px solid ${C.tealXL}`,
       marginBottom: 8,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: 15 }}>{mapel.icon}</span>
-        <span style={{ fontSize: FS.md, fontWeight: 800, color: mapel.color }}>{mapel.label}</span>
+        <span style={{ fontSize: FS.md, fontWeight: 800, color: C.dark }}>{mapel.label}</span>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
         {kelasList.map(k => (
           <span key={k.id} style={{
             fontSize: FS.sm, fontWeight: 700,
-            background: `${mapel.color}16`, color: mapel.color,
-            border: `1px solid ${mapel.color}40`,
+            background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white,
             borderRadius: 99, padding: '3px 10px',
           }}>{k.nama}</span>
         ))}
@@ -127,25 +128,71 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
   const guru = resolveGuru(user);
   const semuaKelas = ADMIN_KELAS_INIT;
 
-  const waliKelasList = semuaKelas.filter(k => k.waliKelasId === guru?.id);
-  const mapelKelasMap = (guru?.mapelId || []).map(mid => ({
+  const waliKelasList = semuaKelas.filter(k => (k.wali_kelas_id || k.waliKelasId) === guru?.id);
+  const mapelKelasMap = (guru?.mapel_ids || guru?.mapelId || []).map(mid => ({
     mapelId: mid,
     kelasList: semuaKelas.filter(k => k.mapelGuruMap?.[mid] === guru?.id),
   })).filter(m => m.kelasList.length > 0);
 
-  const [avatarSrc, setAvatarSrc] = useState(null);
+  const { updateUser } = useAuth();
+  const [avatarSrc, setAvatarSrc] = useState(guru?.avatar || null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState(null);
   const [showChangePwd, setShowChangePwd] = useState(false);
   const [pwdToast, setPwdToast] = useState(false);
   const fileRef = useRef();
 
   const handleAvatarClick = () => fileRef.current?.click();
-  const handleAvatarChange = e => {
+
+  /** Compress gambar ke maks 512×512px JPEG 80% sebelum upload — sama dengan ProfileSection siswa */
+  const compressImage = (file) => new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX_PX = 512;
+      const scale = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/jpeg', 0.8);
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
+    img.src = objectUrl;
+  });
+
+  const handleAvatarChange = async e => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => setAvatarSrc(ev.target.result);
-    reader.readAsDataURL(file);
     e.target.value = '';
+
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setAvatarError('Hanya JPEG, PNG, atau WebP'); return;
+    }
+    if (file.size > 20 * 1024 * 1024) { setAvatarError('Ukuran file terlalu besar (maks 20 MB)'); return; }
+
+    setAvatarUploading(true);
+    setAvatarError(null);
+    try {
+      const compressed = await compressImage(file);
+      const previewUrl = URL.createObjectURL(compressed);
+      setAvatarSrc(previewUrl);
+
+      const uploadFile = new File([compressed], 'avatar.jpg', { type: 'image/jpeg' });
+      const res = await uploadAvatar(uploadFile);
+      URL.revokeObjectURL(previewUrl);
+
+      if (res?.avatar) {
+        setAvatarSrc(res.avatar);
+        if (typeof updateUser === 'function') updateUser({ avatar: res.avatar });
+      }
+    } catch {
+      setAvatarError('Gagal mengupload foto. Coba lagi.');
+      setAvatarSrc(guru?.avatar || null);
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   if (!guru) return (
@@ -174,7 +221,7 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ position: 'relative', flexShrink: 0 }}>
               {avatarSrc ? (
-                <img src={avatarSrc} alt="Foto profil" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,.3)', boxShadow: '0 4px 16px rgba(0,0,0,.3)' }} />
+                <img src={avatarSrc} alt="Foto profil" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,.3)', boxShadow: '0 4px 16px rgba(0,0,0,.3)', opacity: avatarUploading ? 0.6 : 1 }} />
               ) : (
                 <div style={{
                   width: 80, height: 80, borderRadius: '50%',
@@ -184,21 +231,26 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
                   border: '3px solid rgba(255,255,255,.3)',
                   boxShadow: '0 4px 16px rgba(0,0,0,.3)',
                   userSelect: 'none',
-                }}>{guru.avatar}</div>
+                }}>{guru.nama ? guru.nama.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'}</div>
               )}
-              <button onClick={handleAvatarClick} title="Ganti foto profil"
+              <button onClick={handleAvatarClick} title="Ganti foto profil" disabled={avatarUploading}
                 style={{
                   position: 'absolute', bottom: 1, right: 1,
                   width: 26, height: 26, borderRadius: '50%',
-                  background: C.amber, border: '2px solid rgba(255,255,255,.6)',
+                  background: avatarUploading ? C.slate : C.amber, border: '2px solid rgba(255,255,255,.6)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: FS.md, cursor: 'pointer', color: '#fff',
+                  fontSize: FS.md, cursor: avatarUploading ? 'wait' : 'pointer', color: '#fff',
                   boxShadow: '0 2px 6px rgba(0,0,0,.3)', transition: 'transform .15s',
                 }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.12)'; }}
+                onMouseEnter={e => { if (!avatarUploading) e.currentTarget.style.transform = 'scale(1.12)'; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-              >📷</button>
-              <input ref={fileRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
+              >{avatarUploading ? '⏳' : '📷'}</button>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarChange} style={{ display: 'none' }} />
+              {avatarError && (
+                <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: 6, background: '#fff', border: '1px solid #FEB2B2', borderRadius: 8, padding: '4px 10px', fontSize: 11, color: '#9B2C2C', whiteSpace: 'nowrap', zIndex: 10, boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}>
+                  {avatarError}
+                </div>
+              )}
             </div>
 
             <div>
@@ -280,9 +332,9 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
                     {waliKelasList.map(k => (
                       <span key={k.id} style={{
                         display: 'inline-flex', alignItems: 'center', gap: 5,
-                        background: `${C.amber}14`, border: `1.5px solid ${C.amber}40`,
+                        background: `linear-gradient(135deg,${C.teal},${C.tealL})`,
                         borderRadius: 99, padding: '5px 14px',
-                        fontSize: FS.md, fontWeight: 700, color: C.dark,
+                        fontSize: FS.md, fontWeight: 700, color: C.white,
                       }}>🏆 {k.nama}</span>
                     ))}
                   </div>

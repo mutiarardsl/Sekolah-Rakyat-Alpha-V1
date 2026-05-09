@@ -12,11 +12,9 @@ import { useState, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import ChangePasswordModal from '../../shared/ChangePasswordModal';
-import {
-    ADMIN_SISWA_INIT,
-    ADMIN_KELAS_INIT,
-} from '../../../data/masterData';
+import { ADMIN_KELAS_INIT } from '../../../data/masterData';
 import { useAuth } from '../../../context/AuthContext';
+import { uploadAvatar } from '../../../api/auth';
 
 /* ── ReadonlyInput ── */
 const ReadonlyInput = ({ value, onEdit }) => (
@@ -44,14 +42,16 @@ const Field = ({ label, children }) => (
 /* ── Main ── */
 const ProfileSection = ({ progressData, onChangePwd }) => {
     const { user: authUser } = useAuth();
-    const CURRENT_STUDENT_ID = authUser?.id || null;
-    const adminData = ADMIN_SISWA_INIT.find(s => s.id === CURRENT_STUDENT_ID) || {};
-    // Gabungkan: data auth (real-time) + master data (fallback)
-    const effectiveData = { ...adminData, ...(authUser || {}) };
-    const kelasData = ADMIN_KELAS_INIT.find(k => k.id === (effectiveData?.kelasId || adminData?.kelasId) || k.nama === 'X-1');
+    // Gunakan data dari AuthContext sebagai sumber kebenaran (bukan masterData)
+    // AuthContext di-seed dari GET /auth/me saat login — selalu fresh per user
+    const effectiveData = authUser || {};
+    const kelasData = ADMIN_KELAS_INIT.find(k => k.id === effectiveData?.kelas_id) || null;
     const { isMobile } = useBreakpoint();
 
-    const [avatarSrc, setAvatarSrc] = useState(null);
+    const { updateUser } = useAuth();
+    const [avatarSrc, setAvatarSrc] = useState(effectiveData?.avatar || null);
+    const [avatarUploading, setAvatarUploading] = useState(false);
+    const [avatarError, setAvatarError] = useState(null);
     const [email, setEmail] = useState(effectiveData?.email || '');
     const [namaEdit, setNamaEdit] = useState(effectiveData?.nama || authUser?.nama || 'Siswa');
     const [showEditNama, setShowEditNama] = useState(false);
@@ -60,13 +60,85 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
     const fileInputRef = useRef();
 
     const handleAvatarClick = () => fileInputRef.current?.click();
-    const handleAvatarChange = (e) => {
+
+    /**
+     * Compress gambar menggunakan Canvas API sebelum upload.
+     * Foto kamera HP bisa 3–8 MB — di-resize ke maks 512×512px dan kualitas 80%
+     * sehingga hasil akhir < 200 KB, aman untuk contract 2 MB BE.
+     *
+     * @param {File} file - File gambar asli
+     * @returns {Promise<Blob>} - Blob terkompresi
+     */
+    const compressImage = (file) => new Promise((resolve, reject) => {
+        const MAX_PX = 512;
+        const QUALITY = 0.8;
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            const scale = Math.min(MAX_PX / img.width, MAX_PX / img.height, 1);
+            const w = Math.round(img.width * scale);
+            const h = Math.round(img.height * scale);
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob(
+                (blob) => blob ? resolve(blob) : reject(new Error('Canvas toBlob failed')),
+                'image/jpeg',
+                QUALITY,
+            );
+        };
+        img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
+        img.src = objectUrl;
+    });
+
+    const handleAvatarChange = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => setAvatarSrc(ev.target.result);
-        reader.readAsDataURL(file);
         e.target.value = '';
+
+        // Validasi tipe file — ukuran tidak diblokir karena akan dicompress
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            setAvatarError('Hanya JPEG, PNG, atau WebP yang diizinkan');
+            return;
+        }
+        // Hard limit 20 MB sebelum compress — tolak file yang memang tidak wajar
+        if (file.size > 20 * 1024 * 1024) {
+            setAvatarError('Ukuran file terlalu besar (maks 20 MB)');
+            return;
+        }
+
+        setAvatarUploading(true);
+        setAvatarError(null);
+
+        try {
+            // Compress dulu — foto kamera HP 5–8 MB jadi < 200 KB setelah resize 512px
+            const compressed = await compressImage(file);
+
+            // Tampilkan preview dari blob terkompresi (optimistic UI)
+            const previewUrl = URL.createObjectURL(compressed);
+            setAvatarSrc(previewUrl);
+
+            // Upload blob terkompresi sebagai File agar FormData bisa kirim
+            const uploadFile = new File([compressed], 'avatar.jpg', { type: 'image/jpeg' });
+            const res = await uploadAvatar(uploadFile);
+
+            URL.revokeObjectURL(previewUrl);
+
+            if (res?.avatar) {
+                setAvatarSrc(res.avatar);
+                if (typeof updateUser === 'function') {
+                    updateUser({ avatar: res.avatar });
+                }
+            }
+        } catch {
+            setAvatarError('Gagal mengupload foto. Coba lagi.');
+            setAvatarSrc(effectiveData?.avatar || null);
+        } finally {
+            setAvatarUploading(false);
+        }
     };
 
     return (
@@ -87,7 +159,7 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                         <div style={{ position: 'relative', flexShrink: 0 }}>
                             {avatarSrc ? (
-                                <img src={avatarSrc} alt="avatar" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,.3)', boxShadow: '0 4px 16px rgba(0,0,0,.3)' }} />
+                                <img src={avatarSrc} alt="avatar" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,.3)', boxShadow: '0 4px 16px rgba(0,0,0,.3)', opacity: avatarUploading ? 0.6 : 1 }} />
                             ) : (
                                 <div style={{
                                     width: 80, height: 80, borderRadius: '50%',
@@ -96,21 +168,26 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                                     color: '#fff', fontWeight: 900, fontSize: 26,
                                     border: '3px solid rgba(255,255,255,.3)',
                                     boxShadow: '0 4px 16px rgba(0,0,0,.3)',
-                                }}>{effectiveData?.avatar || (namaEdit ? namaEdit.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?')}</div>
+                                }}>{namaEdit ? namaEdit.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?'}</div>
                             )}
-                            <button onClick={handleAvatarClick} title="Ganti foto profil"
+                            <button onClick={handleAvatarClick} title="Ganti foto profil" disabled={avatarUploading}
                                 style={{
                                     position: 'absolute', bottom: 1, right: 1,
                                     width: 26, height: 26, borderRadius: '50%',
-                                    background: C.amber, border: '2px solid rgba(255,255,255,.6)',
+                                    background: avatarUploading ? C.slate : C.amber, border: '2px solid rgba(255,255,255,.6)',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    fontSize: FS.md, cursor: 'pointer', color: '#fff',
+                                    fontSize: FS.md, cursor: avatarUploading ? 'wait' : 'pointer', color: '#fff',
                                     boxShadow: '0 2px 6px rgba(0,0,0,.3)', transition: 'transform .15s',
                                 }}
-                                onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.12)'; }}
+                                onMouseEnter={e => { if (!avatarUploading) e.currentTarget.style.transform = 'scale(1.12)'; }}
                                 onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-                            >📷</button>
-                            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
+                            >{avatarUploading ? '⏳' : '📷'}</button>
+                            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleAvatarChange} style={{ display: 'none' }} />
+                            {avatarError && (
+                                <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: 6, background: '#fff', border: `1px solid #FEB2B2`, borderRadius: 8, padding: '4px 10px', fontSize: 11, color: '#9B2C2C', whiteSpace: 'nowrap', zIndex: 10, boxShadow: '0 2px 8px rgba(0,0,0,.15)' }}>
+                                    {avatarError}
+                                </div>
+                            )}
                         </div>
                         <div>
                             <div style={{ color: C.white, fontWeight: 800, fontSize: FS.h2, marginBottom: 2 }}>{namaEdit}</div>
@@ -153,7 +230,7 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                                 <ReadonlyInput value={kelasData?.nama || 'X-1'} />
                             </Field>
                             <Field label="Bergabung Sejak">
-                                <ReadonlyInput value={effectiveData?.bergabung || adminData?.bergabung || 'Jul 2025'} />
+                                <ReadonlyInput value={effectiveData?.bergabung || 'Jul 2025'} />
                             </Field>
                         </div>
 

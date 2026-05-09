@@ -49,10 +49,11 @@ export function AuthProvider({ children }) {
     return await authApi.forgotPassword(email);
   }, []);
 
-  // FIX ③c: logout harus hapus sr_access_token agar apiClient tidak kirim token basi
+  // FIX ③c: logout harus hapus sr_access_token + sr_refresh_token agar interceptor tidak kirim token basi
   const logout = useCallback(async () => {
     try { await authApi.logout(); } catch { /* abaikan error network saat logout */ }
     localStorage.removeItem('sr_access_token');
+    localStorage.removeItem('sr_refresh_token');
     localStorage.removeItem('sr_user');
     resetForUser(null); // wipe seluruh store — data tidak bocor ke user berikutnya
     setUser(null);

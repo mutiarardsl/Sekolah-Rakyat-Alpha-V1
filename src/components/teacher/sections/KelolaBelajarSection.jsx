@@ -18,17 +18,19 @@
  * Jika Edit: form deskripsi perubahan + submit regenerate
  * Bawah: tombol Batal dan Publish (aktif setelah semua konten disetujui)
  */
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Card, Btn } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
+import { useAuth } from '../../../context/AuthContext';
 // FIX P2: sambungkan publishKonten (POST /content/publish) + generateGame (POST /game/generate)
 import { publishKonten, generateContent } from '../../../api/content';
 import { generateGame } from '../../../api/game';
+import { mapelApi, elemenApi } from '../../../api/admin';
 import {
-  ADMIN_MAPEL_LIST,
+  ADMIN_MAPEL_LIST,   // fallback statis jika API belum tersedia
   ADMIN_KELAS_INIT,
-  KURIKULUM_ELEMEN,
+  KURIKULUM_ELEMEN,   // fallback statis jika API belum tersedia
   ADMIN_GURU_INIT,
   TEACHERS,
   SEEDED_TEACHER_ID,
@@ -102,6 +104,21 @@ const generatePlaceholderKonten = (type, level, config) => {
     game: `[Game Preview - ${level}]\nJenis: Kuis Interaktif\nTopik: ${materi}\nLevel: ${level}\nEstimasi Durasi: ${level === 'Low' ? '10' : level === 'Mid' ? '20' : '30'} menit\n\nSiswa menjawab pertanyaan tentang ${elemenLabel} melalui tampilan game interaktif.`,
   };
   return texts[type] || `Konten ${type} level ${level} untuk ${materi}.`;
+};
+
+/* ── Helper: ekstrak konten dari response generateContent per tipe ── */
+// Digunakan saat regenerasi konten dengan revisi_guru di KontenCard.handleRegenerate.
+// Memetakan res.content ke format yang sama dengan kontenMap.
+const extractKontenResult = (tipe, level, res) => {
+  if (!res?.content) return null;
+  switch (tipe) {
+    case 'bacaan': return res.content.text || null;
+    case 'quiz_pg': return res.content.soal?.length ? res.content : null;
+    case 'quiz_essay': return res.content.pertanyaan?.length ? res.content : null;
+    case 'flashcard': return res.content.cards?.length ? res.content : null;
+    case 'mindmap': return res.content.nodes?.length ? res.content.nodes : null;
+    default: return null;
+  }
 };
 
 /* ── GamePreviewModal — container game asli (Tim 4) ─────────────── */
@@ -205,15 +222,15 @@ const GamePreviewModal = ({ konten, config, onClose }) => {
 };
 
 /* ── CapaianPembelajaranBox — ditampilkan di panel kiri setelah pilih mapel ── */
-const CapaianPembelajaranBox = ({ mapelId, mapelColor, mapelLabel }) => {
+const CapaianPembelajaranBox = ({ mapelId, mapelLabel }) => {
   const [open, setOpen] = useState(true);
   const cp = CAPAIAN_PEMBELAJARAN[mapelId];
   if (!cp) return null;
 
   return (
     <div style={{
-      borderRadius: 10, border: `1.5px solid ${mapelColor}30`,
-      background: `${mapelColor}06`, overflow: 'hidden', marginTop: 14,
+      borderRadius: 10,
+      background: `linear-gradient(135deg,${C.teal},${C.tealL})`, overflow: 'hidden', marginTop: 14,
     }}>
       {/* Header */}
       <button onClick={() => setOpen(v => !v)} style={{
@@ -224,22 +241,22 @@ const CapaianPembelajaranBox = ({ mapelId, mapelColor, mapelLabel }) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <span style={{
             width: 24, height: 24, borderRadius: 6,
-            background: `${mapelColor}20`, color: mapelColor,
+            background: C.white, color: C.teal,
             fontSize: FS.base, display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
           }}>🎯</span>
           <div>
-            <div style={{ fontSize: FS.sm, fontWeight: 700, color: mapelColor, textAlign: 'left' }}>
+            <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.white, textAlign: 'left' }}>
               Capaian Pembelajaran
             </div>
-            <div style={{ fontSize: FS.xs, color: '#8899AA', textAlign: 'left' }}>
+            <div style={{ fontSize: FS.xs, color: 'rgba(255,255,255,.65)', textAlign: 'left' }}>
               {cp.fase} · {mapelLabel}
             </div>
           </div>
         </div>
         <span style={{
-          fontSize: FS.xs, color: mapelColor, fontWeight: 700,
-          background: `${mapelColor}18`, borderRadius: 5,
+          fontSize: FS.xs, color: C.white, fontWeight: 700,
+          background: `rgba(255,255,255,.15)`, borderRadius: 5,
           padding: '2px 6px',
         }}>
           {open ? '▲' : '▼ Lihat'}
@@ -247,23 +264,23 @@ const CapaianPembelajaranBox = ({ mapelId, mapelColor, mapelLabel }) => {
       </button>
 
       {open && (
-        <div style={{ padding: '0 12px 12px', borderTop: `1px solid ${mapelColor}15` }}>
+        <div style={{ padding: '0 12px 12px', borderTop: `1px solid ${C.white}15` }}>
           {/* Fase tag */}
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
-            background: `${mapelColor}15`, borderRadius: 99,
+            background: `${C.white}15`, borderRadius: 99,
             padding: '2px 9px', margin: '8px 0 7px',
           }}>
             <span style={{ fontSize: 9 }}>📚</span>
-            <span style={{ fontSize: FS.xs, fontWeight: 700, color: mapelColor }}>{cp.fase}</span>
+            <span style={{ fontSize: FS.xs, fontWeight: 700, color: C.white }}>{cp.fase}</span>
           </div>
 
           {/* Deskripsi singkat */}
           <div style={{
-            fontSize: FS.sm, color: '#4A5568', lineHeight: 1.65,
+            fontSize: FS.sm, color: C.white, lineHeight: 1.65,
             fontStyle: 'italic', marginBottom: 9,
-            padding: '7px 9px', background: '#FFFFFF80',
-            borderRadius: 8, border: `1px solid ${mapelColor}12`,
+            padding: '7px 9px',
+            borderRadius: 8, border: `1px solid ${C.white}12`,
           }}>
             {cp.deskripsi.length > 220 ? cp.deskripsi.slice(0, 220) + '…' : cp.deskripsi}
           </div>
@@ -272,9 +289,9 @@ const CapaianPembelajaranBox = ({ mapelId, mapelColor, mapelLabel }) => {
           {/* Alignment note */}
           <div style={{
             marginTop: 10, padding: '7px 9px',
-            background: `${mapelColor}10`, borderRadius: 7,
-            border: `1px solid ${mapelColor}20`,
-            fontSize: FS.xs, color: mapelColor, lineHeight: 1.5,
+            background: `${C.white}10`, borderRadius: 7,
+            border: `1px solid ${C.white}20`,
+            fontSize: FS.xs, color: C.white, lineHeight: 1.5,
           }}>
             💡 Pastikan konten yang kamu buat selaras dengan Capaian Pembelajaran di atas untuk menjaga konsistensi kurikulum.
           </div>
@@ -284,16 +301,238 @@ const CapaianPembelajaranBox = ({ mapelId, mapelColor, mapelLabel }) => {
   );
 };
 
+/* ── ManualEditForm ──────────────────────────────────────────────── */
+// Form edit manual isi konten tanpa memanggil ulang API RAG/Game.
+// Mendukung semua tipe konten: bacaan (string), quiz_pg, quiz_essay, flashcard, mindmap.
+// Game tidak bisa diedit manual (tidak ada field teks yang bisa diubah guru).
+const ManualEditForm = ({ typeId, data, onChange, onSave, onCancel }) => {
+  const isGame = typeId === 'game';
+
+  // ── bacaan: data = string markdown ──────────────────────────────
+  if (typeId === 'bacaan') {
+    const text = typeof data === 'string' ? data : (data?.text ?? '');
+    return (
+      <div style={{ marginTop: 10, padding: 14, background: C.white, borderRadius: 10, border: `1.5px solid ${C.tealXL}` }}>
+        <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 8 }}>✏️ Edit Manual — Bacaan</div>
+        <textarea
+          value={text}
+          onChange={e => onChange(e.target.value)}
+          rows={12}
+          style={{ ...INP, fontFamily: 'monospace', fontSize: 12, lineHeight: 1.7, resize: 'vertical', whiteSpace: 'pre' }}
+          placeholder="Edit teks bacaan (format Markdown)"
+        />
+        <div style={{ fontSize: FS.xs, color: C.slate, marginBottom: 8 }}>Mendukung format Markdown.</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.slate, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+          <button onClick={onSave} style={{ flex: 2, padding: '7px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>💾 Simpan</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── quiz_pg: data = { soal: [{id, soal, pilihan: string[], jawaban: number}] } ──
+  if (typeId === 'quiz_pg') {
+    const soalList = data?.soal ?? [];
+    const updateSoal = (i, field, val) => {
+      const next = soalList.map((s, idx) => idx === i ? { ...s, [field]: val } : s);
+      onChange({ ...data, soal: next });
+    };
+    const updatePilihan = (i, j, val) => {
+      const next = soalList.map((s, idx) => {
+        if (idx !== i) return s;
+        const pilihan = [...s.pilihan];
+        pilihan[j] = val;
+        return { ...s, pilihan };
+      });
+      onChange({ ...data, soal: next });
+    };
+    return (
+      <div style={{ marginTop: 10, padding: 14, background: C.white, borderRadius: 10, border: `1.5px solid ${C.tealXL}` }}>
+        <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>✏️ Edit Manual — Kuiz Pilihan Ganda ({soalList.length} soal)</div>
+        <div style={{ maxHeight: 420, overflowY: 'auto', paddingRight: 4 }}>
+          {soalList.map((s, i) => (
+            <div key={i} style={{ marginBottom: 16, padding: 10, background: C.white, borderRadius: 8, border: `1px solid ${C.tealXL}` }}>
+              <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, marginBottom: 4 }}>Soal {i + 1}</div>
+              <textarea
+                value={s.soal ?? s.pertanyaan ?? ''}
+                onChange={e => updateSoal(i, s.soal !== undefined ? 'soal' : 'pertanyaan', e.target.value)}
+                rows={2}
+                style={{ ...INP, resize: 'vertical', marginBottom: 6 }}
+                placeholder={`Teks soal nomor ${i + 1}`}
+              />
+              {(s.pilihan ?? []).map((p, j) => (
+                <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontSize: FS.xs, color: C.slate, width: 16, flexShrink: 0 }}>{String.fromCharCode(97 + j)})</span>
+                  <input
+                    value={p}
+                    onChange={e => updatePilihan(i, j, e.target.value)}
+                    style={{ ...INP, marginBottom: 0, flex: 1 }}
+                    placeholder={`Pilihan ${String.fromCharCode(65 + j)}`}
+                  />
+                  <input
+                    type="radio"
+                    name={`jawaban_${i}`}
+                    checked={s.jawaban === j}
+                    onChange={() => updateSoal(i, 'jawaban', j)}
+                    title="Tandai sebagai jawaban benar"
+                    style={{ cursor: 'pointer', accentColor: C.green }}
+                  />
+                </div>
+              ))}
+              <div style={{ fontSize: FS.xs, color: C.slate }}>🔘 = jawaban benar</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.slate, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+          <button onClick={onSave} style={{ flex: 2, padding: '7px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>💾 Simpan</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── quiz_essay: data = { pertanyaan: [{id, soal, rubrik, placeholder}] } ──
+  if (typeId === 'quiz_essay') {
+    const pertanyaanList = data?.pertanyaan ?? [];
+    const update = (i, field, val) => {
+      const next = pertanyaanList.map((p, idx) => idx === i ? { ...p, [field]: val } : p);
+      onChange({ ...data, pertanyaan: next });
+    };
+    // Support both string[] dan object[] dari API
+    const isStringArr = pertanyaanList.length > 0 && typeof pertanyaanList[0] === 'string';
+    return (
+      <div style={{ marginTop: 10, padding: 14, background: C.white, borderRadius: 10, border: `1.5px solid ${C.tealXL}` }}>
+        <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>✏️ Edit Manual — Kuiz Essay ({pertanyaanList.length} pertanyaan)</div>
+        <div style={{ maxHeight: 380, overflowY: 'auto', paddingRight: 4 }}>
+          {pertanyaanList.map((p, i) => {
+            const soalText = isStringArr ? p : (p.soal ?? '');
+            const rubrikText = isStringArr ? '' : (p.rubrik ?? '');
+            return (
+              <div key={i} style={{ marginBottom: 12, padding: 10, background: C.white, borderRadius: 8, border: `1px solid ${C.tealXL}` }}>
+                <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, marginBottom: 4 }}>Pertanyaan {i + 1}</div>
+                <textarea
+                  value={soalText}
+                  onChange={e => {
+                    if (isStringArr) {
+                      const next = [...pertanyaanList];
+                      next[i] = e.target.value;
+                      onChange({ ...data, pertanyaan: next });
+                    } else {
+                      update(i, 'soal', e.target.value);
+                    }
+                  }}
+                  rows={2}
+                  style={{ ...INP, resize: 'vertical', marginBottom: isStringArr ? 0 : 6 }}
+                  placeholder={`Teks pertanyaan nomor ${i + 1}`}
+                />
+                {!isStringArr && (
+                  <textarea
+                    value={rubrikText}
+                    onChange={e => update(i, 'rubrik', e.target.value)}
+                    rows={2}
+                    style={{ ...INP, resize: 'vertical' }}
+                    placeholder="Rubrik penilaian (opsional)"
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.slate, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+          <button onClick={onSave} style={{ flex: 2, padding: '7px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>💾 Simpan</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── flashcard: data = { cards: [{depan, belakang}] } ────────────
+  if (typeId === 'flashcard') {
+    const cards = data?.cards ?? [];
+    const updateCard = (i, field, val) => {
+      const next = cards.map((c, idx) => idx === i ? { ...c, [field]: val } : c);
+      onChange({ ...data, cards: next });
+    };
+    const addCard = () => onChange({ ...data, cards: [...cards, { depan: '', belakang: '' }] });
+    const removeCard = (i) => { if (cards.length > 1) onChange({ ...data, cards: cards.filter((_, idx) => idx !== i) }); };
+    return (
+      <div style={{ marginTop: 10, padding: 14, background: C.white, borderRadius: 10, border: `1.5px solid ${C.tealXL}` }}>
+        <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>✏️ Edit Manual — Flashcard ({cards.length} kartu)</div>
+        <div style={{ maxHeight: 380, overflowY: 'auto', paddingRight: 4 }}>
+          {cards.map((c, i) => (
+            <div key={i} style={{ marginBottom: 10, padding: 10, background: C.white, borderRadius: 8, border: `1px solid ${C.tealXL}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate }}>Kartu {i + 1}</span>
+                {cards.length > 1 && <button onClick={() => removeCard(i)} style={{ fontSize: FS.xs, color: '#E53E3E', background: 'none', border: 'none', cursor: 'pointer' }}>✕ Hapus</button>}
+              </div>
+              <input value={c.depan} onChange={e => updateCard(i, 'depan', e.target.value)} style={{ ...INP, marginBottom: 6 }} placeholder="Depan kartu (istilah / pertanyaan)" />
+              <input value={c.belakang} onChange={e => updateCard(i, 'belakang', e.target.value)} style={{ ...INP, marginBottom: 0 }} placeholder="Belakang kartu (jawaban / definisi)" />
+            </div>
+          ))}
+        </div>
+        <button onClick={addCard} style={{ width: '100%', padding: '6px', borderRadius: 8, border: `1.5px dashed ${C.teal}`, background: 'transparent', color: C.teal, fontSize: FS.sm, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 10, marginTop: 4 }}>+ Tambah Kartu</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.slate, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+          <button onClick={onSave} style={{ flex: 2, padding: '7px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>💾 Simpan</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── mindmap: data = [{id, label, parent_id}] atau { nodes: [...] } ──
+  if (typeId === 'mindmap') {
+    const nodes = Array.isArray(data) ? data : (data?.nodes ?? []);
+    const updateNode = (i, field, val) => {
+      const next = nodes.map((n, idx) => idx === i ? { ...n, [field]: val } : n);
+      onChange(Array.isArray(data) ? next : { ...data, nodes: next });
+    };
+    return (
+      <div style={{ marginTop: 10, padding: 14, background: C.white, borderRadius: 10, border: `1.5px solid ${C.tealXL}` }}>
+        <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 10 }}>✏️ Edit Manual — Mindmap ({nodes.length} node)</div>
+        <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
+          {nodes.map((n, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: FS.xs, color: C.slate, width: 22, flexShrink: 0 }}>{i + 1}.</span>
+              <input value={n.label ?? ''} onChange={e => updateNode(i, 'label', e.target.value)} style={{ ...INP, marginBottom: 0, flex: 2 }} placeholder="Label node" />
+              <input value={n.parent_id ?? ''} onChange={e => updateNode(i, 'parent_id', e.target.value || null)} style={{ ...INP, marginBottom: 0, flex: 1, fontSize: FS.xs }} placeholder="parent_id (kosong = root)" />
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: FS.xs, color: C.slate, marginBottom: 8 }}>Kolom kanan: parent_id — kosongkan untuk node root.</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.slate, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+          <button onClick={onSave} style={{ flex: 2, padding: '7px', borderRadius: 8, border: 'none', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>💾 Simpan</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── game: tidak bisa diedit manual ───────────────────────────────
+  if (isGame) {
+    return (
+      <div style={{ marginTop: 10, padding: 14, background: '#FFF5F5', borderRadius: 10, border: '1.5px solid #FED7D7' }}>
+        <div style={{ fontSize: FS.sm, color: '#C53030' }}>⚠️ Game tidak bisa diedit secara manual. Gunakan tombol <strong>🔄 Ulangi</strong> untuk regenerasi dengan instruksi baru.</div>
+        <button onClick={onCancel} style={{ marginTop: 10, padding: '6px 16px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.slate, cursor: 'pointer', fontFamily: 'inherit' }}>Tutup</button>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 /* ── KontenCard ──────────────────────────────────────────────────── */
 // kontenMap & setKontenMap di-lift ke parent (KelolaBelajarSection) agar
 // handlePublish bisa membaca isi konten saat guru klik Publish.
 const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setKontenMap }) => {
   const [open, setOpen] = useState(false);
   const [activeLevel, setActiveLevel] = useState('Low');
-  const [editingKey, setEditingKey] = useState(null); // "type__level"
+  const [editingKey, setEditingKey] = useState(null); // "type__level" — mode Ulangi (regenerate)
   const [editText, setEditText] = useState('');
   const [regenerating, setRegenerating] = useState(null);
   const [gamePreview, setGamePreview] = useState(null);
+  // Mode edit manual — guru mengedit isi konten langsung tanpa regenerate
+  const [manualEditKey, setManualEditKey] = useState(null); // "type__level"
+  const [manualEditData, setManualEditData] = useState(null); // deep-copy kontenMap[key] saat masuk edit
 
   const levels = type.hasLevel ? LEVELS : [''];
   const allApproved = levels.every(lv => approvedMap[`${type.id}__${lv}`]);
@@ -311,21 +550,83 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
     setApprovedMap(p => ({ ...p, [key]: false }));
   };
 
-  const handleRegenerate = (lv) => {
+  const handleRegenerate = async (lv) => {
     const key = `${type.id}__${lv}`;
     if (!editText.trim()) return;
     setRegenerating(key);
-    setTimeout(() => {
-      // Regenerasi: untuk tipe terstruktur gunakan placeholder object baru, untuk string concat label di depan.
+    try {
+      if (type.id === 'game') {
+        // Game regenerasi → POST /game/generate dengan revisi_guru
+        const res = await generateGame({
+          mapel_id: config.mapelId,
+          elemen_id: config.elemenId,
+          elemen_label: config.elemenLabel,
+          materi: config.materi || null,
+          materi_id: config.materiId || null,
+          kelas_id: config.kelasId || '__semua__',
+          jenjang: config.jenjang,
+          atp: config.atp,
+          level: lv,
+          revisi_guru: editText.trim(),
+        });
+        setKontenMap(p => ({ ...p, [key]: res?.game_id ? res : generatePlaceholderKonten(type.id, lv, config) }));
+      } else {
+        // Konten teks → POST /content/generate dengan revisi_guru
+        const res = await generateContent({
+          guru_id: config.guruId,
+          mapel_id: config.mapelId,
+          elemen_id: config.elemenId,
+          elemen_label: config.elemenLabel,
+          materi: config.materi || null,
+          materi_id: config.materiId || null,
+          jenjang: config.jenjang,
+          atp: config.atp,
+          tipe: type.id,
+          level: type.hasLevel ? lv : null,
+          revisi_guru: editText.trim(),
+        });
+        const newKonten = extractKontenResult(type.id, lv, res);
+        setKontenMap(p => ({ ...p, [key]: newKonten ?? generatePlaceholderKonten(type.id, lv, config) }));
+      }
+    } catch {
+      // Fallback lokal jika API error
       const baseRegen = generatePlaceholderKonten(type.id, lv, config);
       const regenResult = typeof baseRegen === 'object'
-        ? baseRegen  // object shape (quiz_pg/quiz_essay/flashcard) -- label edit tidak bisa di-concat ke object
+        ? baseRegen
         : `[Diperbarui: "${editText}"]\n\n${baseRegen}`;
       setKontenMap(p => ({ ...p, [key]: regenResult }));
+    } finally {
       setRegenerating(null);
       setEditingKey(null);
       setEditText('');
-    }, 1800);
+    }
+  };
+
+  // ── Handler Edit Manual ──────────────────────────────────────────
+  // Masuk ke mode edit manual: deep-copy konten saat ini ke manualEditData
+  const handleManualEdit = (lv) => {
+    const key = `${type.id}__${lv}`;
+    const current = kontenMap[key];
+    // Deep copy agar perubahan tidak mutasi state asli sebelum disimpan
+    setManualEditData(JSON.parse(JSON.stringify(current ?? {})));
+    setManualEditKey(key);
+    // Batalkan mode ulangi jika aktif
+    setEditingKey(null);
+    setEditText('');
+  };
+
+  // Simpan hasil edit manual ke kontenMap, batalkan approval agar guru konfirmasi ulang
+  const handleManualSave = (lv) => {
+    const key = `${type.id}__${lv}`;
+    setKontenMap(p => ({ ...p, [key]: manualEditData }));
+    setApprovedMap(p => ({ ...p, [key]: false }));
+    setManualEditKey(null);
+    setManualEditData(null);
+  };
+
+  const handleManualCancel = () => {
+    setManualEditKey(null);
+    setManualEditData(null);
   };
 
   return (
@@ -337,7 +638,7 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 15 }}>{type.id === 'bacaan' ? '📖' : type.id === 'quiz_pg' ? '✅' : type.id === 'quiz_essay' ? '📝' : type.id === 'flashcard' ? '🃏' : type.id === 'mindmap' ? '🧠' : '🎮'}</span>
           <span style={{ fontSize: FS.base, fontWeight: 700, color: C.dark }}>{type.label}</span>
-          {allApproved && <span style={{ fontSize: FS.xs, background: '#F0FFF4', color: C.green, padding: '2px 8px', borderRadius: 99, fontWeight: 700, border: '1px solid #9AE6B4' }}>✅ Disetujui</span>}
+          {allApproved && <span style={{ fontSize: FS.xs, background: '#F0FFF4', color: C.green, padding: '2px 8px', borderRadius: 99, fontWeight: 700 }}>✅ Disetujui</span>}
         </div>
         <span style={{ fontSize: FS.md, color: C.slate }}>{open ? '▲' : '▼'}</span>
       </div>
@@ -357,9 +658,9 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                       padding: '5px 14px', borderRadius: 99, fontSize: FS.md, fontWeight: 700,
                       cursor: 'pointer', fontFamily: 'inherit',
                       display: 'flex', alignItems: 'center', gap: 5,
-                      background: activeLevel === lv ? C.teal : approved ? '#F0FFF4' : C.white,
-                      color: activeLevel === lv ? C.white : approved ? C.green : C.darkL,
-                      border: `1.5px solid ${activeLevel === lv ? C.teal : approved ? '#9AE6B4' : C.tealXL}`,
+                      background: activeLevel === lv ? `linear-gradient(135deg,${C.teal},${C.tealL})` : approved ? `linear-gradient(135deg,${C.teal},${C.tealL})` : C.white,
+                      color: activeLevel === lv ? C.white : approved ? C.white : C.darkL,
+                      border: `1.5px solid ${activeLevel === lv ? C.teal : approved ? `linear-gradient(135deg,${C.teal},${C.tealL})` : C.tealXL}`,
                     }}>
                     {lv}{approved ? ' ✓' : ''}
                   </button>
@@ -375,6 +676,7 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
             const approved = approvedMap[key];
             const isEditing = editingKey === key;
             const isRegen = regenerating === key;
+            const isManualEditing = manualEditKey === key;
             // Data selalu siap saat phase=result — handleSubmit await Promise.allSettled
             // sebelum setPhase(result). Tidak ada per-item loading state di sini.
 
@@ -389,9 +691,9 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                 {isRegen ? (
                   <div style={{ textAlign: 'center', padding: '28px 0' }}>
                     <div style={{ width: 28, height: 28, border: `3px solid ${C.tealXL}`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .8s linear infinite', margin: '0 auto 10px' }} />
-                    <div style={{ fontSize: FS.md, color: C.slate }}>Meregenerasi konten…</div>
+                    <div style={{ fontSize: FS.md, color: C.slate }}>Membuat ulang konten…</div>
                   </div>
-                ) : (
+                ) : isManualEditing ? null : (
                   <div style={{ background: '#FAFEFF', borderRadius: 10, padding: 14, border: `1px solid ${C.tealXL}`, marginBottom: 10 }}>
                     {/* Structured renderer -- prevents "Objects are not valid as React child"
                         quiz_pg    -> { soal: [{pertanyaan, pilihan, jawaban}] }
@@ -458,7 +760,7 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                 )}
 
                 {/* Aksi baris */}
-                {!isRegen && (
+                {!isRegen && !isManualEditing && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {/* Game preview */}
                     {type.id === 'game' && (
@@ -469,38 +771,48 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                         🔍 Preview Game
                       </button>
                     )}
-                    {!approved && !isEditing && (
+                    {!approved && !isEditing && !isManualEditing && (
                       <>
                         <button onClick={() => handleApprove(lv)}
                           style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid #9AE6B4', background: '#F0FFF4', fontSize: FS.sm, color: C.green, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                           ✓ Setuju
                         </button>
-                        <button onClick={() => handleEdit(lv)}
+                        <button onClick={() => handleManualEdit(lv)}
                           style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.sm, color: C.teal, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                           ✏️ Edit
                         </button>
+                        <button onClick={() => handleEdit(lv)}
+                          style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.sm, color: C.teal, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          🔄 Ulangi
+                        </button>
                       </>
                     )}
-                    {approved && !isEditing && (
-                      <button onClick={() => handleEdit(lv)}
-                        style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.sm, color: C.teal, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        ✏️ Ubah
-                      </button>
+                    {approved && !isEditing && !isManualEditing && (
+                      <>
+                        <button onClick={() => handleManualEdit(lv)}
+                          style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.sm, color: C.teal, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          ✏️ Edit
+                        </button>
+                        <button onClick={() => handleEdit(lv)}
+                          style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.sm, color: C.teal, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          🔄 Ulangi
+                        </button>
+                      </>
                     )}
-                    {approved && <span style={{ fontSize: FS.sm, color: C.green, fontWeight: 700 }}>✅ Disetujui</span>}
+                    {approved && !isEditing && !isManualEditing && <span style={{ fontSize: FS.sm, color: C.green, fontWeight: 700 }}>✅ Disetujui</span>}
                   </div>
                 )}
 
-                {/* Form edit */}
+                {/* Form Ulangi — regenerate via RAG */}
                 {isEditing && !isRegen && (
-                  <div style={{ marginTop: 10, padding: 12, background: '#FFFBF0', borderRadius: 10, border: `1px solid ${C.amberL}` }}>
+                  <div style={{ marginTop: 10, padding: 12, background: C.white, borderRadius: 10, border: `1px solid ${C.tealXL}` }}>
                     <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.orange, marginBottom: 8 }}>📝 Deskripsikan perubahan yang diinginkan</div>
                     <input
                       value={editText}
                       onChange={e => setEditText(e.target.value)}
                       placeholder="Contoh: Tambahkan lebih banyak contoh konkret, atau tingkatkan tingkat kesulitan soal"
                       style={{ ...INP, marginBottom: 8 }}
-                      onFocus={e => e.target.style.borderColor = C.amber}
+                      onFocus={e => e.target.style.borderColor = C.teal}
                       onBlur={e => e.target.style.borderColor = C.tealXL}
                     />
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -509,11 +821,22 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                         Batal
                       </button>
                       <button onClick={() => handleRegenerate(lv)} disabled={!editText.trim()}
-                        style={{ flex: 2, padding: '7px', borderRadius: 8, border: 'none', background: editText.trim() ? C.amber : '#E2E8F0', color: editText.trim() ? C.white : C.slate, fontSize: FS.md, fontWeight: 700, cursor: editText.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
-                        🔄 Regenerasi
+                        style={{ flex: 2, padding: '7px', borderRadius: 8, border: 'none', background: editText.trim() ? `linear-gradient(135deg,${C.teal},${C.tealL})` : '#E2E8F0', color: editText.trim() ? C.white : C.slate, fontSize: FS.md, fontWeight: 700, cursor: editText.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
+                        🔄 Buat ulang
                       </button>
                     </div>
                   </div>
+                )}
+
+                {/* Form Edit Manual — guru ubah isi konten langsung */}
+                {isManualEditing && manualEditData !== null && (
+                  <ManualEditForm
+                    typeId={type.id}
+                    data={manualEditData}
+                    onChange={setManualEditData}
+                    onSave={() => handleManualSave(lv)}
+                    onCancel={handleManualCancel}
+                  />
                 )}
               </div>
             );
@@ -597,21 +920,59 @@ const AtpPointInput = ({ poinList, onChange }) => {
 
 /* ════════════════════════════════════════════════════════════════════ */
 const KelolaBelajarSection = ({ onGoToRiwayat }) => {
-  // SEEDED_TEACHER_ID merujuk ke array TEACHERS (id: t1–t4).
-  // ADMIN_GURU_INIT memakai id g1–g10. Guru yang sama (Bpk. Hendra) ada di keduanya.
-  // Mapping: cari dulu di TEACHERS untuk dapat email/nama, lalu match ke ADMIN_GURU_INIT via email.
+  // Ambil user dari AuthContext — sumber kebenaran saat integrasi BE
+  const { user: authUser } = useAuth();
+
+  // Guru: coba ambil dari AuthContext (integrasi), fallback ke masterData (dev)
   const teacherFromTeachers = TEACHERS.find(t => t.id === SEEDED_TEACHER_ID);
   const guru = ADMIN_GURU_INIT.find(g =>
-    g.id === 'g1' || // fallback langsung ke g1 (Hendra) jika email tidak tersedia
+    g.id === 'g1' ||
     (teacherFromTeachers?.name && g.nama.includes(teacherFromTeachers.name.split(',')[0].replace('Bpk. ', '').replace('Ibu ', '').trim()))
-  ) || ADMIN_GURU_INIT[0]; // absolute fallback ke guru pertama
-  const guruMapelIds = Array.isArray(guru?.mapelId) ? guru.mapelId : (guru?.mapelId ? [guru.mapelId] : []);
+  ) || ADMIN_GURU_INIT[0];
+  const guruMapelIds = Array.isArray(guru?.mapel_ids) ? guru.mapel_ids
+    : (guru?.mapel_ids ? [guru.mapel_ids] : (Array.isArray(guru?.mapelId) ? guru.mapelId : []));
+
   const [jenjang, setJenjang] = useState('X');
   const [kelasId, setKelasId] = useState('');
   const [mapelId, setMapelId] = useState('');
   const [elemenId, setElemenId] = useState('');
   const [materi, setMateri] = useState('');
   const [atpPoin, setAtpPoin] = useState(['']);
+
+  // ── FIX: Mapel & Elemen dari API (GET /admin/mapel, GET /admin/elemen?mapel_id=) ──
+  // Fallback ke data statis jika API belum tersedia (dev mode / jaringan tidak ada)
+  const [mapelListApi, setMapelListApi] = useState(null);   // null = belum di-fetch
+  const [elemenListApi, setElemenListApi] = useState(null); // null = belum di-fetch / belum pilih mapel
+  const [mapelLoading, setMapelLoading] = useState(false);
+  const [elemenLoading, setElemenLoading] = useState(false);
+
+  // Fetch semua mapel dari API saat mount
+  useEffect(() => {
+    setMapelLoading(true);
+    mapelApi.list()
+      .then(data => { if (Array.isArray(data)) setMapelListApi(data); })
+      .catch(() => { /* fallback ke static */ })
+      .finally(() => setMapelLoading(false));
+  }, []);
+
+  // Fetch elemen dari API setiap kali mapelId berubah
+  useEffect(() => {
+    if (!mapelId) { setElemenListApi(null); setElemenId(''); return; }
+    setElemenLoading(true);
+    setElemenListApi(null);
+    setElemenId('');
+    elemenApi.list(mapelId)
+      .then(data => { if (Array.isArray(data)) setElemenListApi(data); })
+      .catch(() => { /* fallback ke static */ })
+      .finally(() => setElemenLoading(false));
+  }, [mapelId]);
+
+  // Resolved lists — API data jika ada, fallback ke static masterData
+  const mapelListRaw = mapelListApi ?? ADMIN_MAPEL_LIST;
+  const mapelList = mapelListRaw.filter(m => guruMapelIds.includes(m.id));
+  const elemenList = elemenListApi ?? (KURIKULUM_ELEMEN[mapelId] || []);
+  const selectedMapel = mapelList.find(m => m.id === mapelId);
+  const selectedElemen = elemenList.find(e => e.id === elemenId);
 
   const [phase, setPhase] = useState('form'); // 'form' | 'loading' | 'result'
   const [approvedMap, setApprovedMap] = useState({});
@@ -622,17 +983,15 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   const [publishToast, setPublishToast] = useState(null); // null | { mapelLabel, elemenLabel, publishedAt }
 
   const kelasList = ADMIN_KELAS_INIT.filter(k => k.tingkat === jenjang);
-  const mapelList = ADMIN_MAPEL_LIST.filter(m => guruMapelIds.includes(m.id));
-  const selectedMapel = mapelList.find(m => m.id === mapelId);
-  const elemenList = KURIKULUM_ELEMEN[mapelId] || [];
-  const selectedElemen = elemenList.find(e => e.id === elemenId);
 
   const config = {
     jenjang, kelasId, mapelId,
     mapelLabel: selectedMapel?.label || '',
     elemenId, elemenLabel: selectedElemen?.label || elemenId,
     materi: materi || selectedElemen?.label || '',
+    materiId: materi ? `${mapelId}__${materi.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}` : null,
     atp: atpPoin.filter(p => p.trim()).join('\n'),
+    guruId: guru?.id || 'g1',
   };
 
   // Semua konten disetujui = bisa publish
@@ -640,6 +999,64 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     const levels = type.hasLevel ? LEVELS : [''];
     return levels.every(lv => approvedMap[`${type.id}__${lv}`]);
   });
+
+  // FIX: Validasi jumlah konten harus 16 item sebelum publish
+  // bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 + game×3 = 16
+  const EXPECTED_KONTEN_COUNT = 16;
+  const buildKontenList = () => {
+    const list = [];
+    KONTEN_TYPES.forEach(type => {
+      const levels = type.hasLevel ? LEVELS : [''];
+      levels.forEach(lv => {
+        const key = `${type.id}__${lv}`;
+        const raw = kontenMap[key];
+        if (raw == null) return;
+
+        // kontenMap menyimpan nilai *raw* per tipe:
+        //   bacaan    → string teks markdown
+        //   mindmap   → Array<node> atau string teks
+        //   quiz_pg   → { soal: [...] }
+        //   quiz_essay→ { pertanyaan: [...] }
+        //   flashcard → { cards: [...] }
+        //   game      → object dari generateGame response
+        // Harus dibungkus ke shape content sesuai API contract sebelum disimpan.
+        let content;
+        switch (type.id) {
+          case 'bacaan':
+            content = { text: typeof raw === 'string' ? raw : (raw?.text || '') };
+            break;
+          case 'mindmap':
+            content = Array.isArray(raw)
+              ? { nodes: raw }
+              : (typeof raw === 'string' ? { nodes: [], text: raw } : raw);
+            break;
+          case 'quiz_pg':
+            content = raw?.soal ? raw : { soal: [] };
+            break;
+          case 'quiz_essay':
+            content = raw?.pertanyaan ? raw : { pertanyaan: [] };
+            break;
+          case 'flashcard':
+            content = raw?.cards ? raw : { cards: [] };
+            break;
+          case 'game':
+            // game: raw adalah full response dari generateGame (game_id, html_url, status, …)
+            content = raw;
+            break;
+          default:
+            content = raw;
+        }
+
+        list.push({
+          tipe: type.id,
+          level: lv || null,
+          content,
+          approved: !!approvedMap[key],
+        });
+      });
+    });
+    return list;
+  };
 
   const handleSubmit = async () => {
     if (!mapelId || !elemenId) return;
@@ -686,11 +1103,12 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     });
 
     // POST /content/generate untuk mindmap (tanpa level)
+    // Contract Tim 3: response mindmap → { tipe: "mindmap", level: null, content: { nodes: [...] } }
     promises.push(
       generateContent({ ...basePayload, tipe: 'mindmap' })
         .then(res => {
-          resultMap['mindmap__'] = res?.content?.content
-            ? res.content.content
+          resultMap['mindmap__'] = res?.content?.nodes?.length
+            ? res.content.nodes
             : generatePlaceholderKonten('mindmap', '', config);
         })
         .catch(() => {
@@ -720,7 +1138,9 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     });
 
     // POST /game/generate untuk 3 level — Tim 4 deliver HTML
-    // game.js payload: mapel_id, elemen_id, elemen_label, materi?, materi_id?, kelas_id, level, jenjang?
+    // Payload wajib: mapel_id, elemen_id, elemen_label, kelas_id, jenjang, level, atp
+    // atp WAJIB sesuai contract Tim 4 — untuk konteks skenario game
+    // revisi_guru: "" saat generate pertama; diisi saat guru edit di panel review
     LEVELS.forEach(level => {
       promises.push(
         generateGame({
@@ -731,7 +1151,9 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
           materi_id: basePayload.materi_id,
           kelas_id: kelasId || '__semua__',
           jenjang: basePayload.jenjang,
+          atp: basePayload.atp,
           level,
+          revisi_guru: '',
         })
           .then(res => {
             resultMap[`game__${level}`] = res?.game_id
@@ -770,6 +1192,14 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
 
   const handlePublish = async () => {
     if (!allApproved || publishing) return;
+
+    // FIX: Validasi jumlah konten sebelum publish — harus tepat 16 item
+    const kontenList = buildKontenList();
+    if (kontenList.length < EXPECTED_KONTEN_COUNT) {
+      alert(`Tidak semua konten berhasil digenerate. Dibutuhkan ${EXPECTED_KONTEN_COUNT} item, saat ini hanya ${kontenList.length}. Silakan generate ulang konten yang gagal.`);
+      return;
+    }
+
     setPublishing(true);
     try {
       // Bangun konten_list dari semua KONTEN_TYPES yang disetujui guru
@@ -777,17 +1207,6 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
       const snakeM = config.materi
         ? config.materi.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
         : null;
-      const kontenList = KONTEN_TYPES.flatMap(type => {
-        const levels = type.hasLevel ? LEVELS : [''];
-        return levels
-          .filter(lv => approvedMap[`${type.id}__${lv}`])
-          .map(lv => ({
-            tipe: type.id,          // "tipe" bukan "type"
-            level: lv || null,       // null untuk mindmap
-            content: kontenMap[`${type.id}__${lv}`] || {},
-            approved: true,
-          }));
-      });
       await publishKonten({
         mapel_id: config.mapelId,
         elemen_id: config.elemenId,
@@ -863,30 +1282,38 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
 
             {/* Mata Pelajaran */}
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, display: 'block', marginBottom: 7 }}>Mata Pelajaran</label>
+              <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, display: 'block', marginBottom: 7 }}>
+                Mata Pelajaran
+                {mapelLoading && <span style={{ marginLeft: 6, fontSize: FS.xs, color: C.teal, fontWeight: 400 }}>Memuat…</span>}
+              </label>
               <select value={mapelId} onChange={e => { setMapelId(e.target.value); setElemenId(''); }} style={{ ...INP }}
+                disabled={mapelLoading}
                 onFocus={e => e.target.style.borderColor = C.teal} onBlur={e => e.target.style.borderColor = C.tealXL}>
-                <option value="">Pilih Mata pelajaran</option>
-                {mapelList.map(m => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}
+                <option value="">{mapelLoading ? 'Memuat mata pelajaran…' : 'Pilih Mata pelajaran'}</option>
+                {mapelList.map(m => <option key={m.id} value={m.id}>{m.icon ? `${m.icon} ` : ''}{m.label}</option>)}
               </select>
             </div>
 
             {/* Capaian Pembelajaran — muncul setelah mapel dipilih */}
-            {mapelId && selectedMapel && (
-              <CapaianPembelajaranBox
-                mapelId={mapelId}
-                mapelColor={selectedMapel.color}
-                mapelLabel={selectedMapel.label}
-              />
-            )}
+            <div style={{ marginBottom: 14 }}>
+              {mapelId && selectedMapel && (
+                <CapaianPembelajaranBox
+                  mapelId={mapelId}
+                  mapelLabel={selectedMapel.label}
+                />
+              )}
+            </div>
 
             {/* Elemen */}
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, display: 'block', marginBottom: 7 }}>Elemen</label>
+              <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, display: 'block', marginBottom: 7 }}>
+                Elemen
+                {elemenLoading && <span style={{ marginLeft: 6, fontSize: FS.xs, color: C.teal, fontWeight: 400 }}>Memuat…</span>}
+              </label>
               <select value={elemenId} onChange={e => setElemenId(e.target.value)} style={{ ...INP }}
                 onFocus={e => e.target.style.borderColor = C.teal} onBlur={e => e.target.style.borderColor = C.tealXL}
-                disabled={!mapelId}>
-                <option value="">Pilih Elemen</option>
+                disabled={!mapelId || elemenLoading}>
+                <option value="">{elemenLoading ? 'Memuat elemen…' : 'Pilih Elemen'}</option>
                 {elemenList.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
               </select>
             </div>
@@ -915,7 +1342,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
                 fontWeight: 700, fontSize: FS.base, cursor: (mapelId && elemenId && phase !== 'result') ? 'pointer' : 'not-allowed',
                 fontFamily: 'inherit',
               }}>
-              {phase === 'result' ? 'Konten Digenerate' : 'Generate Konten'}
+              {phase === 'result' ? ' Konten Dibuat' : 'Buat Konten'}
             </button>
           </div>
         </div>
@@ -929,7 +1356,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
             <div style={{ textAlign: 'center', color: C.slate }}>
               <div style={{ fontSize: 40, marginBottom: 12, opacity: .3 }}>📐</div>
               <div style={{ fontSize: FS.lg, fontWeight: 600, color: C.darkL }}>Preview konten belajar akan muncul disini</div>
-              <div style={{ fontSize: FS.md, marginTop: 4 }}>Isi form dan klik Generate Konten</div>
+              <div style={{ fontSize: FS.md, marginTop: 4 }}>Isi form dan klik Buat Konten</div>
             </div>
           </div>
         )}
@@ -938,7 +1365,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ width: 52, height: 52, border: `4px solid ${C.tealXL}`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .9s linear infinite', margin: '0 auto 16px' }} />
-              <div style={{ fontSize: FS.lg, fontWeight: 600, color: C.dark }}>Sedang Generate Konten…</div>
+              <div style={{ fontSize: FS.lg, fontWeight: 600, color: C.dark }}>Sedang Membuat Konten…</div>
               <div style={{ fontSize: FS.md, color: C.slate, marginTop: 4 }}>AI sedang membuat konten berdasarkan ATP dan elemen yang dipilih</div>
             </div>
           </div>
@@ -990,7 +1417,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
                 Batal
               </button>
               <button onClick={handlePublish} disabled={!allApproved || publishing}
-                style={{ flex: 2, padding: '12px 0', borderRadius: 10, border: 'none', background: allApproved ? C.teal : '#CBD5E0', color: allApproved ? C.white : C.slate, fontSize: FS.base, fontWeight: 700, cursor: (allApproved && !publishing) ? 'pointer' : 'not-allowed', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                style={{ flex: 2, padding: '12px 0', borderRadius: 10, border: 'none', background: allApproved ? `linear-gradient(135deg,${C.teal},${C.tealL})` : '#CBD5E0', color: allApproved ? C.white : C.slate, fontSize: FS.base, fontWeight: 700, cursor: (allApproved && !publishing) ? 'pointer' : 'not-allowed', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 {publishing ? (
                   <>
                     <span style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,.4)', borderTopColor: C.white, borderRadius: '50%', animation: 'spin .7s linear infinite', flexShrink: 0 }} />

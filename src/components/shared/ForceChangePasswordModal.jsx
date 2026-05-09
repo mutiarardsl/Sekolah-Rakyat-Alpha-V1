@@ -76,7 +76,7 @@ export default function ForceChangePasswordModal({ userName = '', role = 'guru',
         try {
             // FIX: guru first-login tidak punya old_password field di modal ini.
             // Backend menerima empty string sebagai sinyal first-login change.
-            await changePassword({ old_password: '', new_password: newPass, user_id: userId });
+            await changePassword({ old_password: '', new_password: newPass });
             setDone(true);
             setTimeout(() => onSuccess?.(), 1400);
         } catch (err) {

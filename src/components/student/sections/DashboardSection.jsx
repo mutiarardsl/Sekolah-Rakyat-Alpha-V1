@@ -9,11 +9,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { Card, EmptyState } from '../../shared/UI';
-import { getMentorInsight } from '../../../api/mentor'; // FIX ①: pakai api/mentor bukan fetch() langsung
-import { getRekomendasiSiswa, } from '../../../api/admin'; // FIX P1: load notifikasi bell dari backend
-import { getLearningProgress } from '../../../api/content'; // FIX P3
+import { getProgressSiswa, getRecommendations, getContentInsight } from '../../../api/content'; // FIX P3 + rekomendasi RAG + insight Tim 3
+import { getRekomendasiSiswa, markRekomendasiBaca } from '../../../api/admin'; // FIX P1: load notifikasi bell dari backend
+
 import {
-  STUDENTS,
   ADMIN_MAPEL_LIST,
   KURIKULUM_ELEMEN,
   KURIKULUM,
@@ -23,8 +22,8 @@ import { useStudentStore } from '../../../stores/studentStore';
 import { useAuth } from '../../../context/AuthContext';
 
 //bobot 
-const MC_WEIGHT = 0.7;
-const ESSAY_WEIGHT = 0.3;
+const MC_WEIGHT = 0.6;
+const ESSAY_WEIGHT = 0.4;
 
 /* ── Fallback rekomendasi awal dari mapel pilihan siswa ─────────────────── */
 // Diambil dari elemen pertama masing-masing mapel yang dipilih siswa saat onboarding.
@@ -53,10 +52,10 @@ const buildRekomendasiAwal = (selectedMapels) => {
       mapelId,
       mapelLabel: mapelMeta?.label || mapelId,
       mapelIcon: mapelMeta?.icon || '📚',
-      mapelColor: mapelMeta?.color || C.teal,
       elemenId: firstElemen.id,
       elemenLabel: firstElemen.label,
       materiId: firstMateri,
+      materi: hasMateri ? firstMateri : null,  // null jika elemen tidak punya breakdown materi
       // isMateriLevel: true jika elemen punya breakdown materi → pretest per materi
       isMateriLevel: hasMateri,
       targetMateriId: hasMateri ? firstMateri : null,
@@ -224,7 +223,13 @@ const NotifikasiBell = ({ siswaId }) => {
     return diffHari === 1 ? 'Kemarin' : `${diffHari} hari lalu`;
   };
 
-  const markRead = (id) => setNotifs(p => p.map(n => n.id === id ? { ...n, dibaca: true } : n));
+  // PATCH /guru/rekomendasi/:id/baca — fire-and-forget, state lokal tetap update meski API gagal
+  const markRead = (id) => {
+    setNotifs(p => p.map(n => n.id === id ? { ...n, dibaca: true } : n));
+    markRekomendasiBaca(id).catch(() => {
+      // Silent fail — state lokal sudah berubah, tidak perlu rollback UX
+    });
+  };
   const deleteNotif = (e, id) => {
     e.stopPropagation();
     setNotifs(p => p.filter(n => n.id !== id));
@@ -406,7 +411,7 @@ const NotifikasiBell = ({ siswaId }) => {
 
 /*  HERO GABUNGAN  (tanggal · greeting · streak · AI Insight + Bell Notif)  */
 /* ─────────────────────────────────────────────────────────────────────── */
-const HeroWithInsight = ({ adminData, totalSesiHours, avgQuiz, topMapel, dominantEmosi, streakDays }) => {
+const HeroWithInsight = ({ adminData, totalSesiHours, totalPoinKuiz, totalTopik, streakDays }) => {
   const [aiInsight, setAiInsight] = useState(null);
   const [loading, setLoading] = useState(false);
   const [displayed, setDisplayed] = useState('');
@@ -432,22 +437,21 @@ const HeroWithInsight = ({ adminData, totalSesiHours, avgQuiz, topMapel, dominan
     }, 18);
   };
 
-  // FIX ①: pakai getMentorInsight() dari api/mentor.js
-  //  - endpoint: POST /mentor/insight  (bukan /api/ai-insight)
-  //  - melewati apiClient → auto-attach JWT → diintersep MSW
-  //  - payload sesuai contract v2.1.0
+  // Sesuai flow .md: insight di hero banner di-handle oleh Tim 3 RAG (bukan Tim 5 mentor).
+  // Body KPI yang dikirim ke Tim 3: streak, total_topik, total_poin_kuiz, total_durasi.
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const result = await getMentorInsight({
+        // Sesuai flow .md: insight dari Tim 3 RAG, body KPI: streak, total_topik, total_poin_kuiz, total_durasi
+        const result = await getContentInsight({
           siswa_id: authUser?.id,
           nama: authUser?.nama || adminData?.nama || 'Siswa',
-          top_mapel: topMapel || null,
-          emosi_dominan: dominantEmosi || null,
-          total_jam: totalSesiHours,
-          rata_quiz: avgQuiz,
-          streak_hari: streakDays,
+          // KPI body untuk Tim 3 RAG sesuai spesifikasi flow
+          streak: streakDays,
+          total_topik: totalTopik,
+          total_poin_kuiz: totalPoinKuiz,
+          total_durasi: parseFloat(totalSesiHours) || 0,
         });
         const t = result?.text || '';
         if (t) { setAiInsight(t); typeText(t); }
@@ -594,27 +598,31 @@ const RekomCard = ({ rekom, onStart }) => {
   return (
     <div style={{
       background: C.white, borderRadius: 14, overflow: 'hidden',
-      border: `1.5px solid ${rekom.mapelColor}22`,
-      boxShadow: `0 2px 12px ${rekom.mapelColor}10`,
-      transition: 'transform .2s, box-shadow .2s',
       display: 'flex', flexDirection: 'column',
     }}
-      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 6px 20px ${rekom.mapelColor}22`; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = `0 2px 12px ${rekom.mapelColor}10`; }}>
-      <div style={{ height: 4, background: `linear-gradient(90deg,${rekom.mapelColor},${rekom.mapelColor}88)` }} />
+      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 6px 20px ${C.tealL}22`; }}
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = `0 2px 12px ${C.teal}20`; }}>
+      <div style={{ height: 4, background: `linear-gradient(90deg,${C.teal}80,${C.teal}90)` }} />
       <div style={{ padding: '14px 14px 16px', display: 'flex', flexDirection: 'column', flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, marginBottom: 8 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: `${rekom.mapelColor}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, flexShrink: 0 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 10, background: `${C.teal}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, flexShrink: 0 }}>
             {rekom.mapelIcon}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: FS.xs, fontWeight: 700, color: rekom.mapelColor, textTransform: 'uppercase', letterSpacing: 0.8 }}>{rekom.mapelLabel}</div>
-            {rekom.elemenLabel && <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 1 }}>{rekom.elemenLabel}</div>}
-            <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, lineHeight: 1.3, marginTop: 2 }}>{rekom.materiId}</div>
+            <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.teal, textTransform: 'uppercase', letterSpacing: 0.8 }}>{rekom.mapelLabel}</div>
+            {/* Breadcrumb: elemenLabel saja jika tidak ada materi, atau elemenLabel — materi jika ada */}
+            <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 1, lineHeight: 1.4 }}>
+              {rekom.elemenLabel}
+              {rekom.materi ? ` — ${rekom.materi}` : ''}
+            </div>
+            {/* Judul utama card: materi (jika ada) atau elemenLabel */}
+            <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, lineHeight: 1.3, marginTop: 2 }}>
+              {rekom.materi || rekom.elemenLabel}
+            </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end', flexShrink: 0 }}>
             {rekom.tag && (
-              <span style={{ fontSize: FS.xs, padding: '2px 7px', borderRadius: 99, background: `${rekom.mapelColor}15`, color: rekom.mapelColor, fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: FS.xs, padding: '2px 7px', borderRadius: 99, background: `${C.teal}15`, color: C.teal, fontWeight: 700, whiteSpace: 'nowrap' }}>
                 {rekom.tag}
               </span>
             )}
@@ -625,7 +633,7 @@ const RekomCard = ({ rekom, onStart }) => {
         </div>
         <div style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.55, marginBottom: 10, flex: 1 }}>{rekom.alasan}</div>
         <button onClick={() => onStart(rekom)}
-          style={{ width: '100%', padding: '9px 0', borderRadius: 9, border: 'none', background: `linear-gradient(135deg,${rekom.mapelColor},${rekom.mapelColor}cc)`, color: C.white, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'opacity .2s' }}
+          style={{ width: '100%', padding: '9px 0', borderRadius: 9, border: 'none', background: `linear-gradient(135deg,${C.teal},${C.teal}cc)`, color: C.white, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'opacity .2s' }}
           onMouseEnter={e => e.currentTarget.style.opacity = '.85'}
           onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
           📚 Mulai Belajar
@@ -636,18 +644,18 @@ const RekomCard = ({ rekom, onStart }) => {
 };
 
 const ProgressCard = ({ m, onResume }) => (
-  <div style={{ background: C.white, borderRadius: 12, padding: '12px 14px', border: `1px solid ${m.mapelColor}22`, display: 'flex', alignItems: 'center', gap: 12 }}>
-    <div style={{ width: 36, height: 36, borderRadius: 10, background: `${m.mapelColor}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, flexShrink: 0 }}>
+  <div style={{ background: C.white, borderRadius: 12, padding: '12px 14px', border: `1px solid ${C.teal}22`, display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ width: 36, height: 36, borderRadius: 10, background: `${C.teal}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, flexShrink: 0 }}>
       {m.mapelIcon}
     </div>
     <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: FS.xs, fontWeight: 700, color: m.mapelColor }}>{m.mapelLabel}</div>
+      <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.teal }}>{m.mapelLabel}</div>
       <div style={{ fontSize: FS.base, fontWeight: 600, color: C.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.materiId}</div>
     </div>
     <button onClick={() => onResume(m)}
-      style={{ padding: '7px 14px', borderRadius: 8, border: `1.5px solid ${m.mapelColor}`, background: 'none', color: m.mapelColor, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, transition: 'all .2s', whiteSpace: 'nowrap' }}
-      onMouseEnter={e => { e.currentTarget.style.background = m.mapelColor; e.currentTarget.style.color = C.white; }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = m.mapelColor; }}>
+      style={{ padding: '7px 14px', borderRadius: 8, border: `1.5px solid ${C.teal}`, background: 'none', color: C.teal, fontSize: FS.md, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, transition: 'all .2s', whiteSpace: 'nowrap' }}
+      onMouseEnter={e => { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = C.white; }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = C.teal; }}>
       Lanjutkan →
     </button>
   </div>
@@ -663,31 +671,25 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
   const CURRENT_STUDENT_ID = user?.id || null;
 
   /* ── Ambil data siswa untuk KPI & AI Insight ── */
-  // Prioritas: gunakan data dari AuthContext (real-time) dan fallback ke STUDENTS master data
-  const studentDataFromMaster = STUDENTS?.find(s => s.id === CURRENT_STUDENT_ID);
-  // Merge: user dari auth (nama, email, dll) + riwayat dari master data
-  const studentData = CURRENT_STUDENT_ID
-    ? { ...(studentDataFromMaster || {}), ...user, riwayat: studentDataFromMaster?.riwayat || [] }
-    : null;
+  // Sumber tunggal: user dari AuthContext (real-time GET /auth/me).
+  // Tidak lagi fallback ke STUDENTS masterData — agar user baru tidak dapat data kosong.
+  const studentData = user ? { ...user, riwayat: [] } : null;
   const riwayat = studentData?.riwayat || [];
 
-  // FIX P3: fetch progress real dari GET /content/progress — augment data lokal
-  // PENTING: API hanya dipakai jika data lokal (progressData / riwayat) kosong.
-  // Jangan override data lokal yang sudah ada — data MSW/backend bisa berbeda dengan master data.
+  // Fetch progress real dari GET /content/progress/siswa — augment data lokal
+  // Response: { streak_hari, total_topik, total_poin_quiz, total_durasi_menit,
+  //             rata_rata_quiz, sudah_selesai_ids, belum_selesai_ids, by_mapel }
+  // Dijalankan selalu saat komponen mount dengan siswa_id dari AuthContext.
   const [apiProgress, setApiProgress] = useState(null);
   useEffect(() => {
-    // Jika sudah ada data lokal yang valid, tidak perlu fetch API
-    const hasLocalData = (progressData?.total_poin_quiz != null) ||
-      ((studentData?.riwayat || []).length > 0);
-    if (hasLocalData) return;
-    getLearningProgress({ siswa_id: CURRENT_STUDENT_ID })
+    if (!CURRENT_STUDENT_ID) return;
+    getProgressSiswa({ siswa_id: CURRENT_STUDENT_ID })
       .then(data => setApiProgress(data))
-      .catch(() => { /* silent */ });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => { /* silent — komponen tetap render dari data lokal */ });
+  }, [CURRENT_STUDENT_ID]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Rekomendasi: satu sumber tunggal tanpa race condition.
   // pretestResult.wrongTopics override saat siswa baru selesai pretest.
-  // Ketika RAG Tim 3 live, tambahkan kembali useEffect getRecommendations() di sini.
   const selectedMapels = useStudentStore(s => s.selectedMapels);
 
   // REVISI FASE 3: localQuizScore = akumulasi agregasi (MC 70% + Essay 30%) semua materi
@@ -756,11 +758,60 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
     return top ? top[0] : null;
   })();
 
-  /* Bangun daftar rekomendasi — 2 sumber dengan prioritas jelas:
-   * 1. wrongTopics dari pretest (paling relevan — siswa baru selesai pretest)
-   * 2. buildRekomendasiAwal(selectedMapels) — elemen pertama tiap mapel pilihan siswa
-   * Ketika RAG Tim 3 live, tambahkan sumber ke-3 dari GET /content/recommend.
+  /* ── Rekomendasi siswa — sesuai flow .md ────────────────────────────────────
+   * Dua kasus yang harus ditangani FE:
+   * 1. first_login = true → tampilkan elemen/materi pertama dari mapel yang dipilih siswa
+   *    saat onboarding (ActivasiPage). Diatur langsung dari FE (tidak dari RAG).
+   * 2. Rekomendasi selanjutnya → dari Tim 3 RAG via GET /content/recommend.
+   *    Payload: siswa_id, levels (dari studentLevels store), completed_ids,
+   *    in_progress_ids (dari progressData).
+   * Fallback: jika RAG belum tersedia, pakai buildRekomendasiAwal (elemen pertama).
    */
+  const studentLevelsForRekom = useStudentStore(s => s.studentLevels);
+  const [ragRekom, setRagRekom] = useState(null);
+  const isFirstLoginFlow = user?.is_first_login === true;
+
+  useEffect(() => {
+    if (!CURRENT_STUDENT_ID) return;
+    // Kasus 2: siswa sudah pernah belajar → minta rekomendasi dari Tim 3 RAG
+    if (!isFirstLoginFlow && (progressData.sudahSelesai.length > 0 || progressData.belumSelesai.length > 0)) {
+      getRecommendations({
+        siswa_id: CURRENT_STUDENT_ID,
+        levels: studentLevelsForRekom,
+        completed_ids: progressData.sudahSelesai.map(p => `${p.mapelId}__${p.materiId}`),
+        in_progress_ids: progressData.belumSelesai.map(p => `${p.mapelId}__${p.materiId}`),
+      })
+        .then(data => {
+          if (Array.isArray(data) && data.length > 0) {
+            // Map field snake_case dari RAG response ke camelCase yang dibutuhkan RekomCard
+            const mapped = data.map((item, i) => {
+              const mapelMeta = MAPEL_LIST_ALL.find(m => m.id === item.mapel_id);
+              return {
+                id: `rekom_rag_${i}`,
+                mapelId: item.mapel_id,
+                mapelLabel: mapelMeta?.label || item.mapel_id,
+                mapelIcon: mapelMeta?.icon || '📚',
+                elemenId: item.elemen_id,
+                elemenLabel: item.elemen_label,
+                // materi bisa null → fallback ke elemen_label sebagai materiId display
+                materiId: item.materi || item.elemen_label,
+                materi: item.materi || null,
+                materi_id: item.materi_id || null,
+                isMateriLevel: !!item.materi_id,
+                targetMateriId: item.materi_id || null,
+                alasan: item.alasan || `Lanjutkan belajar ${item.elemen_label}.`,
+                tag: '⭐ Rekomendasi AI',
+              };
+            });
+            setRagRekom(mapped);
+          }
+        })
+        .catch(() => { /* silent — fallback ke rekomAwal */ });
+    }
+  }, [CURRENT_STUDENT_ID, isFirstLoginFlow]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Kasus 1: first_login → elemen pertama dari mapel pilihan siswa (FE, bukan RAG)
+  // Kasus 2: sudah belajar → dari RAG, fallback ke rekomAwal jika RAG belum ada
   const rekomAwal = buildRekomendasiAwal(selectedMapels);
   const rekomList = (pretestResult?.wrongTopics?.length > 0)
     ? pretestResult.wrongTopics.slice(0, 3).map((wt, i) => ({
@@ -770,7 +821,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
         : `${wt.materiId} perlu penguatan. Mulai dari konsep dasar untuk fondasi yang kuat.`,
       tag: i === 0 ? '⚡ Prioritas' : '📝 Perlu Latihan',
     }))
-    : rekomAwal;
+    : (ragRekom || rekomAwal);
 
   return (
     <div style={{ overflowY: 'auto', height: '100%', width: '100%', padding: 'var(--content-py, 20px) var(--content-px, 22px)', background: C.bg }}>
@@ -779,9 +830,8 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
       <HeroWithInsight
         adminData={studentData}
         totalSesiHours={totalSesiHours}
-        avgQuiz={avgQuiz}
-        topMapel={topMapel}
-        dominantEmosi={dominantEmosi}
+        totalPoinKuiz={totalScore}
+        totalTopik={progressData.belumSelesai.length + progressData.sudahSelesai.length}
         streakDays={streakDays}
       />
 
@@ -789,9 +839,9 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
           { icon: '⚡', val: `${streakDays} Hari`, label: 'Streak Belajar', color: C.amber },
-          { icon: '🎓', val: progressData.sudahSelesai.length, label: 'Topik Selesai', color: C.green },
+          { icon: '🎓', val: progressData.sudahSelesai.length + progressData.belumSelesai.length, label: 'Total Topik', color: C.green }, // total_topik = semua elemen/materi yang pernah dipelajari
           { icon: '🏆', val: totalScore, label: 'Poin Quiz', color: C.teal },
-          { icon: '⏳', val: fmtDurasi(totalSesiHours), label: 'Total Belajar', color: C.purple },
+          { icon: '⏳', val: fmtDurasi(totalSesiHours), label: 'Total Belajar', color: C.teal },
         ].map(s => (
           <Card key={s.label} style={{ padding: '14px 12px', textAlign: 'center' }}>
             <div style={{ fontSize: 22, marginBottom: 4 }}>{s.icon}</div>
@@ -824,7 +874,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
                   // Tidak ada elemenId — langsung buka chat (fallback)
                   openChatWithWebcam({
                     mapelId, mapelLabel: rekom.mapelLabel,
-                    mapelIcon: rekom.mapelIcon, mapelColor: rekom.mapelColor,
+                    mapelIcon: rekom.mapelIcon,
                     materiId, source: 'dashboard',
                   });
                   return;
@@ -844,7 +894,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
                     targetMateriId: targetMateriId || null,
                     materiData: {
                       mapelId, mapelLabel: rekom.mapelLabel,
-                      mapelIcon: rekom.mapelIcon, mapelColor: rekom.mapelColor,
+                      mapelIcon: rekom.mapelIcon,
                       materiId, elemenId, elemenLabel,
                       source: 'dashboard',
                     },
@@ -859,7 +909,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
 
                   openChatWithWebcam({
                     mapelId, mapelLabel: rekom.mapelLabel,
-                    mapelIcon: rekom.mapelIcon, mapelColor: rekom.mapelColor,
+                    mapelIcon: rekom.mapelIcon,
                     materiId, elemenId, elemenLabel,
                     level: currentLevel,
                     source: 'dashboard',
@@ -895,7 +945,6 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
                   mapelId: materi.mapelId,
                   mapelLabel: materi.mapelLabel,
                   mapelIcon: materi.mapelIcon,
-                  mapelColor: materi.mapelColor,
                   materiId: materi.materiId,
                   elemenId: materi.elemenId,
                   elemenLabel: materi.elemenLabel,

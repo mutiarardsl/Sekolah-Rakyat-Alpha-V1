@@ -14,13 +14,6 @@ import { C, FONTS, FS } from '../../../styles/tokens';
 import { KURIKULUM_ELEMEN, CAPAIAN_PEMBELAJARAN } from '../../../data/masterData';
 
 const ICON_OPTIONS = ["📐", "🔬", "📖", "🌍", "🌐", "⚽", "🎨", "🇮🇩", "🎵", "💻", "🧪", "📊", "🏛️", "🔭", "🧮", "📗", "🖊️", "🌿"];
-const COLOR_OPTIONS = [
-  { label: "Teal", value: "#0D5C63" }, { label: "Orange", value: "#DD6B20" },
-  { label: "Purple", value: "#6B46C1" }, { label: "Green", value: "#2F855A" },
-  { label: "Blue", value: "#2B6CB0" }, { label: "Brown", value: "#C05621" },
-  { label: "Gold", value: "#B7791F" }, { label: "Red", value: "#9B2C2C" },
-  { label: "Pink", value: "#D53F8C" }, { label: "Slate", value: "#4A5568" },
-];
 
 const JENJANG_LIST = [
   { id: "X", label: "Kelas X" },
@@ -69,7 +62,7 @@ const PilihKurikulum = ({ selectedKurikulum, setSelectedKurikulum }) => (
 );
 
 /* ── CapaianPembelajaranPanel ─────────────────────────────────────── */
-const CapaianPembelajaranPanel = ({ mapelId, mapelColor, mapelLabel, compact = false }) => {
+const CapaianPembelajaranPanel = ({ mapelId, mapelLabel, compact = false }) => {
   const [expanded, setExpanded] = useState(!compact);
   const cp = CAPAIAN_PEMBELAJARAN[mapelId];
   if (!cp) return null;
@@ -77,8 +70,6 @@ const CapaianPembelajaranPanel = ({ mapelId, mapelColor, mapelLabel, compact = f
   return (
     <div style={{
       borderRadius: compact ? 10 : 12,
-      border: `1.5px solid ${mapelColor}28`,
-      background: `${mapelColor}08`,
       overflow: 'hidden',
       marginBottom: compact ? 0 : 20,
     }}>
@@ -95,12 +86,11 @@ const CapaianPembelajaranPanel = ({ mapelId, mapelColor, mapelLabel, compact = f
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
           <span style={{
             width: compact ? 22 : 26, height: compact ? 22 : 26, borderRadius: 6,
-            background: `${mapelColor}20`, color: mapelColor,
             fontSize: compact ? 12 : 14, display: 'flex', alignItems: 'center', justifyContent: 'center',
             flexShrink: 0,
           }}>🎯</span>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: compact ? 11 : 12, fontWeight: 700, color: mapelColor }}>
+            <div style={{ fontSize: compact ? 11 : 12, fontWeight: 700, color: C.teal }}>
               Capaian Pembelajaran
             </div>
             {!expanded && (
@@ -111,8 +101,8 @@ const CapaianPembelajaranPanel = ({ mapelId, mapelColor, mapelLabel, compact = f
           </div>
         </div>
         <span style={{
-          fontSize: FS.xs, color: mapelColor, fontWeight: 700,
-          background: `${mapelColor}15`, borderRadius: 6,
+          fontSize: FS.xs, color: C.teal, fontWeight: 700,
+          borderRadius: 6,
           padding: '2px 7px', flexShrink: 0,
         }}>
           {expanded ? '▲ Tutup' : `▼ Lihat CP`}
@@ -123,24 +113,24 @@ const CapaianPembelajaranPanel = ({ mapelId, mapelColor, mapelLabel, compact = f
       {expanded && (
         <div style={{
           padding: compact ? '0 12px 10px' : '0 14px 14px',
-          borderTop: `1px solid ${mapelColor}18`,
+          borderTop: `1px solid ${C.teal}18`,
         }}>
           {/* Fase badge */}
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
-            background: `${mapelColor}15`, borderRadius: 99,
+            borderRadius: 99,
             padding: '3px 10px', marginBottom: 8, marginTop: 8,
           }}>
             <span style={{ fontSize: 10 }}>📚</span>
-            <span style={{ fontSize: FS.xs, fontWeight: 700, color: mapelColor }}>{cp.fase}</span>
+            <span style={{ fontSize: FS.xs, fontWeight: 700, color: C.teal }}>{cp.fase}</span>
           </div>
 
           {/* Deskripsi */}
           <div style={{
             fontSize: compact ? 11 : 12, color: '#4A5568', lineHeight: 1.7,
             marginBottom: 10, fontStyle: 'italic',
-            background: '#FFFFFF88', borderRadius: 8,
-            padding: '8px 10px', border: `1px solid ${mapelColor}15`,
+            borderRadius: 8,
+            padding: '8px 10px', border: `1px solid ${C.teal}15`,
           }}>
             "{cp.deskripsi}"
           </div>
@@ -165,13 +155,16 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
   const [editIdx, setEditIdx] = useState(null);
   const [editVal, setEditVal] = useState("");
 
-  // CP state — load from masterData jika ada, atau dari modalMapel.cp
+  // CP state — prioritas: (1) modalMapel.cp (camelCase dari form), (2) fase/deskripsi_cp dari
+  // root data API (snake_case), (3) masterData hardcoded, (4) kosong
   const masterCP = CAPAIAN_PEMBELAJARAN[modalMapel.id];
   const initialCP = modalMapel.cp
     ? modalMapel.cp
-    : masterCP
-      ? { fase: masterCP.fase, deskripsi: masterCP.deskripsi }
-      : { fase: "", deskripsi: "" };
+    : (modalMapel.fase || modalMapel.deskripsi_cp)
+      ? { fase: modalMapel.fase || '', deskripsi: modalMapel.deskripsi_cp || '' }
+      : masterCP
+        ? { fase: masterCP.fase, deskripsi: masterCP.deskripsi }
+        : { fase: "", deskripsi: "" };
 
   const [cp, setCp] = useState(initialCP);
 
@@ -227,7 +220,7 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
         </div>
 
         {/* Ikon */}
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 22 }}>
           <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.dark, display: "block", marginBottom: 8 }}>Ikon</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {ICON_OPTIONS.map(ico => (
@@ -237,21 +230,6 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
                   border: form.icon === ico ? `2px solid ${C.teal}` : `1px solid ${C.tealXL}`,
                   background: form.icon === ico ? C.tealXL : C.white
                 }}>{ico}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Warna */}
-        <div style={{ marginBottom: 22 }}>
-          <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.dark, display: "block", marginBottom: 8 }}>Warna</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {COLOR_OPTIONS.map(c => (
-              <button key={c.value} onClick={() => setF("color", c.value)}
-                style={{
-                  padding: "4px 10px", borderRadius: 99, fontSize: FS.sm, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                  background: c.value + "18", color: c.value,
-                  border: form.color === c.value ? `2px solid ${c.value}` : `1px solid ${c.value}44`
-                }}>{c.label}</button>
             ))}
           </div>
         </div>
@@ -309,7 +287,7 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
         <div style={{ marginBottom: 22 }}>
           <div style={{ marginBottom: 10 }}>
             <label style={{ fontSize: FS.sm, fontWeight: 700, color: C.dark, display: "block", marginBottom: 3 }}>
-              🧩 Daftar Elemen ATP{" "}
+              🧩 Daftar Elemen{" "}
               <span style={{ fontWeight: 400, color: C.slate }}>({elemen.length} elemen)</span>
             </label>
             <div style={{ fontSize: FS.xs, color: C.slate, lineHeight: 1.5 }}>
@@ -344,12 +322,12 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
               textAlign: "center", padding: "20px", background: C.white,
               borderRadius: 10, fontSize: FS.md, color: C.slate, border: `1.5px dashed ${C.tealXL}`
             }}>
-              Belum ada elemen. Tambahkan elemen ATP di atas.
+              Belum ada elemen. Tambahkan elemen di atas.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {elemen.map((el, idx) => (
-                <div key={el.id || idx} style={{
+                <div key={el.id ? `${el.id}_${idx}` : `el_${idx}`} style={{
                   display: "flex", alignItems: "center", gap: 8,
                   background: C.white, borderRadius: 8, padding: "8px 10px",
                   border: `1px solid ${C.tealXL}`
@@ -405,36 +383,61 @@ const ModalMapel = ({ modalMapel, setModalMapel, saveMapelLocal }) => {
 };
 
 /* ── PageKurikulum ───────────────────────────────────────────────── */
-const PageKurikulum = ({ mapelList, kelasList, guruList, setMapelList, setGuruList, showToast }) => {
+const PageKurikulum = ({ mapelList, kelasList, guruList, setMapelList, setGuruList, saveMapel, deleteMapel, showToast }) => {
   const [selectedJenjang, setSelectedJenjang] = useState("X");
   const [selectedKurikulum, setSelectedKurikulum] = useState("merdeka");
   const [modalMapel, setModalMapel] = useState(null);
   const [konfirmHapus, setKonfirmHapus] = useState(null);
 
-  const emptyMapel = { label: "", icon: "📗", color: "#0D5C63", jamPerMinggu: 2, tipe: "Wajib", elemen: [] };
+  const emptyMapel = { label: "", icon: "📗", elemen: [] };
 
-  const saveMapelLocal = (data) => {
-    if (data.id) {
-      setMapelList(p => p.map(m => m.id === data.id ? { ...m, ...data } : m));
-      showToast(`✅ Mapel ${data.label} diperbarui`);
-    } else {
-      const newId = data.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 10) + `_${Date.now()}`.slice(-4);
-      setMapelList(p => [...p, { ...data, id: newId, jenjang: selectedJenjang }]);
-      showToast(`✅ Mapel ${data.label} ditambahkan ke Kelas ${selectedJenjang}`);
+  const saveMapelLocal = async (data) => {
+    const isEdit = !!data.id;
+    // Flatten nested `cp` object → fase & deskripsi_cp di root payload
+    const { cp, elemen: elemenData, ...rest } = data;
+    const flatData = {
+      ...rest,
+      // JANGAN drop elemen — diteruskan ke saveMapel agar bisa POST ke elemenApi
+      elemen: elemenData || [],
+      fase: cp?.fase || '',
+      deskripsi_cp: cp?.deskripsi || '',
+    };
+    // V3.1: field 'tingkat' (bukan 'jenjang') sesuai API contract
+    const payload = isEdit
+      ? { ...flatData, tingkat: flatData.tingkat || flatData.jenjang || selectedJenjang }
+      : (({ id: _drop, jenjang: _jn, ...r }) => ({ ...r, tingkat: selectedJenjang }))(flatData);
+    try {
+      await saveMapel(payload);
+      showToast(isEdit ? `✅ Mapel ${data.label} diperbarui` : `✅ Mapel ${data.label} ditambahkan ke Kelas ${selectedJenjang}`);
+    } catch {
+      if (isEdit) {
+        setMapelList(p => p.map(m => m.id === payload.id ? { ...m, ...payload } : m));
+        showToast(`✅ Mapel ${data.label} diperbarui`);
+      } else {
+        const newId = (data.label || '').toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "").slice(0, 10) + '_' + Date.now().toString().slice(-4);
+        setMapelList(p => [...p, { ...payload, id: newId }]);
+        showToast(`✅ Mapel ${data.label} ditambahkan ke Kelas ${selectedJenjang}`);
+      }
     }
     setModalMapel(null);
   };
 
-  const hapusMapel = (id) => {
+  const hapusMapel = async (id) => {
     const m = mapelList.find(x => x.id === id);
     const dipakaiDi = kelasList.filter(k => (k.mapelGuruMap || {})[id]);
     if (dipakaiDi.length > 0) {
       showToast(`⚠ ${m?.label} masih dipakai di: ${dipakaiDi.map(k => k.nama).join(", ")}`, C.red);
       setKonfirmHapus(null); return;
     }
-    setMapelList(p => p.filter(x => x.id !== id));
-    if (setGuruList) setGuruList(p => p.map(g => ({ ...g, mapelId: g.mapelId.filter(mid => mid !== id) })));
-    showToast(`🗑 ${m?.label} dihapus dari kurikulum`, C.red);
+    try {
+      await deleteMapel(id);
+      showToast(`🗑 ${m?.label} dihapus dari kurikulum`, C.red);
+    } catch {
+      // Fallback local jika API belum siap
+      setMapelList(p => p.filter(x => x.id !== id));
+      if (setGuruList) setGuruList(p => p.map(g => ({ ...g, mapel_ids: (g.mapel_ids || []).filter(mid => mid !== id) })));
+      showToast(`🗑 ${m?.label} dihapus dari kurikulum`, C.red);
+    }
     setKonfirmHapus(null);
   };
 
@@ -507,20 +510,21 @@ const PageKurikulum = ({ mapelList, kelasList, guruList, setMapelList, setGuruLi
             {mapelJenjang.map(m => {
               const usage = mapelUsage(m.id);
               const elemenArr = m.elemen || KURIKULUM_ELEMEN[m.id] || [];
-              const elemenCount = elemenArr.length;
+              // V3.1: prioritas jumlah_elemen dari API response, fallback ke array length
+              const elemenCount = m.jumlah_elemen ?? elemenArr.length;
               return (
                 <Card key={m.id} style={{ padding: "16px", transition: "transform .2s,box-shadow .2s" }}
                   onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(13,92,99,.1)"; }}
                   onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 12px rgba(26,35,50,.07)"; }}>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 10, background: m.color + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: FS.h1, flexShrink: 0 }}>{m.icon}</div>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: C.teal + "12", display: "flex", alignItems: "center", justifyContent: "center", fontSize: FS.h1, flexShrink: 0 }}>{m.icon}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: FS.lg, color: C.dark }}>{m.label}</div>
                       <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: m.color + "12", color: m.color, borderRadius: 99, padding: "2px 8px", fontWeight: 600 }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: C.teal + "12", color: C.teal, borderRadius: 99, padding: "2px 8px", fontWeight: 600 }}>
                           🧩 {elemenCount} elemen
                         </span>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: C.tealXL, color: C.teal, borderRadius: 99, padding: "2px 8px", fontWeight: 600 }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, background: C.teal + "12", color: C.teal, borderRadius: 99, padding: "2px 8px", fontWeight: 600 }}>
                           🏫 {usage.length} kelas
                         </span>
                       </div>
@@ -529,7 +533,7 @@ const PageKurikulum = ({ mapelList, kelasList, guruList, setMapelList, setGuruLi
 
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => setModalMapel({ ...emptyMapel, ...m, elemen: elemenArr })}
-                      style={{ flex: 1, padding: "7px", background: C.tealXL, border: "none", borderRadius: 8, fontSize: FS.md, color: C.teal, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>✏️ Edit</button>
+                      style={{ flex: 1, padding: "7px", background: `linear-gradient(135deg,${C.teal},${C.tealL})`, border: "none", borderRadius: 8, fontSize: FS.md, color: C.white, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>✏️ Edit</button>
                     <button onClick={() => setKonfirmHapus(m.id)}
                       style={{ padding: "7px 12px", background: C.redL, border: "none", borderRadius: 8, fontSize: FS.md, color: C.red, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>🗑</button>
                   </div>
@@ -558,7 +562,7 @@ const PageKurikulum = ({ mapelList, kelasList, guruList, setMapelList, setGuruLi
                 </div>
               ) : (
                 <div style={{ fontSize: FS.base, color: C.darkL, marginBottom: 16, lineHeight: 1.6 }}>
-                  Mapel beserta seluruh elemen ATP-nya akan dihapus dari kurikulum.
+                  Mapel beserta seluruh elemennya akan dihapus dari kurikulum.
                 </div>
               )}
               <div style={{ display: "flex", gap: 10 }}>

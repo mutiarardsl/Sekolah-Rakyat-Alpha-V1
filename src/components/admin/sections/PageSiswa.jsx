@@ -13,13 +13,7 @@ import { INP_STYLE } from './adminUtils';
 import { ConfirmDeleteModal } from './PageGuru';
 import BulkUploadSiswa from './BulkUploadSiswa';
 import AddMenu from './AddMenu';
-
-/* ── STATUS CONFIG ────────────────────────────────────────────────── */
-export const STATUS_CONFIG = {
-  'Belum Aktif': { bg: '#FFF8EE', color: '#B7791F', border: '#F6AD55', label: 'Belum Aktif', icon: '⏳' },
-  'Aktif': { bg: '#F0FFF4', color: '#276749', border: '#9AE6B4', label: 'Aktif', icon: '✅' },
-  'Non-Aktif': { bg: '#FFF5F5', color: '#C53030', border: '#FEB2B2', label: 'Non-Aktif', icon: '⛔' },
-};
+import { STATUS_CONFIG } from '../../../data/masterData';
 
 const normalizeStatus = (s) => {
   if (!s) return 'Aktif';
@@ -87,7 +81,7 @@ export const SiswaDrawer = ({ siswaId, siswaList, kelasList, getKelas, setSelect
 
   const s = siswaList.find(x => x.id === siswaId);
   if (!s) return null;
-  const kelas = getKelas(s.kelasId);
+  const kelas = getKelas(s.kelas_id || s.kelasId);
   const status = normalizeStatus(s.status);
 
   return (
@@ -104,7 +98,7 @@ export const SiswaDrawer = ({ siswaId, siswaList, kelasList, getKelas, setSelect
               <div style={{ fontWeight: 700, fontSize: FS.xl, color: C.dark }}>{s.nama}</div>
               <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2 }}>{s.email || '—'}</div>
               {kelas && (
-                <span style={{ marginTop: 6, display: 'inline-block', fontSize: FS.xs, padding: '2px 8px', borderRadius: 99, background: C.tealXL, color: C.teal, fontWeight: 700 }}>
+                <span style={{ marginTop: 6, display: 'inline-block', fontSize: FS.xs, padding: '2px 8px', borderRadius: 99, background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white, fontWeight: 700 }}>
                   {kelas.nama.replace('Kelas ', '')}
                 </span>
               )}
@@ -113,15 +107,6 @@ export const SiswaDrawer = ({ siswaId, siswaList, kelasList, getKelas, setSelect
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
-            {/* Status + bergabung */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-              <StatusBadge status={status} size="md" />
-              {s.bergabung && (
-                <span style={{ fontSize: FS.sm, color: C.slate, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  📅 {s.bergabung}
-                </span>
-              )}
-            </div>
 
             {/* Status hint */}
             {status === 'Belum Aktif' && (
@@ -157,7 +142,7 @@ export const SiswaDrawer = ({ siswaId, siswaList, kelasList, getKelas, setSelect
               <div style={{ marginTop: 16 }}>
                 <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: .5, marginBottom: 8 }}>Aksi</div>
                 <button onClick={() => setDrawerResetModal({ siswa: s, type: 'new' })}
-                  style={{ background: `${C.teal}0D`, border: 'none', borderRadius: 6, padding: '7px 12px', fontSize: FS.sm, fontWeight: 600, cursor: 'pointer', color: C.teal, fontFamily: 'inherit' }}>
+                  style={{ background: `linear-gradient(135deg,${C.teal},${C.tealL})`, border: 'none', borderRadius: 20, padding: '7px 12px', fontSize: FS.sm, fontWeight: 600, cursor: 'pointer', color: C.white, fontFamily: 'inherit' }}>
                   🔑 Reset Password
                 </button>
               </div>
@@ -173,7 +158,7 @@ export const SiswaDrawer = ({ siswaId, siswaList, kelasList, getKelas, setSelect
                 cursor: 'pointer', fontFamily: 'inherit'
               }}>🗑</button>
             <Btn variant="soft" onClick={() => { setModalData({ ...s }); setModal('edit-siswa'); setSelectedSiswa(null); }}
-              style={{ flex: 1, justifyContent: 'center' }}>✏️ Edit Data</Btn>
+              style={{ flex: 1, justifyContent: 'center', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white }}>✏️ Edit Data</Btn>
           </div>
         </div>
       </div>
@@ -208,7 +193,17 @@ const genTempPassword = () => {
 export const ModalSiswa = ({ modalData, kelasList, saveSiswa, onClose }) => {
   const emptySiswa = { nama: '', nis: '', email: '', kelasId: '', status: 'Belum Aktif', bergabung: '' };
   const [form, setForm] = useState(() => {
-    if (modalData) return { ...emptySiswa, ...modalData, status: normalizeStatus(modalData.status) };
+    if (modalData) {
+      // V3.1 FIX: API mengembalikan kelas_id (snake_case) — populate kelasId untuk dropdown
+      const kelasIdFromApi = modalData.kelas_id || modalData.kelasId || '';
+      return {
+        ...emptySiswa,
+        ...modalData,
+        kelasId: kelasIdFromApi,
+        kelas_id: kelasIdFromApi,
+        status: normalizeStatus(modalData.status),
+      };
+    }
     return { ...emptySiswa, _tempPassword: genTempPassword(), bergabung: formatBergabung() };
   });
   const isEdit = !!form.id;
@@ -287,7 +282,7 @@ export const ModalSiswa = ({ modalData, kelasList, saveSiswa, onClose }) => {
         <div style={{ display: 'flex', gap: 10 }}>
           <Btn variant="ghost" onClick={onClose} style={{ flex: 1, justifyContent: 'center' }}>Batal</Btn>
           <Btn variant="amber" onClick={() => saveSiswa(form)} disabled={!form.nama || !form.nis || !form.kelasId}
-            style={{ flex: 2, justifyContent: 'center' }}>
+            style={{ flex: 2, justifyContent: 'center', color: C.white }}>
             {isEdit ? '💾 Simpan Perubahan' : '✅ Tambah Siswa'}
           </Btn>
         </div>
@@ -311,7 +306,7 @@ const PageSiswa = ({ siswaList, kelasList, getKelas, setSelectedSiswa, setModalD
       || s.nama.toLowerCase().includes(search.toLowerCase())
       || s.nis.includes(search)
       || (s.email || '').toLowerCase().includes(search.toLowerCase());
-    const matchKelas = filterKelas === 'semua' || s.kelasId === filterKelas;
+    const matchKelas = filterKelas === 'semua' || (s.kelas_id || s.kelasId) === filterKelas;
     const normStatus = normalizeStatus(s.status);
     const matchStatus = filterStatus === 'semua' || normStatus === filterStatus;
     return matchSearch && matchKelas && matchStatus;
@@ -331,9 +326,9 @@ const PageSiswa = ({ siswaList, kelasList, getKelas, setSelectedSiswa, setModalD
           <div style={{ fontFamily: FONTS.serif, fontSize: 19, fontWeight: 600, color: C.dark }}>🎒 Manajemen Siswa</div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span>{siswaList.length} terdaftar</span>
-            {counts.belumAktif > 0 && <span style={{ color: '#B7791F', fontWeight: 600 }}>· ⏳ {counts.belumAktif} belum aktif</span>}
-            {counts.aktif > 0 && <span style={{ color: '#276749', fontWeight: 600 }}>· ✅ {counts.aktif} aktif</span>}
-            {counts.nonAktif > 0 && <span style={{ color: C.red, fontWeight: 600 }}>· ⛔ {counts.nonAktif} non-aktif</span>}
+            {counts.belumAktif > 0 && <span style={{ color: '#B7791F', fontWeight: 600 }}>· ⏳ {counts.belumAktif} Belum Aktif</span>}
+            {counts.aktif > 0 && <span style={{ color: C.teal, fontWeight: 600 }}>· ✅ {counts.aktif} Aktif</span>}
+            {counts.nonAktif > 0 && <span style={{ color: C.red, fontWeight: 600 }}>· ⛔ {counts.nonAktif} Non-Aktif</span>}
           </div>
         </div>
 
@@ -378,7 +373,7 @@ const PageSiswa = ({ siswaList, kelasList, getKelas, setSelectedSiswa, setModalD
           </thead>
           <tbody>
             {filtered.map(s => {
-              const kelas = getKelas(s.kelasId);
+              const kelas = getKelas(s.kelas_id || s.kelasId);
               const status = normalizeStatus(s.status);
               return (
                 <tr key={s.id}
@@ -400,7 +395,7 @@ const PageSiswa = ({ siswaList, kelasList, getKelas, setSelectedSiswa, setModalD
                   </td>
                   <td style={{ padding: '11px 14px' }}>
                     {kelas ? (
-                      <span style={{ fontSize: FS.sm, padding: '3px 8px', borderRadius: 99, background: C.tealXL, color: C.teal, fontWeight: 700 }}>
+                      <span style={{ fontSize: FS.sm, padding: '3px 8px', borderRadius: 99, background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white, fontWeight: 700 }}>
                         {kelas.nama.replace('Kelas ', '')}
                       </span>
                     ) : <span style={{ fontSize: FS.sm, color: C.slate }}>—</span>}

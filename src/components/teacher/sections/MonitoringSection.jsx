@@ -2,7 +2,7 @@
  * SR MVP — MonitoringSection (Portal Guru) — REVISI FASE 3
  *
  * Perubahan:
- *  1. Tabel siswa: kolom Nama, Materi, Nilai Quiz, Durasi, Evaluasi, Aksi(Detail)
+ *  1. Tabel siswa: kolom Nama, Materi,Level,Quiz, Durasi, Aksi(Detail)
  *  2. Detail drawer: riwayat belajar per materi/elemen + log emosi (tren)
  *     Emosi: antusias, bosan, bingung, frustrasi, tidak_terdeteksi
  *     Log pelanggaran tetap ada jika ada data
@@ -18,6 +18,12 @@ import { STUDENTS, EMOSI_META, EMOSI_Y } from '../../../data/masterData';
 import { useWebSocket } from '../../../hooks/useWebSocket';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import ReactDOM from 'react-dom';
+import { generateSummary } from '../../../api/content';
+
+/* ── Bobot agregasi nilai quiz sesuai flow .md ──────────────────────────── */
+// MC×60% + Essay×40% — seragam di semua komponen
+const MC_WEIGHT = 0.6;
+const ESSAY_WEIGHT = 0.4;
 
 /* ── Download CSV ────────────────────────────────────────────────── */
 const downloadCSV = (content, filename) => {
@@ -59,51 +65,9 @@ const buildSegments = (sesi) => {
   return segs;
 };
 
-/* ── Evaluasi AI ─────────────────────────────────────────────────── */
-const generateAIEvaluasi = (st) => {
-  if (!st.todayActive) return null;
-  const lastQuiz = st.todayLastQuiz;
-  const hasQuiz = lastQuiz != null;
-  const noQuiz = st.todayActive && st.todayMateriId && !hasQuiz;
-  const latestSesi = st.riwayat?.[0];
-  const levelLabel = { low: 'Level Low', mid: 'Level Mid', high: 'Level High' };
-  const levelCtx = st.todayLevel ? `(${levelLabel[st.todayLevel]}) ` : '';
-  const emosiProfile = calcEmosiProfile(latestSesi?.emosiSesi);
-  const durasi = st.todayStudyHours;
-  const durasiLabel = !durasi ? null : durasi < 0.5 ? 'sangat singkat (< 30 menit)' : durasi < 1.0 ? 'singkat (< 1 jam)' : durasi >= 2.5 ? 'sangat panjang (> 2.5 jam)' : null;
-  let emosiInsight = '';
-  if (emosiProfile) {
-    if (emosiProfile.isImproving && emosiProfile.positiveEnd) emosiInsight = 'Tren emosi menunjukkan progres positif — siswa berhasil membangun pemahaman.';
-    else if (emosiProfile.isDeclining && emosiProfile.negRatio > 0.5) emosiInsight = 'Tren emosi menurun — siswa tampak kesulitan mempertahankan fokus.';
-    else if (emosiProfile.counts.frustrasi >= 2) emosiInsight = 'Frustrasi berulang — materi mungkin terlalu sulit.';
-    else if (emosiProfile.counts.bingung >= 3) emosiInsight = 'Kebingungan mendominasi — pendekatan visual disarankan.';
-    else if (emosiProfile.counts.bosan >= 3) emosiInsight = 'Siswa terlihat bosan — coba variasikan dengan kuis ringan.';
-    else if (emosiProfile.counts.tidak_terdeteksi > (latestSesi?.emosiSesi?.length ?? 0) * 0.4) emosiInsight = 'Banyak emosi tidak terdeteksi — periksa kondisi kamera siswa.';
-  }
-  if (noQuiz) {
-    const parts = [`Siswa mengakses ${st.todayMateriId} namun belum mengerjakan kuis.`];
-    if (durasiLabel) parts.push(`Durasi ${durasiLabel}.`);
-    if (emosiInsight) parts.push(emosiInsight);
-    parts.push('Dorong siswa untuk mengerjakan kuiz.');
-    return parts.join(' ');
-  }
-  if (!hasQuiz) return null;
-  // Pakai aggregated jika ada (MC+Essay), fallback ke mc_score saja
-  const displayScore = lastQuiz.aggregated ?? lastQuiz.mc_score ?? 0;
-  const isFullAgregasi = lastQuiz.aggregated != null;
-  const pct = displayScore / 100;
-  const pctStr = `${displayScore}/100${isFullAgregasi ? ' (agregasi)' : ' (PG)'}`;
-  if (pct >= 0.9) {
-    return [`Pencapaian luar biasa ${levelCtx}(${pctStr}).`, emosiProfile?.positiveEnd ? 'Emosi antusias — kondisi ideal.' : '', 'Siswa dapat diberi materi lanjut.'].filter(Boolean).join(' ');
-  }
-  if (pct >= 0.75) {
-    return [`Pemahaman cukup baik ${levelCtx}(${pctStr}).`, durasiLabel === 'singkat (< 1 jam)' ? 'Durasi singkat — pendalaman berpotensi tingkatkan skor.' : '', emosiInsight, 'Latihan variatif untuk perkuat konsep.'].filter(Boolean).join(' ');
-  }
-  if (pct >= 0.5) {
-    return [`Perlu perhatian ${levelCtx}(${pctStr}).`, emosiInsight || (emosiProfile?.negRatio > 0.4 ? 'Emosi negatif dominan — intervensi dini.' : ''), 'Rekomendasikan sesi ulang dengan pendekatan visual.'].filter(Boolean).join(' ');
-  }
-  return [`Pemahaman masih sangat kurang ${levelCtx}(${pctStr}).`, emosiInsight, 'Intervensi segera — pertimbangkan bimbingan individual.'].filter(Boolean).join(' ');
-};
+/* ── Summary AI ──────────────────────────────────────────── */
+// generateSummary() dihapus — digantikan oleh POST /summary/siswa/:id via api/content.js
+// handleSummary di komponen utama sekarang memanggil generateSummary() dari API.
 
 /* ── Smart Alerts ────────────────────────────────────────────────── */
 function generateSmartAlerts(studentsWithLive) {
@@ -164,7 +128,7 @@ const EmosiTimeline = ({ sesi }) => {
 };
 
 /* ── Download Modal ──────────────────────────────────────────────── */
-const DownloadModal = ({ cls, teacherMapel, studentsWithLive, evaluasiState, onClose }) => {
+const DownloadModal = ({ cls, teacherMapel, studentsWithLive, summaryState, onClose }) => {
   const todayISO = new Date().toISOString().split('T')[0];
   const [selectedDate, setSelectedDate] = useState(todayISO);
   const [generating, setGenerating] = useState(false);
@@ -174,14 +138,14 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, evaluasiState, onC
   const handleGenerate = () => { setGenerating(true); setTimeout(() => { setGenerating(false); setDone(true); }, 1000); };
 
   const handleDownload = () => {
-    // Header — tanpa kolom evaluasi
+    // Header — tanpa kolom summary
     const header = [
       'Nama Siswa', 'NIS', 'Tanggal', 'Kelas', 'Mata Pelajaran',
       'Elemen / Materi',
       'Low - PG', 'Low - Essay', 'Low - Agregasi',
       'Mid - PG', 'Mid - Essay', 'Mid - Agregasi',
       'High - PG', 'High - Essay', 'High - Agregasi',
-      'Nilai Terakhir', 'Level Terakhir', 'Durasi (jam)', 'Evaluasi AI',
+      'Nilai Terakhir', 'Level Terakhir', 'Durasi (jam)', 'Ringkasan AI',
     ].join(',');
 
     // Parse tanggal yang dipilih untuk matching riwayat
@@ -223,7 +187,7 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, evaluasiState, onC
           const levelCols = LEVEL_ORDER.flatMap(lv => {
             const d = lvMap[lv] || {};
             const agg = (d.mc != null && d.essay != null)
-              ? Math.round(d.mc * 0.7 + d.essay * 0.3) : null;
+              ? Math.round(d.mc * 0.6 + d.essay * 0.4) : null;
             return [
               d.mc != null ? d.mc : '-',
               d.essay != null ? d.essay : '-',
@@ -235,13 +199,13 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, evaluasiState, onC
           const lastLevel = lastQr?.level || '-';
           const lastLvData = lastQr ? (lvMap[lastQr.level] || {}) : {};
           const lastAgg = (lastLvData.mc != null && lastLvData.essay != null)
-            ? Math.round(lastLvData.mc * 0.7 + lastLvData.essay * 0.3)
+            ? Math.round(lastLvData.mc * 0.6 + lastLvData.essay * 0.4)
             : (lastLvData.mc ?? lastLvData.essay ?? '-');
-          // Revisi 2F: cari evaluasi dari sesiKey terbaru (riwayat[0])
+          // Revisi 2F: cari Ringkasan AI dari sesiKey terbaru (riwayat[0])
           const latestSesiKey = st.riwayat?.[0]
             ? `${st.id}__${st.riwayat[0].tanggal}__${st.riwayat[0].materiId}`
             : null;
-          const evalText = latestSesiKey ? (evaluasiState?.[latestSesiKey]?.text ?? '-') : '-';
+          const evalText = latestSesiKey ? (summaryState?.[latestSesiKey]?.text ?? '-') : '-';
           rows.push([
             `"${st.name}"`, `"${st.nis || '-'}"`, selectedDate,
             `"${cls?.label || '-'}"`, `"${teacherMapel?.label || '-'}"`,
@@ -313,8 +277,8 @@ const DownloadModal = ({ cls, teacherMapel, studentsWithLive, evaluasiState, onC
   );
 };
 
-/* ── EvaluasiDropdown ────────────────────────────────────────────── */
-const EvaluasiDropdown = ({ text, color, bg }) => {
+/* ── SummaryDropdown───────────────────────────────────────── */
+const SummaryDropdown = ({ text, color, bg }) => {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef(null);
@@ -343,11 +307,11 @@ const EvaluasiDropdown = ({ text, color, bg }) => {
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <button ref={btnRef} onClick={handleOpen}
         style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 9px', border: `1px solid ${color}44`, borderRadius: 7, background: bg, cursor: 'pointer', fontSize: FS.sm, fontWeight: 700, color, fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-        Evaluasi {open ? '▲' : '▼'}
+        Summary {open ? '▲' : '▼'}
       </button>
       {open && typeof document !== 'undefined' && ReactDOM.createPortal(
         <div ref={dropRef} style={{ position: 'fixed', top: pos.top, left: pos.left, transform: 'translateY(-100%)', zIndex: 9999, background: '#fff', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,.16)', border: `1px solid ${color}33`, padding: '12px 14px', width: 260, fontSize: FS.sm, color: '#2D3748', lineHeight: 1.6 }}>
-          <div style={{ fontWeight: 700, color, marginBottom: 5, fontSize: FS.xs, textTransform: 'uppercase', letterSpacing: .7 }}>🤖 Evaluasi Mentor</div>
+          <div style={{ fontWeight: 700, color, marginBottom: 5, fontSize: FS.xs, textTransform: 'uppercase', letterSpacing: .7 }}>🤖 Summary Mentor</div>
           {text}
         </div>,
         document.body
@@ -356,16 +320,33 @@ const EvaluasiDropdown = ({ text, color, bg }) => {
   );
 };
 
-/* ── EvaluasiSesiPanel ────────────────────────────────────────────── */
+/* ── SummarySesiPanel ────────────────────────────────────────────── */
 // Dirender per sesi di StudentDrawer. Menggantikan EvaluasiCell yang sebelumnya
 // dipakai di kolom tabel.
 // Props:
 //   sesiKey   : `${studentId}__${tanggal}__${materiId}`
-//   state     : evaluasiState[sesiKey] | undefined
+//   state     : summaryState[sesiKey] | undefined
 //   onGenerate: () => void
-const EvaluasiSesiPanel = ({ sesiKey: _sesiKey, state, onGenerate }) => {
+const SummarySesiPanel = ({ sesiKey: _sesiKey, state, onGenerate }) => {
   const status = state?.status || 'idle';
   const isExpired = status === 'done' && state.expiresAt && Date.now() > state.expiresAt;
+
+  if (status === 'error') {
+    return (
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid rgba(13,92,99,.07)` }}>
+        <div style={{ fontSize: FS.xs, color: '#A32D2D', marginBottom: 6 }}>
+          {state.text || 'Data sesi belum cukup untuk di analisis'}
+        </div>
+        <button onClick={onGenerate}
+          style={{
+            fontSize: FS.xs, color: C.slate, background: 'transparent',
+            border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
+            fontFamily: 'inherit',
+          }}
+        >Coba lagi</button>
+      </div>
+    );
+  }
 
   if (status === 'idle') {
     return (
@@ -381,7 +362,7 @@ const EvaluasiSesiPanel = ({ sesiKey: _sesiKey, state, onGenerate }) => {
           onMouseEnter={e => { e.currentTarget.style.background = `${C.teal}0F`; e.currentTarget.style.borderColor = C.teal; }}
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = `${C.teal}44`; }}
         >
-          ✨ Generate Evaluasi
+          ✨ Buat Summary
         </button>
       </div>
     );
@@ -401,7 +382,7 @@ const EvaluasiSesiPanel = ({ sesiKey: _sesiKey, state, onGenerate }) => {
             }} />
           ))}
         </div>
-        <span style={{ fontSize: FS.xs, color: C.teal, fontWeight: 500 }}>Membuat evaluasi...</span>
+        <span style={{ fontSize: FS.xs, color: C.teal, fontWeight: 500 }}>Membuat summary...</span>
       </div>
     );
   }
@@ -410,7 +391,7 @@ const EvaluasiSesiPanel = ({ sesiKey: _sesiKey, state, onGenerate }) => {
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid rgba(13,92,99,.07)` }}>
       <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.teal, marginBottom: 5 }}>
-        ✨ Evaluasi AI
+        ✨ Summary siswa
       </div>
       <div style={{
         background: `${C.teal}08`, border: `1px solid ${C.teal}22`,
@@ -440,7 +421,7 @@ const EvaluasiSesiPanel = ({ sesiKey: _sesiKey, state, onGenerate }) => {
           onMouseEnter={e => { e.currentTarget.style.borderColor = C.teal; e.currentTarget.style.color = C.teal; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = `${C.slate}44`; e.currentTarget.style.color = C.slate; }}
         >
-          🔄 Perbarui Evaluasi
+          🔄 Perbarui Summary
         </button>
       )}
     </div>
@@ -449,7 +430,7 @@ const EvaluasiSesiPanel = ({ sesiKey: _sesiKey, state, onGenerate }) => {
 
 
 const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onClose,
-  evaluasiState, onGenerateEvaluasi }) => {
+  summaryState, onGenerateSummary }) => {
   const [openSesiIdx, setOpenSesiIdx] = useState(null);
   const [openViolationIdx, setOpenViolationIdx] = useState(null);
 
@@ -476,8 +457,8 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
         style={{ width: 'min(420px, 96vw)', height: '100vh', background: C.bg, overflowY: 'auto', boxShadow: '-10px 0 40px rgba(0,0,0,.15)', display: 'flex', flexDirection: 'column' }}>
 
         {/* Header */}
-        <div style={{ padding: '16px 18px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, ...(hasAnyViolation ? { borderLeft: '4px solid #C53030' } : {}) }}>
-          <div style={{ width: 44, height: 44, borderRadius: '50%', background: hasAnyViolation ? '#C53030' : (student.todayActive ? student.avatarBg : '#CBD5E0'), display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.lg, flexShrink: 0 }}>
+        <div style={{ padding: '16px 18px', borderBottom: `1px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: student.todayActive ? student.avatarBg : '#CBD5E0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.lg, flexShrink: 0 }}>
             {student.avatar}
           </div>
           <div style={{ flex: 1 }}>
@@ -507,7 +488,7 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                 <div key={tanggal}>
                   <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: .8, marginBottom: 7, display: 'flex', alignItems: 'center', gap: 6 }}>
                     📅 {tanggal}
-                    {entries.length > 1 && <span style={{ background: C.amberL, color: C.orange, padding: '1px 7px', borderRadius: 99, fontWeight: 700, fontSize: 9 }}>{entries.length} materi</span>}
+                    {entries.length > 1 && <span style={{ background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white, padding: '1px 7px', borderRadius: 99, fontWeight: 700, fontSize: 9 }}>{entries.length} materi</span>}
                   </div>
                   {entries.map((r) => {
                     const gIdx = r.origIdx;
@@ -552,7 +533,7 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                                 {LEVEL_ORDER_D.map(lv => {
                                   const d = lvMap[lv] || {};
                                   const agg = (d.mc != null && d.essay != null)
-                                    ? Math.round(d.mc * 0.7 + d.essay * 0.3) : null;
+                                    ? Math.round(d.mc * 0.6 + d.essay * 0.4) : null;
                                   const meta = LEVEL_META_D[lv];
                                   const isEmpty = d.mc == null && d.essay == null;
                                   return (
@@ -584,13 +565,13 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
 
                             <div style={{ fontSize: FS.sm, color: C.darkL }}>{r.durasi?.toFixed(1)} jam</div>
 
-                            {/* Revisi 2D: EvaluasiSesiPanel per sesi — hanya jika ada quiz */}
+                            {/* Revisi 2D: SummarySesiPanel per sesi — hanya jika ada quiz */}
                             {hasAnyQuiz && (() => {
                               const sesiKey = `${student.id}__${r.tanggal}__${r.materiId}`;
                               return (
-                                <EvaluasiSesiPanel
+                                <SummarySesiPanel
                                   sesiKey={sesiKey}
-                                  state={evaluasiState?.[sesiKey]}
+                                  state={summaryState?.[sesiKey]}
                                   onGenerate={() => {
                                     const lastQuizDariSesi = (() => {
                                       const lvMap2 = {};
@@ -605,11 +586,21 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                                       const lastLv = levels[levels.length - 1];
                                       const d = lvMap2[lastLv];
                                       const agg2 = (d.mc != null && d.essay != null)
-                                        ? Math.round(d.mc * 0.7 + d.essay * 0.3) : null;
+                                        ? Math.round(d.mc * 0.6 + d.essay * 0.4) : null;
                                       return { type: 'mc', level: lastLv, mc_score: d.mc, essay_score: d.essay, aggregated: agg2 };
                                     })();
-                                    const sesiContext = { ...student, todayMateriId: r.materiId, todayLastQuiz: lastQuizDariSesi };
-                                    onGenerateEvaluasi(sesiKey, sesiContext);
+                                    // Bangun sesiContext dengan semua field yang dibutuhkan payload summary
+                                    // Sesuai flow .md: mapel_id, elemen_id, materi_id, durasi, quiz_results seluruh sesi, violations
+                                    const sesiContext = {
+                                      ...student,
+                                      todayMapelId: r.mapelId || student.todayMapelId || null,     // mapel_id dari sesi
+                                      todayElemenId: r.elemenId || student.todayElemenId || null,  // elemen_id dari sesi
+                                      todayMateriId: r.materiId,
+                                      todayLastQuiz: lastQuizDariSesi,
+                                      todayDurasi: r.durasi || 0,      // durasi sesi ini dalam jam
+                                      todayLevel: lastQuizDariSesi?.level || student.todayLevel || null,
+                                    };
+                                    onGenerateSummary(sesiKey, sesiContext);
                                   }}
                                 />
                               );
@@ -617,7 +608,7 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
                           </div>
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                             <button onClick={() => { setOpenSesiIdx(isTrenOpen ? null : gIdx); if (!isTrenOpen) setOpenViolationIdx(null); }}
-                              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', background: isTrenOpen ? C.teal : C.tealXL, border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: FS.xs, color: isTrenOpen ? C.white : C.teal, fontWeight: 700, fontFamily: 'inherit' }}>
+                              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', background: isTrenOpen ? C.teal : `linear-gradient(135deg,${C.teal},${C.tealL})`, border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: FS.xs, color: isTrenOpen ? C.white : C.white, fontWeight: 700, fontFamily: 'inherit' }}>
                               📈 Log Emosi {isTrenOpen ? '▲' : '▼'}
                             </button>
                             {hasSessionViolation && (
@@ -711,7 +702,7 @@ const StudentDrawer = ({ student, recommendations, setRecModal, setRecText, onCl
               <div style={{ color: C.darkL, fontSize: 11 }}>{recommendations[student.id]}</div>
             </div>
           )}
-          <Btn variant="amber" onClick={() => { setRecModal(student.id); setRecText(recommendations[student.id] || ''); }} style={{ width: '100%', justifyContent: 'center' }}>
+          <Btn variant="amber" onClick={() => { setRecModal(student.id); setRecText(recommendations[student.id] || ''); }} style={{ width: '100%', justifyContent: 'center', color: C.white }}>
             💬 {recommendations[student.id] ? 'Edit' : 'Beri'} Rekomendasi
           </Btn>
         </div>
@@ -737,33 +728,53 @@ const MonitoringSection = ({
   const [dismissedAlerts, setDismissedAlerts] = useState(new Set());
   const [dismissedViolations, setDismissedViolations] = useState(new Set());
 
-  // State evaluasi per siswa: { [studentId]: { status: 'idle'|'loading'|'done', text: string|null } }
-  const [evaluasiState, setEvaluasiState] = useState({});
+  // State Summary per siswa: { [studentId]: { status: 'idle'|'loading'|'done', text: string|null } }
+  const [summaryState, setSummaryState] = useState({});
 
-  // Reset evaluasiState saat kelas berubah
+  // Reset SummaryState saat kelas berubah
   useEffect(() => {
-    setEvaluasiState({});
+    setSummaryState({});
   }, [activeClass]);
 
   // Revisi 2B: sesiKey = `${st.id}__${tanggal}__${materiId}` — unik per sesi
-  const handleGenerateEvaluasi = useCallback((sesiKey, sesiContext) => {
-    const now = Date.now();
-    setEvaluasiState(p => ({ ...p, [sesiKey]: { status: 'loading', text: null } }));
-    setTimeout(() => {
-      const text = generateAIEvaluasi(sesiContext);
-      setEvaluasiState(p => ({
+  const handleGenerateSummary = useCallback(async (sesiKey, sesiContext) => {
+    setSummaryState(p => ({ ...p, [sesiKey]: { status: 'loading', text: null } }));
+    try {
+      // Payload sesuai flow .md: siswa_id, mapel_id, elemen_id, materi_id, sesi_key, durasi,
+      // quiz_results (SELURUH quiz dalam sesi — bukan cuma last_quiz), last_quiz, emosi_sesi, violations
+      const latestSesi = sesiContext.riwayat?.[0];
+      const payload = {
+        siswa_id: sesiContext.id,
+        mapel_id: sesiContext.todayMapelId || null,           // WAJIB sesuai flow
+        elemen_id: sesiContext.todayElemenId || null,         // WAJIB sesuai flow
+        materi_id: sesiContext.todayMateriId || null,
+        sesi_key: sesiKey,
+        durasi: sesiContext.todayDurasi || 0,                 // durasi sesi dalam menit
+        quiz_results: latestSesi?.quiz_results || [],         // SELURUH quiz dalam sesi — bukan cuma last_quiz
+        last_quiz: sesiContext.todayLastQuiz || null,         // shortcut agregasi akhir
+        emosi_sesi: latestSesi?.emosiSesi || [],
+        violations: latestSesi?.violations || [],             // log pelanggaran sesi ini
+      };
+      const res = await generateSummary(payload);
+      setSummaryState(p => ({
         ...p,
         [sesiKey]: {
           status: 'done',
-          text,
-          generatedAt: now,
-          expiresAt: now + 86400000, // expired 24 jam — deterministik
-          // TODO BE: ganti setTimeout ini dengan POST /evaluasi/siswa/:id
-          // Response BE: { text, generated_at, expires_at }
-          // FE simpan text + expiresAt dari response — tidak ada logika lain yang berubah
+          text: res.text,
+          generatedAt: new Date(res.generated_at).getTime(),
+          expiresAt: new Date(res.expires_at).getTime(),
         },
       }));
-    }, 1200 + Math.random() * 600);
+    } catch (err) {
+      // 422 = data sesi belum cukup; lainnya = error jaringan/server
+      // TODO BE: ganti mock generateSummary di handlers.js dengan POST /summary/siswa/:id
+      // Response BE: { text, generated_at, expires_at }
+      const msg = err?.response?.data?.message || null;
+      setSummaryState(p => ({
+        ...p,
+        [sesiKey]: { status: 'error', text: msg },
+      }));
+    }
   }, []);
 
   useEffect(() => {
@@ -782,7 +793,8 @@ const MonitoringSection = ({
     return () => window.removeEventListener('sr_student_violation', handleSrViolation);
   }, []);
 
-  const classStudents = useMemo(() => activeClass ? STUDENTS.filter(s => s.kelasId === activeClass) : STUDENTS, [activeClass]);
+  // FIX B1: pakai kelas_id (snake_case) sesuai normalisasi masterData
+  const classStudents = useMemo(() => activeClass ? STUDENTS.filter(s => s.kelas_id === activeClass) : STUDENTS, [activeClass]);
 
   const studentsWithLive = classStudents.map(s => {
     const live = liveStudents[s.id];
@@ -794,7 +806,17 @@ const MonitoringSection = ({
     const violations = allViolations.filter(v => { const key = `${v.detail}__${v.timestamp}`; if (seen.has(key)) return false; seen.add(key); return true; });
     // Revisi 3: nilai lastQuiz < 10 dari mock WS dianggap noise simulasi, bukan skor quiz sungguhan
     const wsQuizValid = live?.lastQuiz != null && live.lastQuiz >= 10;
-    const baseStudent = live ? { ...s, todayActive: live.aktif ?? s.todayActive, todayLevel: live.level || s.todayLevel, emotionKey: live.emosi || s.emotionKey, todayMateriId: live.materiId || s.todayMateriId, todayLastQuiz: wsQuizValid ? { ...(s.todayLastQuiz || {}), mc_score: live.lastQuiz, aggregated: null } : s.todayLastQuiz } : s;
+    // Sesuai flow .md: mapel_id dan elemen_id dibutuhkan untuk payload generateSummary
+    const baseStudent = live ? {
+      ...s,
+      todayActive: live.aktif ?? s.todayActive,
+      todayLevel: live.level || s.todayLevel,
+      emotionKey: live.emosi || s.emotionKey,
+      todayMateriId: live.materiId || s.todayMateriId,
+      todayMapelId: live.mapelId || s.todayMapelId || null,   // mapel_id untuk payload summary
+      todayElemenId: live.elemenId || s.todayElemenId || null, // elemen_id untuk payload summary
+      todayLastQuiz: wsQuizValid ? { ...(s.todayLastQuiz || {}), mc_score: live.lastQuiz, aggregated: null } : s.todayLastQuiz,
+    } : s;
     return { ...baseStudent, violations, hasViolation: violations.length > 0, lastViolation: violations[violations.length - 1] || null, violationCount: violations.length };
   });
 
@@ -909,7 +931,7 @@ const MonitoringSection = ({
                       return (
                         <tr key={st.id}
                           style={{ borderTop: `1px solid rgba(13,92,99,.05)`, background: rowBg, transition: 'background .15s', ...(hasViolation ? { boxShadow: 'inset 3px 0 0 #C53030' } : {}) }}
-                          onMouseEnter={e => e.currentTarget.style.background = hasViolation ? 'rgba(197,48,48,.07)' : 'rgba(13,92,99,.03)'}
+                          onMouseEnter={e => e.currentTarget.style.background = rowBg}
                           onMouseLeave={e => e.currentTarget.style.background = rowBg}>
 
                           {/* Nama */}
@@ -977,7 +999,7 @@ const MonitoringSection = ({
                           {/* Aksi */}
                           <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                             <button onClick={() => setSelectedStudent(st)}
-                              style={{ background: isActive ? C.tealXL : '#EDF2F7', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: FS.sm, color: isActive ? C.teal : C.slate, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                              style={{ background: isActive ? `linear-gradient(135deg,${C.teal},${C.tealL})` : '#EDF2F7', border: 'none', borderRadius: 7, padding: '5px 10px', fontSize: FS.sm, color: isActive ? C.white : C.slate, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                               Detail
                             </button>
                           </td>
@@ -1020,13 +1042,13 @@ const MonitoringSection = ({
                       🚫 Pelanggaran
                     </div>
                     {siswaLanggaran.length === 0 ? (
-                      <div style={{ background: '#F0FFF4', borderRadius: 9, padding: '9px 11px', border: '1px solid #9AE6B4', fontSize: FS.sm, color: C.green, fontWeight: 600 }}>
+                      <div style={{ borderRadius: 9, padding: '9px 11px', border: '1px solid #9AE6B4', fontSize: FS.sm, color: C.green, fontWeight: 600 }}>
                         ✅ Tidak ada pelanggaran
                       </div>
                     ) : siswaLanggaran.map(st => (
                       <div key={st.id}
                         onClick={() => { setSelectedStudent(st); setDismissedViolations(prev => new Set([...prev, st.id])); }}
-                        style={{ background: '#FFF5F5', borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', marginBottom: 5, cursor: 'pointer', boxShadow: 'inset 3px 0 0 #C53030', transition: 'filter .15s' }}
+                        style={{ borderRadius: 9, padding: '9px 11px', border: '1px solid #FEB2B2', marginBottom: 5, cursor: 'pointer', boxShadow: 'inset 3px 0 0 #C53030', transition: 'filter .15s' }}
                         onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
                         onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -1056,13 +1078,13 @@ const MonitoringSection = ({
                       😣 Emosi Negatif &gt;15 menit
                     </div>
                     {siswaEmosiNegatif.length === 0 ? (
-                      <div style={{ background: '#FFFBF0', borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', fontSize: FS.sm, color: '#744210', fontWeight: 600 }}>
+                      <div style={{ borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', fontSize: FS.sm, color: '#744210', fontWeight: 600 }}>
                         Tidak ada emosi negatif berkepanjangan
                       </div>
                     ) : siswaEmosiNegatif.map(alert => (
                       <div key={alert.id}
                         onClick={() => { setSelectedStudent(alert.student); setDismissedAlerts(prev => new Set([...prev, alert.id])); }}
-                        style={{ background: '#FFFBF0', borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', marginBottom: 5, cursor: 'pointer', boxShadow: 'inset 3px 0 0 #C05621', transition: 'filter .15s' }}
+                        style={{ borderRadius: 9, padding: '9px 11px', border: '1px solid #F6AD55', marginBottom: 5, cursor: 'pointer', boxShadow: 'inset 3px 0 0 #C05621', transition: 'filter .15s' }}
                         onMouseEnter={e => e.currentTarget.style.filter = 'brightness(.97)'}
                         onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -1088,7 +1110,7 @@ const MonitoringSection = ({
       {/* Student Drawer */}
       {
         selectedStudent && (
-          <StudentDrawer student={selectedStudent} recommendations={recommendations} setRecModal={setRecModal} setRecText={setRecText} onClose={() => setSelectedStudent(null)} evaluasiState={evaluasiState} onGenerateEvaluasi={handleGenerateEvaluasi} />
+          <StudentDrawer student={selectedStudent} recommendations={recommendations} setRecModal={setRecModal} setRecText={setRecText} onClose={() => setSelectedStudent(null)} summaryState={summaryState} onGenerateSummary={handleGenerateSummary} />
         )
       }
 
@@ -1103,7 +1125,7 @@ const MonitoringSection = ({
               <div className="bounce-in" onClick={e => e.stopPropagation()}
                 style={{ background: C.white, borderRadius: 16, padding: 28, width: 'min(460px, calc(100vw - 24px))', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
                 <div style={{ fontSize: FS.h1, marginBottom: 4 }}>💬</div>
-                <div style={{ fontFamily: FONTS.serif, fontSize: FS.h2, fontWeight: 600, color: C.dark, marginBottom: 4 }}>Beri Rekomendasi</div>
+                <div style={{ fontFamily: FONTS.sans, fontSize: FS.h2, fontWeight: 600, color: C.teal, marginBottom: 4 }}>Beri Rekomendasi</div>
                 <div style={{ fontSize: FS.base, color: C.darkL, marginBottom: 4 }}>untuk <strong>{s.name}</strong> — {teacherMapel?.icon} {teacherMapel?.label}</div>
                 <div style={{ fontSize: FS.sm, color: C.slate, marginBottom: 14, background: C.tealXL, borderRadius: 8, padding: '8px 12px' }}>
                   ℹ️ Rekomendasi ini akan muncul sebagai notifikasi di dashboard siswa.
@@ -1116,7 +1138,7 @@ const MonitoringSection = ({
                   onBlur={e => e.target.style.borderColor = C.tealXL} />
                 <div style={{ display: 'flex', gap: 10 }}>
                   <Btn variant="ghost" onClick={() => { setRecModal(null); setRecText(''); }} style={{ flex: 1, justifyContent: 'center' }}>Batal</Btn>
-                  <Btn variant="amber" onClick={() => saveRec(s.id)} disabled={!recText.trim()} style={{ flex: 2, justifyContent: 'center' }}>
+                  <Btn variant="amber" onClick={() => saveRec(s.id)} disabled={!recText.trim()} style={{ flex: 2, justifyContent: 'center', color: C.white }}>
                     📲 Kirim ke Siswa
                   </Btn>
                 </div>
@@ -1134,7 +1156,7 @@ const MonitoringSection = ({
       {/* Modal Download */}
       {
         downloadModal && (
-          <DownloadModal cls={cls} teacherMapel={teacherMapel} studentsWithLive={studentsWithLive} evaluasiState={evaluasiState} onClose={() => setDownloadModal(false)} />
+          <DownloadModal cls={cls} teacherMapel={teacherMapel} studentsWithLive={studentsWithLive} summaryState={summaryState} onClose={() => setDownloadModal(false)} />
         )
       }
     </div >

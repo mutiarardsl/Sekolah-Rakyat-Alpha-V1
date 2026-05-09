@@ -13,7 +13,7 @@ import { C, FONTS, FS } from '../../../styles/tokens';
 import { EmptyState } from '../../shared/UI';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 // FIX P3: load progress + konten real dari backend
-import { getLearningProgress, getKontenSiswa } from '../../../api/content';
+import { getProgressSiswa, getKontenSiswa, getPretestStatus } from '../../../api/content';
 import {
   ADMIN_MAPEL_LIST,
   KURIKULUM_ELEMEN,
@@ -22,6 +22,7 @@ import {
   MATERI_PER_ELEMEN,
 } from '../../../data/masterData';
 import { useStudentStore } from '../../../stores/studentStore';
+import { useAuth } from '../../../context/AuthContext';
 
 const MAPEL_LIST = ADMIN_MAPEL_LIST.filter(m => KURIKULUM_ELEMEN[m.id] || KURIKULUM[m.id]);
 
@@ -257,7 +258,7 @@ const ElemenPanel = ({ mapel, progressData, onStartBelajar }) => {
           // Payload dasar yang sama untuk semua click di elemen ini
           const baseParams = {
             mapelId: mapel.id, mapelLabel: mapel.label,
-            mapelIcon: mapel.icon, mapelColor: mapel.color,
+            mapelIcon: mapel.icon,
             elemenId: el.id, elemenLabel: el.label, source: 'progress',
           };
 
@@ -383,6 +384,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
   const [searchQ, setSearchQ] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const { isMobile, isTablet } = useBreakpoint();
+  const { user } = useAuth();
 
   // Modal state
   const [pretestGateData, setPretestGateData] = useState(null);  // { mapel, elemen, materiData }
@@ -391,16 +393,37 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
   const [apiLearningProgress, setApiLearningProgress] = useState(null);
   const [publishedKonten, setPublishedKonten] = useState([]);
   useEffect(() => {
-    const siswaId = 'usr_001'; // TODO: ambil dari useAuth saat disambungkan ke AuthContext
-    // Fetch progress real
-    getLearningProgress({ siswa_id: siswaId })
+    const siswaId = user?.id;
+    if (!siswaId) return; // belum login, skip fetch
+    // Fetch progress real dari GET /content/progress
+    getProgressSiswa({ siswa_id: siswaId })
       .then(data => setApiLearningProgress(data))
       .catch(() => { /* silent — pakai progressData lokal */ });
     // Fetch konten yang sudah dipublish guru untuk siswa ini
     getKontenSiswa({ siswa_id: siswaId })
       .then(data => { if (Array.isArray(data) && data.length > 0) setPublishedKonten(data); })
       .catch(() => { /* silent */ });
-  }, []);
+    // Hidrasi status pretest dari BE untuk semua mapel yang dimiliki siswa.
+    // Ini memastikan pretestDoneElemen / pretestDoneMateri / studentLevels di store
+    // tidak kosong setelah refresh halaman (tidak hanya mengandalkan state sesi ini).
+    const { markPretestElemenDone, markPretestMateriDone } = useStudentStore.getState();
+    const mapelIds = ADMIN_MAPEL_LIST.map(m => m.id);
+    mapelIds.forEach(mapelId => {
+      getPretestStatus({ siswa_id: siswaId, mapel_id: mapelId })
+        .then(statusList => {
+          if (!Array.isArray(statusList)) return;
+          statusList.forEach(item => {
+            if (item.status !== 'selesai' || !item.level) return;
+            if (item.materi_id) {
+              markPretestMateriDone(mapelId, item.elemen_id, item.materi_id, item.level);
+            } else {
+              markPretestElemenDone(mapelId, item.elemen_id, item.level);
+            }
+          });
+        })
+        .catch(() => { /* silent — store lokal tetap dipakai sebagai fallback */ });
+    });
+  }, [user?.id]);
 
   const { isPretestElemenDone, isPretestMateriDone, getElemenLevel, getMateriLevel } = useStudentStore(s => ({
     isPretestElemenDone: s.isPretestElemenDone,
@@ -548,7 +571,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
           isMateriLevel: true,   // flag: pretest untuk materi spesifik
           materiData: {
             mapelId, mapelLabel: params.mapelLabel,
-            mapelIcon: params.mapelIcon, mapelColor: params.mapelColor,
+            mapelIcon: params.mapelIcon,
             materiId, elemenId, elemenLabel, source: 'progress',
           },
         });
@@ -558,7 +581,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
       const level = getMateriLevel(mapelId, elemenId, materiId);
       openChatWithWebcam({
         mapelId, mapelLabel: params.mapelLabel,
-        mapelIcon: params.mapelIcon, mapelColor: params.mapelColor,
+        mapelIcon: params.mapelIcon,
         materiId, elemenId, elemenLabel, level, source: 'progress',
       });
 
@@ -573,7 +596,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
           isMateriLevel: false,
           materiData: {
             mapelId, mapelLabel: params.mapelLabel,
-            mapelIcon: params.mapelIcon, mapelColor: params.mapelColor,
+            mapelIcon: params.mapelIcon,
             materiId: elemenLabel, elemenId, elemenLabel, source: 'progress',
           },
         });
@@ -583,7 +606,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
       const level = getElemenLevel(mapelId, elemenId);
       openChatWithWebcam({
         mapelId, mapelLabel: params.mapelLabel,
-        mapelIcon: params.mapelIcon, mapelColor: params.mapelColor,
+        mapelIcon: params.mapelIcon,
         materiId: elemenLabel, elemenId, elemenLabel, level, source: 'progress',
       });
     }

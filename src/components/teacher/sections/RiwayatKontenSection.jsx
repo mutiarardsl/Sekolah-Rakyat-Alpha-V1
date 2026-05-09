@@ -109,15 +109,42 @@ const GamePreviewModal = ({ konten, riwayat, onClose }) => {
 };
 
 /* ── KontenItemRenderer — render isi konten sesuai tipe ──────────── */
-// Sama persis dengan renderer di KelolaBelajarSection agar konsisten.
 // Input: item KontenItem { tipe, level, content, approved }
+// content shape sesuai API contract (sudah di-wrap oleh buildKontenList):
+//   bacaan    → { text: string }
+//   mindmap   → { nodes: [...] } atau { text: string } (fallback ke text jika nodes kosong)
+//   quiz_pg   → { soal: [{ id, soal, pilihan, jawaban }] }
+//   quiz_essay→ { pertanyaan: [string | { id, soal, rubrik }] }
+//   flashcard → { cards: [{ depan, belakang }] }
+//   game      → { game_id, html_url, status, ... }
 const KontenItemRenderer = ({ item }) => {
   const { tipe, content } = item;
 
-  if (tipe === 'bacaan' || tipe === 'mindmap') {
-    const text = typeof content === 'string'
-      ? content                                          // dari placeholder / regenerate
-      : (tipe === 'bacaan' ? content?.text : content?.content);  // dari API shape
+  if (tipe === 'bacaan') {
+    // content.text = markdown string
+    const text = typeof content === 'string' ? content : content?.text;
+    return (
+      <pre style={{ fontFamily: 'inherit', fontSize: FS.sm, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
+        {text || '(konten kosong)'}
+      </pre>
+    );
+  }
+
+  if (tipe === 'mindmap') {
+    // content.nodes = array, atau fallback ke content.text jika nodes kosong
+    const nodes = content?.nodes;
+    if (Array.isArray(nodes) && nodes.length > 0) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {nodes.map((n, i) => (
+            <div key={n.id || i} style={{ paddingLeft: n.parent_id ? 20 : 0, fontSize: FS.sm, color: n.parent_id ? C.darkL : C.dark, fontWeight: n.parent_id ? 400 : 700 }}>
+              {n.parent_id ? '• ' : '⬡ '}{n.label}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    const text = typeof content === 'string' ? content : content?.text;
     return (
       <pre style={{ fontFamily: 'inherit', fontSize: FS.sm, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
         {text || '(konten kosong)'}
@@ -129,18 +156,27 @@ const KontenItemRenderer = ({ item }) => {
     if (!content?.soal?.length) return <span style={{ color: C.slate, fontSize: FS.sm }}>Soal belum tersedia.</span>;
     return (
       <div>
-        {content.soal.map((s, i) => (
-          <div key={i} style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.sm, marginBottom: 5 }}>{i + 1}. {s.pertanyaan}</div>
-            {(s.pilihan || []).map((p, j) => (
-              <div key={j} style={{ paddingLeft: 12, marginBottom: 2 }}>
-                <span style={{ fontSize: FS.sm, color: p === s.jawaban ? C.green : C.darkL, fontWeight: p === s.jawaban ? 700 : 400 }}>
-                  {String.fromCharCode(97 + j)}) {p} {p === s.jawaban ? ' (jawaban)' : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        ))}
+        {content.soal.map((s, i) => {
+          // API contract: s.soal = teks pertanyaan; placeholder: s.pertanyaan
+          const soalText = s.soal || s.pertanyaan || '';
+          // API contract: s.jawaban = index integer; placeholder: s.jawaban = string pilihan
+          const jawabanIdx = typeof s.jawaban === 'number' ? s.jawaban : -1;
+          return (
+            <div key={s.id || i} style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.sm, marginBottom: 5 }}>{i + 1}. {soalText}</div>
+              {(s.pilihan || []).map((p, j) => {
+                const isJawaban = jawabanIdx >= 0 ? j === jawabanIdx : p === s.jawaban;
+                return (
+                  <div key={j} style={{ paddingLeft: 12, marginBottom: 2 }}>
+                    <span style={{ fontSize: FS.sm, color: isJawaban ? C.green : C.darkL, fontWeight: isJawaban ? 700 : 400 }}>
+                      {String.fromCharCode(97 + j)}) {p}{isJawaban ? ' ✓' : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -149,11 +185,15 @@ const KontenItemRenderer = ({ item }) => {
     if (!content?.pertanyaan?.length) return <span style={{ color: C.slate, fontSize: FS.sm }}>Pertanyaan belum tersedia.</span>;
     return (
       <div>
-        {content.pertanyaan.map((p, i) => (
-          <div key={i} style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.7 }}>{i + 1}. {p}</div>
-          </div>
-        ))}
+        {content.pertanyaan.map((p, i) => {
+          // pertanyaan item bisa berupa string (placeholder) atau objek { id, soal, rubrik }
+          const soalText = typeof p === 'string' ? p : (p?.soal || '');
+          return (
+            <div key={i} style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.7 }}>{i + 1}. {soalText}</div>
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -242,8 +282,8 @@ const KontenGroupReview = ({ tipe, items, riwayat }) => {
 
 /* ── GameDetailModal — progress per siswa dengan badge Low/Mid/High ─ */
 const LEVEL_BADGE = {
-  Low:  { active: { bg: '#EBF8FF', color: '#2B6CB0', border: '#90CDF4' }, label: 'Low'  },
-  Mid:  { active: { bg: '#FEFCBF', color: '#B7791F', border: '#F6E05E' }, label: 'Mid'  },
+  Low: { active: { bg: '#EBF8FF', color: '#2B6CB0', border: '#90CDF4' }, label: 'Low' },
+  Mid: { active: { bg: '#FEFCBF', color: '#B7791F', border: '#F6E05E' }, label: 'Mid' },
   High: { active: { bg: '#FFF5F5', color: '#C53030', border: '#FEB2B2' }, label: 'High' },
 };
 const LEVELS_ORDER = ['Low', 'Mid', 'High'];
@@ -330,7 +370,7 @@ const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
 
   // Hitung total unik per kelas atau keseluruhan
   const allSiswaIds = relevantKelas.flatMap(k =>
-    ADMIN_SISWA_INIT.filter(s => k.siswaIds.includes(s.id))
+    ADMIN_SISWA_INIT.filter(s => (k.siswa_ids || k.siswaIds || []).includes(s.id))
   );
   const uniqueAllIds = [...new Set(allSiswaIds.map(s => s.id))];
   const totalUnik = uniqueAllIds.filter(id =>
@@ -395,7 +435,7 @@ const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
               Semua Kelas
             </button>
             {relevantKelas.map(k => {
-              const siswaKelas = ADMIN_SISWA_INIT.filter(s => k.siswaIds.includes(s.id));
+              const siswaKelas = ADMIN_SISWA_INIT.filter(s => (k.siswa_ids || k.siswaIds || []).includes(s.id));
               const selesaiKelas = siswaKelas.filter(s =>
                 LEVELS_ORDER.some(lv => selesaiPerLevel[lv][s.id] != null)
               ).length;
@@ -423,7 +463,7 @@ const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
           {isSemuaKelas && activeKelasId === 'semua' ? (
             // Tampilkan semua kelas dalam grup terpisah agar guru tahu kelas masing-masing
             relevantKelas.map(kelas => {
-              const siswaKelas = ADMIN_SISWA_INIT.filter(s => kelas.siswaIds.includes(s.id));
+              const siswaKelas = ADMIN_SISWA_INIT.filter(s => (kelas.siswa_ids || kelas.siswaIds || []).includes(s.id));
               if (siswaKelas.length === 0) return null;
               const selesaiCount = siswaKelas.filter(s =>
                 LEVELS_ORDER.some(lv => selesaiPerLevel[lv][s.id] != null)
@@ -462,8 +502,8 @@ const GameDetailModal = ({ riwayat, gameItems, onClose }) => {
             (() => {
               const kelasTerpilih = relevantKelas.find(k => k.id === activeKelasId) || relevantKelas[0];
               const siswaKelas = kelasTerpilih
-                ? ADMIN_SISWA_INIT.filter(s => kelasTerpilih.siswaIds.includes(s.id))
-                : ADMIN_SISWA_INIT.filter(s => s.kelasId === riwayat.kelas_id);
+                ? ADMIN_SISWA_INIT.filter(s => (kelasTerpilih.siswa_ids || kelasTerpilih.siswaIds || []).includes(s.id))
+                : ADMIN_SISWA_INIT.filter(s => s.kelas_id === riwayat.kelas_id); // FIX B4: snake_case
               const fallback = siswaKelas.length > 0 ? siswaKelas : ADMIN_SISWA_INIT;
               return fallback.map(siswa => (
                 <SiswaRow key={siswa.id} siswa={siswa} selesaiPerLevel={selesaiPerLevel} />
@@ -569,7 +609,7 @@ const RiwayatCard = ({ riwayat }) => {
                 );
               })}
             </div>
-            <span style={{ fontSize: FS.xs, color: '#2B6CB0', fontWeight: 700 }}>
+            <span style={{ fontSize: FS.xs, color: C.teal, fontWeight: 700 }}>
               🎮 {totalSelesai} selesai
             </span>
           </button>
@@ -601,7 +641,7 @@ const RiwayatCard = ({ riwayat }) => {
         </button>
         {gameItems.length > 0 && (
           <button onClick={() => setGameModal(true)}
-            style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #BEE3F8', background: '#F0F7FF', fontSize: FS.md, color: '#2B6CB0', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ padding: '6px 14px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.teal, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             🎮 Detail Game
           </button>
         )}
@@ -694,7 +734,6 @@ const RiwayatKontenSection = ({ publishedList = [] }) => {
     mapel_id: p.mapelId,
     mapel_label: p.mapelLabel,
     mapel_icon: p.mapelIcon,
-    mapel_color: p.mapelColor,
     elemen_id: p.elemenId,
     elemen_label: p.elemenLabel,
     materi: p.materi || null,

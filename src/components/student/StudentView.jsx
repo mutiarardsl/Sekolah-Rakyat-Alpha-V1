@@ -17,7 +17,8 @@ import ChangePasswordModal from '../shared/ChangePasswordModal';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { CONF_CONTENT_INIT } from '../../data/masterData';
-import { getGame } from '../../api/game';
+import { getGame, recordGameSelesai } from '../../api/game';
+import { useWebcamEmotion } from '../../hooks/useWebcamEmotion';
 import DashboardSection from './sections/DashboardSection';
 import ProgressSection from './sections/ProgressSection';
 import ChatSection from './sections/ChatSection';
@@ -25,6 +26,45 @@ import ProfileSection from './sections/ProfileSection';
 import LeaderboardSection from './sections/LeaderboardSection';
 
 const makeKey = (mapelId, sub) => `${mapelId}__${sub}`;
+
+/**
+ * Helper: menentukan apakah string avatar adalah URL (CDN / data URL) atau inisial teks.
+ * Dipakai di sidebar, bottom nav, dan semua tempat yang render avatar user.
+ */
+const isAvatarUrl = (avatar) =>
+  typeof avatar === 'string' &&
+  (avatar.startsWith('http') || avatar.startsWith('data:') || avatar.startsWith('/'));
+
+/**
+ * AvatarCircle — render <img> jika avatar URL, teks inisial jika bukan.
+ * Menangani kedua kasus: avatar dari CDN (produksi) dan inisial teks (dev / sebelum upload).
+ */
+const AvatarCircle = ({ avatar, nama, size = 40, fontSize, border, style = {} }) => {
+  const fs = fontSize || (size >= 40 ? '15px' : '13px');
+  const initials = nama ? nama.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : '?';
+  const base = {
+    width: size, height: size, borderRadius: '50%', flexShrink: 0,
+    border: border || 'none', overflow: 'hidden',
+    ...style,
+  };
+  if (isAvatarUrl(avatar)) {
+    return (
+      <div style={{ ...base, background: 'transparent' }}>
+        <img src={avatar} alt={nama || 'avatar'} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      ...base,
+      background: `linear-gradient(135deg,${C.teal},${C.tealL})`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#fff', fontWeight: 700, fontSize: fs,
+    }}>
+      {avatar && avatar.length <= 3 ? avatar : initials}
+    </div>
+  );
+};
 
 const LEVEL_META = {
   low: { label: 'Low', color: '#276749', bg: '#F0FFF4', border: '#9AE6B4' },
@@ -258,9 +298,17 @@ const StudentView = () => {
     progressData,           // ← dari store
     setProgressData,        // ← dari store
     addRecentActivity,      // ← dari store (persisten, anti stale-closure)
+    setCurrentEmosi,        // FIX T1: untuk sync emosi dari webcam ke store
   } = useStudentStore();
 
-  // gameContext: { mapelId, mapelLabel, mapelIcon, mapelColor, elemenId, elemenLabel, materiId, level, game_id? }
+  // FIX T1: Integrasikan useWebcamEmotion — update store.currentEmosi tiap deteksi
+  // siswaId diambil dari user auth agar emosi terkorelasi dengan siswa yang benar
+  const webcamEmotion = useWebcamEmotion(user?.id || 'usr_001');
+  useEffect(() => {
+    setCurrentEmosi(webcamEmotion.emosi);
+  }, [webcamEmotion.emosi, setCurrentEmosi]);
+
+  // gameContext: { mapelId, mapelLabel, mapelIcon, elemenId, elemenLabel, materiId, level, game_id? }
   // gameData:   response dari getGame() — berisi html_url + status dari Tim 4
   const [gameContext, setGameContext] = useState(null);
   const [gameData, setGameData] = useState(null);   // null | GameItem
@@ -277,6 +325,38 @@ const StudentView = () => {
       if (gamePollRef.current) { clearInterval(gamePollRef.current); gamePollRef.current = null; }
     };
   }, [gameContext]);
+
+  // FIX KRITIS: Listener postMessage dari iframe game Tim 4
+  // Game mengirim event 'game:selesai' saat siswa menyelesaikan game.
+  // Format event yang diterima dari iframe: { type: 'game:selesai' } atau string 'game:selesai'
+  useEffect(() => {
+    if (!gameContext) return;
+
+    const handleGameMessage = (event) => {
+      // Terima event dari origin mana pun (game hosted di domain Tim 4)
+      // tapi hanya proses jika ada gameContext aktif
+      const isSelesai =
+        event.data === 'game:selesai' ||
+        event.data?.type === 'game:selesai' ||
+        event.data?.event === 'game:selesai' ||
+        event.data === 'GAME_COMPLETE';
+
+      if (!isSelesai) return;
+
+      const gameId = gameData?.game_id || gameContext?.game_id;
+      const siswaId = user?.id;
+      const level = gameContext?.level || 'Low';
+
+      if (!gameId || !siswaId) return;
+
+      // Catat completion ke Tim 4 — fire-and-forget
+      recordGameSelesai({ siswa_id: siswaId, game_id: gameId, level })
+        .catch(() => { /* silent — tracking tidak boleh blokir UX */ });
+    };
+
+    window.addEventListener('message', handleGameMessage);
+    return () => window.removeEventListener('message', handleGameMessage);
+  }, [gameContext, gameData, user?.id]);
 
   /* ── Camera (inside ChatSection) ────────────────────────────── */
   const [camGranted, setCamGranted] = useState(false);
@@ -296,6 +376,9 @@ const StudentView = () => {
     if (sessionVideoRef.current) {
       sessionVideoRef.current.srcObject = null;
     }
+    // FIX T1: Hentikan capture emosi saat sesi kamera berakhir
+    webcamEmotion.stopCapture();
+    setCurrentEmosi(null);
   };
 
   /* ── Search ─────────────────────────────────────────────────── */
@@ -310,7 +393,7 @@ const StudentView = () => {
   /* ── Open chat with webcam flow ─────────────────────────────── */
 
   // Dipanggil oleh "Mulai Belajar" (dari rekomendasi) & "Lanjutkan" (dari progress).
-  // materiOrMapel: { mapelId, mapelLabel, mapelIcon, mapelColor, [materiId] }
+  // materiOrMapel: { mapelId, mapelLabel, mapelIcon, [materiId] }
   // Dipanggil oleh "Mulai Belajar" (dari rekomendasi) & ProgressSection (sudah handle cam modal sendiri).
   // Untuk source 'progress': langsung startChat (cam modal sudah ditampilkan di ProgressSection).
   const openChatWithWebcam = (materiOrMapel) => {
@@ -360,8 +443,12 @@ const StudentView = () => {
         sessionVideoRef.current.play().catch(() => { });
       }
     }
+    // FIX T1: Mulai capture emosi via webcam saat sesi belajar dimulai
+    webcamEmotion.startCapture();
     markTopicOngoing(materiOrMapel);
-    setChatMateri(materiOrMapel);
+    // FIX B2: Inject siswaId dari user auth agar semua payload API memakai siswa_id yang benar
+    // (bukan hardcode fallback 'usr_001')
+    setChatMateri({ ...materiOrMapel, siswaId: user?.id || null });
     setCamGranted(true);
     setActivePage("chat");
     setQuizActive(false);
@@ -402,7 +489,7 @@ const StudentView = () => {
     sessionVideoRef,
     stopSessionCamera,
     openGame: (ctx) => {
-      // ctx: { mapelId, mapelLabel, mapelIcon, mapelColor, elemenId, elemenLabel, materiId?, level, game_id? }
+      // ctx: { mapelId, mapelLabel, mapelIcon, elemenId, elemenLabel, materiId?, level, game_id? }
       setGameContext(ctx);
       setGameData(null);
       // FIX P1: fetch game detail + polling jika status masih "generating"
@@ -477,7 +564,12 @@ const StudentView = () => {
               onMouseLeave={e => { if (activePage !== 'profile') e.currentTarget.style.background = 'transparent'; }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: FS.lg, border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.4)'}`, flexShrink: 0 }}>{user?.avatar || '?'}</div>
+                <AvatarCircle
+                  avatar={user?.avatar}
+                  nama={user?.nama}
+                  size={40}
+                  border={`2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.4)'}`}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: C.white, fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.nama || 'Siswa'}</div>
                   <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.xs, marginTop: 1 }}>SR Kota Malang</div>
@@ -560,15 +652,12 @@ const StudentView = () => {
                   display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}
               >
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: `linear-gradient(135deg,${C.teal},${C.tealL})`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 700, fontSize: FS.base,
-                  border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.3)'}`,
-                }}>
-                  {user?.avatar || '?'}
-                </div>
+                <AvatarCircle
+                  avatar={user?.avatar}
+                  nama={user?.nama}
+                  size={32}
+                  border={`2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.3)'}`}
+                />
               </button>
             </div>
           )}
@@ -625,7 +714,7 @@ const StudentView = () => {
           {/* Header */}
           <div style={{
             padding: '12px 20px', flexShrink: 0,
-            background: `linear-gradient(135deg, ${gameContext.mapelColor}, ${gameContext.mapelColor}cc)`,
+            background: `linear-gradient(135deg, ${C.teal}, ${C.tealL})`,
             display: 'flex', alignItems: 'center', gap: 12,
             boxShadow: '0 2px 12px rgba(0,0,0,.4)',
           }}>
@@ -665,7 +754,7 @@ const StudentView = () => {
             {/* State: loading — fetch getGame() sedang berlangsung */}
             {gameLoading && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: 'radial-gradient(ellipse at center, #1a2a3a 0%, #0d1520 70%)' }}>
-                <div style={{ width: 52, height: 52, border: `4px solid ${gameContext.mapelColor}33`, borderTopColor: gameContext.mapelColor, borderRadius: '50%', animation: 'spin .9s linear infinite' }} />
+                <div style={{ width: 52, height: 52, border: `4px solid ${C.teal}33`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .9s linear infinite' }} />
                 <div style={{ color: 'rgba(255,255,255,.6)', fontWeight: 600, fontSize: FS.lg }}>Memuat game…</div>
               </div>
             )}
@@ -673,11 +762,11 @@ const StudentView = () => {
             {/* State: generating — Tim 4 masih proses generate HTML */}
             {!gameLoading && gameData?.status === 'generating' && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, background: 'radial-gradient(ellipse at center, #1a2a3a 0%, #0d1520 70%)' }}>
-                <div style={{ width: 52, height: 52, border: `4px solid ${gameContext.mapelColor}33`, borderTopColor: gameContext.mapelColor, borderRadius: '50%', animation: 'spin .9s linear infinite' }} />
+                <div style={{ width: 52, height: 52, border: `4px solid ${C.teal}33`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .9s linear infinite' }} />
                 <div style={{ color: '#fff', fontWeight: 700, fontSize: FS.h2 }}>Sedang generate game…</div>
                 <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.md, textAlign: 'center', maxWidth: 340, lineHeight: 1.6 }}>
                   Tim 4 sedang menyiapkan game untuk<br />
-                  <strong style={{ color: gameContext.mapelColor }}>{gameContext.elemenLabel || gameContext.mapelLabel}</strong>
+                  <strong style={{ color: C.teal }}>{gameContext.elemenLabel || gameContext.mapelLabel}</strong>
                   {gameContext.materiId && <> · <strong style={{ color: 'rgba(255,255,255,.6)' }}>{gameContext.materiId}</strong></>}
                 </div>
               </div>
@@ -691,7 +780,7 @@ const StudentView = () => {
                 <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.md }}>Coba kembali beberapa saat lagi</div>
                 <button
                   onClick={() => { setGameContext(null); setGameData(null); setGameLoading(false); }}
-                  style={{ marginTop: 8, padding: '10px 24px', borderRadius: 10, border: `1.5px solid ${gameContext.mapelColor}`, background: 'transparent', color: gameContext.mapelColor, fontWeight: 700, fontSize: FS.md, cursor: 'pointer', fontFamily: 'inherit' }}
+                  style={{ marginTop: 8, padding: '10px 24px', borderRadius: 10, border: `1.5px solid ${C.teal}`, background: 'transparent', color: C.teal, fontWeight: 700, fontSize: FS.md, cursor: 'pointer', fontFamily: 'inherit' }}
                 >← Kembali Belajar</button>
               </div>
             )}
@@ -716,8 +805,8 @@ const StudentView = () => {
                 padding: 32, gap: 20,
                 background: 'radial-gradient(ellipse at center, #1a2a3a 0%, #0d1520 70%)',
               }}>
-                <div style={{ width: '100%', maxWidth: 680, aspectRatio: '16/9', borderRadius: 20, background: '#111c2a', border: `2px solid ${gameContext.mapelColor}44`, boxShadow: `0 0 60px ${gameContext.mapelColor}22, 0 8px 32px rgba(0,0,0,.5)`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, position: 'relative', overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', top: -60, left: '50%', transform: 'translateX(-50%)', width: 240, height: 240, borderRadius: '50%', background: `${gameContext.mapelColor}18`, filter: 'blur(40px)', pointerEvents: 'none' }} />
+                <div style={{ width: '100%', maxWidth: 680, aspectRatio: '16/9', borderRadius: 20, background: '#111c2a', border: `2px solid ${C.teal}44`, boxShadow: `0 0 60px ${C.teal}22, 0 8px 32px rgba(0,0,0,.5)`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, position: 'relative', overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', top: -60, left: '50%', transform: 'translateX(-50%)', width: 240, height: 240, borderRadius: '50%', background: `${C.teal}18`, filter: 'blur(40px)', pointerEvents: 'none' }} />
                   <div style={{ fontSize: 60, filter: 'drop-shadow(0 4px 12px rgba(0,0,0,.4))' }}>🎮</div>
                   <div style={{ textAlign: 'center', zIndex: 1 }}>
                     <div style={{ color: '#fff', fontWeight: 700, fontSize: FS.h2, marginBottom: 8 }}>Game Edukatif</div>
@@ -726,8 +815,8 @@ const StudentView = () => {
                       Pilih game dari daftar di menu belajar.
                     </div>
                   </div>
-                  <div style={{ background: `${gameContext.mapelColor}22`, border: `1px solid ${gameContext.mapelColor}55`, borderRadius: 12, padding: '8px 20px', zIndex: 1 }}>
-                    <span style={{ color: gameContext.mapelColor, fontSize: FS.md, fontWeight: 700 }}>
+                  <div style={{ background: `${C.teal}22`, border: `1px solid ${C.teal}55`, borderRadius: 12, padding: '8px 20px', zIndex: 1 }}>
+                    <span style={{ color: C.teal, fontSize: FS.md, fontWeight: 700 }}>
                       {gameContext.elemenLabel || gameContext.mapelLabel}
                       {gameContext.materiId && ` · ${gameContext.materiId}`}
                       {` · Level ${(gameContext.level || 'Low').toUpperCase()}`}

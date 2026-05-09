@@ -46,19 +46,25 @@ export default function LoginPage() {
 
   const [tcOpen, setTcOpen] = useState(false);
 
+  // Flow sesuai spesifikasi:
+  // - Admin  → /admin
+  // - Guru   → /guru
+  // - Siswa  → jika is_first_login → /aktivasi (force change password + pilih mapel)
+  //          → jika sudah aktif   → /siswa
   const routeByRole = u => {
     if (u.role === 'admin') return navigate('/admin', { replace: true });
-    if (u.role === 'guru') return navigate('/guru', { replace: true });
-    if (u.is_first_login) return navigate('/aktivasi', { replace: true });
+    if (u.role === 'guru')  return navigate('/guru',  { replace: true });
+    // Siswa: kredensial dari admin, hanya email + password (tidak ada NIS di field login)
+    if (u.is_first_login)   return navigate('/aktivasi', { replace: true });
     navigate('/siswa', { replace: true });
   };
 
   const handleLogin = async () => {
-    if (!email || !pass) { setError('Email/NIS dan password wajib diisi.'); return; }
+    if (!email || !pass) { setError('Email dan password wajib diisi.'); return; }
     if (!agreed) { setError('Harap setujui Syarat & Ketentuan terlebih dahulu.'); return; }
     setLoading(true); setError('');
     try { routeByRole(await login(email, pass)); }
-    catch { setError('Email/NIS atau password salah.'); }
+    catch { setError('Email atau password salah.'); }
     finally { setLoading(false); }
   };
 
@@ -252,15 +258,15 @@ export default function LoginPage() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {/* Email/NIS */}
+            {/* Email */}
             <div>
-              <label style={LBL}>Email atau NIS</label>
+              <label style={LBL}>Email</label>
               <input
                 className="lg-inp"
                 style={inp()}
                 value={email}
                 onChange={e => { setEmail(e.target.value); setError(''); }}
-                placeholder="email@sekolahrakyat.id atau NIS"
+                placeholder="email@sekolahrakyat.id"
                 onKeyDown={e => e.key === 'Enter' && handleLogin()}
               />
             </div>

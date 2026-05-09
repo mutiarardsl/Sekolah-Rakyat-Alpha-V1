@@ -14,7 +14,7 @@
  *     - 40–79% benar → mid
  *     - < 40% benar → low
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { C, FONTS, FS } from '../styles/tokens';
 import { Btn, Card, ProgressBar } from '../components/shared/UI';
@@ -24,7 +24,10 @@ import {
   KURIKULUM_ELEMEN,
 } from '../data/masterData';
 import { useStudentStore } from '../stores/studentStore';
-import { submitQuiz } from '../api/content'; // FIX 2: submit hasil pretest ke API
+import { useAuth } from '../context/AuthContext'; // FIX B3: ambil user.id untuk siswa_id yang benar
+// Sesuai flow .md: soal pretest dari Tim 3 RAG (5 soal), level dikembalikan Tim 3 setelah submit.
+// Pretest BERBEDA dari quiz MC & essay di chatbot.
+import { getPretestSoal, submitPretestJawaban } from '../api/content';
 
 const MAPEL_LIST = ADMIN_MAPEL_LIST.filter(m => KURIKULUM[m.id]);
 const SOAL_PER_ELEMEN = 5;
@@ -94,6 +97,7 @@ const buildSoalUntukElemen = (mapelId, elemenId, elemenLabel) => {
 export default function PretestPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth(); // FIX B3: ambil user.id agar siswa_id payload benar
 
   // State yang dikirim dari ProgressSection / DashboardSection / StudentView
   const {
@@ -110,19 +114,54 @@ export default function PretestPage() {
 
   const mapelMeta = MAPEL_LIST.find(m => m.id === targetMapelId) || { label: targetMapelId, icon: '📚', color: C.teal };
 
-  // Build soal list:
-  // - isMateriLevel: filter soal spesifik untuk targetMateriId
-  // - !isMateriLevel: soal untuk seluruh elemen (elemen tanpa breakdown materi)
-  const soalTarget = isMateriLevel ? (targetMateriId || targetElemenLabel) : (targetElemenLabel || targetElemenId);
-  const initSoalList = (targetMapelId && targetElemenId)
-    ? buildSoalUntukElemen(targetMapelId, targetElemenId, soalTarget)
-    : [];
-
-  const [stage, setStage] = useState(initSoalList.length > 0 ? 'soal' : 'invalid');
-  const [soalList] = useState(initSoalList);
+  // Sesuai flow .md: soal pretest diambil dari Tim 3 RAG (5 soal).
+  // Tim 3 RAG juga yang mengembalikan level setelah jawaban disubmit.
+  // Pretest BERBEDA dari quiz MC & essay di chatbot.
+  const [stage, setStage] = useState('loading'); // loading | soal | submitting | result | invalid
+  const [soalList, setSoalList] = useState([]);
+  const [sesiPretestId, setSesiPretestId] = useState(null);
+  const [pretestLevelResult, setPretestLevelResult] = useState(null); // level dari Tim 3 RAG
   const [soalIdx, setSoalIdx] = useState(0);
   const [answers, setAnswers] = useState({});
   const [chosen, setChosen] = useState(null);
+
+  // Fetch 5 soal pretest dari Tim 3 RAG saat mount
+  // Sesuai flow .md: "sistem memanggil API Tim 3 RAG untuk mengambil soal pretest (5 soal)"
+  useEffect(() => {
+    if (!targetMapelId || !targetElemenId) { setStage('invalid'); return; }
+    (async () => {
+      try {
+        const res = await getPretestSoal({
+          siswa_id: user?.id || null,
+          mapel_id: targetMapelId,
+          elemen_id: targetElemenId,
+          materi_id: isMateriLevel ? targetMateriId : null,
+          is_materi_level: isMateriLevel,
+        });
+        const soal = res?.soal || [];
+        if (soal.length === 0) throw new Error('empty');
+        // Normalisasi: Tim 3 RAG mungkin kirim 'pertanyaan' atau 'soal' — unifikasi ke 'soal'
+        setSoalList(soal.map(s => ({
+          ...s,
+          soal: s.soal || s.pertanyaan || '',  // field teks soal
+          mapelId: targetMapelId,
+          elemenId: targetElemenId,
+        })));
+        setSesiPretestId(res?.sesi_pretest_id || null);
+        setStage('soal');
+      } catch {
+        // Fallback ke soal lokal jika Tim 3 RAG belum live
+        const localSoal = buildSoalUntukElemen(
+          targetMapelId,
+          targetElemenId,
+          isMateriLevel ? (targetMateriId || targetElemenLabel) : (targetElemenLabel || targetElemenId)
+        );
+        if (localSoal.length === 0) { setStage('invalid'); return; }
+        setSoalList(localSoal);
+        setStage('soal');
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const soalKey = (s, idx) => `${s.mapelId}__${s.elemenId}__${idx}`;
 
@@ -135,7 +174,8 @@ export default function PretestPage() {
 
   const goNext = () => {
     if (soalIdx < soalList.length - 1) setSoalIdx(soalIdx + 1);
-    else setStage('result');
+    // Soal terakhir selesai → langsung submit ke RAG (tidak ada halaman "Hasil" dulu)
+    else handleMulaiBelajar();
   };
 
   // Hitung hasil pretest
@@ -153,32 +193,42 @@ export default function PretestPage() {
   };
 
   const handleMulaiBelajar = async () => {
-    const { benar, total } = computeResult();
-    const level = hitungLevel(benar, total);
-    const score = total > 0 ? Math.round((benar / total) * 100) : 0;
+    setStage('submitting');
 
-    // FIX 2b: simpan hasil pretest ke store lokal
+    // Sesuai flow .md: submit jawaban ke Tim 3 RAG, Tim 3 yang mengembalikan level hasil pretest.
+    let level;
+    try {
+      const pretestRes = await submitPretestJawaban({
+        siswa_id: user?.id || null,
+        mapel_id: targetMapelId,
+        elemen_id: targetElemenId,
+        materi_id: isMateriLevel ? targetMateriId : null,
+        sesi_pretest_id: sesiPretestId,
+        answers: Object.fromEntries(
+          soalList.map((s, idx) => [soalKey(s, idx), String(answers[soalKey(s, idx)] ?? '')])
+        ),
+        // quiz_type TIDAK dikirim — Tim 3 contract tidak mendefinisikannya di /pretest/submit
+      });
+      // Tim 3 RAG mengembalikan level → gunakan level dari Tim 3
+      level = pretestRes?.level || 'low';
+      setPretestLevelResult(pretestRes);
+    } catch {
+      // Fallback: hitung level lokal jika Tim 3 belum live
+      const { benar, total } = computeResult();
+      level = hitungLevel(benar, total);
+    }
+
+    // Simpan hasil pretest ke store lokal.
+    // Catatan: BE menyimpan hasil ini secara permanen di sisi server melalui
+    // POST /content/pretest/submit (sudah dipanggil di atas). Status pretest
+    // akan dihidrasi kembali ke store dari BE via GET /content/pretest/status
+    // yang dipanggil ProgressSection saat mount — sehingga status tidak hilang
+    // saat siswa refresh halaman atau login ulang.
     if (isMateriLevel && targetMateriId) {
       markPretestMateriDone(targetMapelId, targetElemenId, targetMateriId, level);
     } else {
       markPretestElemenDone(targetMapelId, targetElemenId, level);
     }
-
-    // FIX 2b: submit hasil pretest ke API (POST /content/quiz/submit)
-    // Pretest diperlakukan sebagai quiz_type 'pretest' — backend Tim 3 catat untuk RAG
-    // Fire-and-forget: tidak block navigasi jika API gagal
-    submitQuiz({
-      siswa_id: 'usr_001',
-      mapel_id: targetMapelId,
-      materi: targetElemenLabel || targetElemenId,
-      materi_id: isMateriLevel ? targetMateriId : targetElemenId,
-      quiz_type: 'pretest',
-      level: level.charAt(0).toUpperCase() + level.slice(1),
-      answers: Object.fromEntries(
-        soalList.map((s, idx) => [soalKey(s, idx), String(answers[soalKey(s, idx)] ?? '')])
-      ),
-      score,
-    }).catch(() => { /* silent — pretest tetap lanjut */ });
 
     // Navigasi ke StudentView
     navigate('/siswa', {
@@ -192,7 +242,6 @@ export default function PretestPage() {
             mapelId: targetMapelId,
             mapelLabel: mapelMeta.label,
             mapelIcon: mapelMeta.icon,
-            mapelColor: mapelMeta.color,
             materiId: isMateriLevel ? targetMateriId : (targetElemenLabel || targetElemenId),
             elemenId: targetElemenId,
             elemenLabel: targetElemenLabel,
@@ -205,6 +254,32 @@ export default function PretestPage() {
   };
 
   // ── Guard: state tidak lengkap ────────────────────────────────────
+  // Loading state — fetch soal dari Tim 3 RAG
+  if (stage === 'loading') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg }}>
+        <div style={{ textAlign: 'center', padding: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.dark, marginBottom: 8 }}>Menyiapkan soal pretest...</div>
+          <div style={{ fontSize: FS.md, color: C.slate }}>sedang menyiapkan 5 soal untukmu.</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Submitting — menunggu level dari Tim 3 RAG
+  if (stage === 'submitting') {
+    return (
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg }}>
+        <div style={{ textAlign: 'center', padding: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⚙️</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: C.dark, marginBottom: 8 }}>Menganalisis jawabanmu...</div>
+          <div style={{ fontSize: FS.md, color: C.slate }}>sedang menentukan level belajar terbaikmu.</div>
+        </div>
+      </div>
+    );
+  }
+
   if (stage === 'invalid' || !targetMapelId || !targetElemenId) {
     return (
       <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg }}>
@@ -236,13 +311,13 @@ export default function PretestPage() {
             {/* Banner konteks elemen */}
             <div style={{
               display: 'flex', alignItems: 'center', gap: 10,
-              background: `${mapelMeta.color}12`,
-              border: `1.5px solid ${mapelMeta.color}30`,
+              background: `${C.teal}12`,
+              border: `1.5px solid ${C.teal}30`,
               borderRadius: 12, padding: '10px 14px', marginBottom: 20,
             }}>
               <span style={{ fontSize: 22 }}>{mapelMeta.icon}</span>
               <div>
-                <div style={{ fontSize: FS.md, fontWeight: 700, color: mapelMeta.color }}>
+                <div style={{ fontSize: FS.md, fontWeight: 700, color: C.teal }}>
                   Pretest — {targetElemenLabel || targetElemenId}
                 </div>
                 <div style={{ fontSize: FS.sm, color: C.slate, lineHeight: 1.5 }}>
@@ -255,19 +330,19 @@ export default function PretestPage() {
 
             {/* Progress bar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-              <ProgressBar value={((soalIdx) / total) * 100} height={7} color={mapelMeta.color} />
-              <span style={{ fontSize: FS.md, fontWeight: 700, color: mapelMeta.color, whiteSpace: 'nowrap' }}>{soalIdx + 1}/{total}</span>
+              <ProgressBar value={((soalIdx) / total) * 100} height={7} color={C.teal} />
+              <span style={{ fontSize: FS.md, fontWeight: 700, color: C.teal, whiteSpace: 'nowrap' }}>{soalIdx + 1}/{total}</span>
             </div>
 
             {/* Kartu soal */}
             <Card style={{ padding: 28 }} key={soalIdx}>
               <div className="fade-in">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 10, background: `${mapelMeta.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: `${C.teal}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
                     {mapelMeta.icon}
                   </div>
                   <div>
-                    <div style={{ fontSize: FS.xs, fontWeight: 700, color: mapelMeta.color, textTransform: 'uppercase', letterSpacing: 1.2 }}>{mapelMeta.label}</div>
+                    <div style={{ fontSize: FS.xs, fontWeight: 700, color: C.teal, textTransform: 'uppercase', letterSpacing: 1.2 }}>{mapelMeta.label}</div>
                     <div style={{ fontSize: FS.sm, color: C.slate }}>Topik: <strong style={{ color: C.dark }}>{s.materiId}</strong></div>
                   </div>
                   <div style={{ marginLeft: 'auto', fontSize: FS.sm, color: C.slate }}>Soal {soalIdx + 1}/{total}</div>
@@ -283,20 +358,20 @@ export default function PretestPage() {
                     return (
                       <button key={pi} onClick={() => choosePilihan(pi)} style={{
                         textAlign: 'left', padding: '11px 16px', borderRadius: 10,
-                        border: `2px solid ${isChosen ? mapelMeta.color : C.tealXL}`,
-                        background: isChosen ? `${mapelMeta.color}12` : C.white,
+                        border: `2px solid ${isChosen ? C.teal : C.tealXL}`,
+                        background: isChosen ? `${C.teal}12` : C.white,
                         cursor: 'pointer', fontFamily: 'inherit', fontSize: FS.base,
-                        color: isChosen ? mapelMeta.color : C.dark,
+                        color: isChosen ? C.teal : C.dark,
                         fontWeight: isChosen ? 700 : 400,
                         transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 10,
                       }}
-                        onMouseEnter={e => { if (!isChosen) { e.currentTarget.style.borderColor = mapelMeta.color; e.currentTarget.style.background = `${mapelMeta.color}06`; } }}
+                        onMouseEnter={e => { if (!isChosen) { e.currentTarget.style.borderColor = C.teal; e.currentTarget.style.background = `${C.teal}06`; } }}
                         onMouseLeave={e => { if (!isChosen) { e.currentTarget.style.borderColor = C.tealXL; e.currentTarget.style.background = C.white; } }}>
                         <span style={{
                           width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: FS.sm, fontWeight: 800,
-                          background: isChosen ? mapelMeta.color : C.cream,
+                          background: isChosen ? C.teal : C.cream,
                           color: isChosen ? C.white : C.slate, transition: 'all .2s',
                         }}>{String.fromCharCode(65 + pi)}</span>
                         {p}
@@ -319,14 +394,14 @@ export default function PretestPage() {
                 onClick={goNext}
                 disabled={answers[key] === undefined}
                 style={{
-                  background: answers[key] !== undefined ? mapelMeta.color : C.tealXL,
+                  background: answers[key] !== undefined ? `linear-gradient(135deg,${C.teal},${C.tealL})` : C.tealXL,
                   border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: FS.base,
                   color: answers[key] !== undefined ? '#fff' : C.slate,
                   cursor: answers[key] !== undefined ? 'pointer' : 'not-allowed',
                   fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
                   transition: 'all .2s', opacity: answers[key] !== undefined ? 1 : 0.5,
                 }}>
-                {soalIdx < soalList.length - 1 ? 'Selanjutnya →' : 'Lihat Hasil ✓'}
+                {soalIdx < soalList.length - 1 ? 'Selanjutnya →' : 'Selesai & Mulai Belajar →'}
               </button>
             </div>
           </div>
@@ -335,95 +410,7 @@ export default function PretestPage() {
     );
   }
 
-  /* ════════════════════════════════════════════════════════════════════
-   * TAHAP HASIL
-   * ════════════════════════════════════════════════════════════════════ */
-  const { benar, total } = computeResult();
-  const level = hitungLevel(benar, total);
-  const pctCorrect = total > 0 ? Math.round((benar / total) * 100) : 0;
-  const hasFallbackResult = soalList[0]?.isSelfAssessment;
-
-  const LEVEL_META = {
-    low: { label: 'Low', color: '#276749', bg: '#F0FFF4', border: '#9AE6B4', emoji: '💪', desc: 'Kita mulai dari dasar — perlahan tapi pasti!' },
-    mid: { label: 'Mid', color: '#B7791F', bg: '#FFFBF0', border: '#F6AD55', emoji: '📊', desc: 'Kamu sudah punya fondasi yang cukup baik!' },
-    high: { label: 'High', color: '#9B2C2C', bg: '#FFF5F5', border: '#FEB2B2', emoji: '🌟', desc: 'Luar biasa! Kamu sudah menguasai topik ini!' },
-  };
-  const lvlMeta = LEVEL_META[level];
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, overflowY: 'auto', background: `linear-gradient(160deg,${mapelMeta.color}18,${C.bg} 40%)` }}>
-      <div style={{ minHeight: '100%', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '32px 24px 80px' }}>
-        <div className="bounce-in" style={{ maxWidth: 480, width: '100%' }}>
-
-          {/* Header hasil */}
-          <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ fontSize: 52, marginBottom: 8 }}>{lvlMeta.emoji}</div>
-            <div style={{ fontFamily: FONTS.serif, fontSize: 24, fontWeight: 600, color: C.dark }}>
-              {hasFallbackResult ? 'Penilaian Selesai!' : 'Hasil Pretestmu!'}
-            </div>
-            {!hasFallbackResult && (
-              <div style={{ fontSize: FS.base, color: C.darkL, marginTop: 6, lineHeight: 1.6 }}>
-                {benar} dari {total} soal dijawab benar
-                <span style={{ marginLeft: 8, fontSize: 15, fontWeight: 800, color: level === 'high' ? C.green : level === 'mid' ? C.amber : C.red }}>
-                  ({pctCorrect}%)
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Level result card */}
-          <Card style={{ padding: 24, marginBottom: 16, textAlign: 'center' }}>
-            <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.slate, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>
-              Level Belajarmu
-            </div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 10,
-              padding: '10px 28px', borderRadius: 99,
-              background: lvlMeta.bg, border: `2px solid ${lvlMeta.border}`,
-              marginBottom: 14,
-            }}>
-              <span style={{ fontSize: 22 }}>{lvlMeta.emoji}</span>
-              <span style={{ fontSize: 22, fontWeight: 800, color: lvlMeta.color }}>{lvlMeta.label}</span>
-            </div>
-            <div style={{ fontSize: FS.md, color: C.darkL, lineHeight: 1.6 }}>{lvlMeta.desc}</div>
-
-            {/* Elemen info */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10, marginTop: 16,
-              padding: '10px 14px', borderRadius: 10,
-              background: `${mapelMeta.color}08`, border: `1.5px solid ${mapelMeta.color}20`,
-            }}>
-              <span style={{ fontSize: 20 }}>{mapelMeta.icon}</span>
-              <div style={{ flex: 1, textAlign: 'left' }}>
-                <div style={{ fontSize: FS.xs, fontWeight: 700, color: mapelMeta.color, textTransform: 'uppercase', letterSpacing: 0.8 }}>{mapelMeta.label}</div>
-                <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark }}>
-                  {isMateriLevel ? (targetMateriId || targetElemenLabel) : (targetElemenLabel || targetElemenId)}
-                </div>
-                {isMateriLevel && (
-                  <div style={{ fontSize: FS.xs, color: C.slate }}>Elemen: {targetElemenLabel}</div>
-                )}
-              </div>
-              <span style={{
-                fontSize: FS.xs, padding: '3px 10px', borderRadius: 99, fontWeight: 700,
-                background: lvlMeta.bg, color: lvlMeta.color, border: `1px solid ${lvlMeta.border}`,
-                whiteSpace: 'nowrap',
-              }}>
-                Level {lvlMeta.label} ✓
-              </span>
-            </div>
-          </Card>
-
-          {/* CTA: Mulai Belajar → ATPCamModal */}
-          <Btn variant="amber" onClick={handleMulaiBelajar}
-            style={{ width: '100%', justifyContent: 'center', padding: '14px 36px', fontSize: 14 }}>
-            🚀 Mulai Belajar →
-          </Btn>
-
-          <div style={{ textAlign: 'center', marginTop: 10, fontSize: FS.sm, color: C.slate }}>
-            Selanjutnya kamu akan diminta izin akses kamera untuk sesi belajar
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  // Stage 'result' tidak lagi digunakan — goNext() langsung panggil handleMulaiBelajar()
+  // yang set stage='submitting' → submit ke RAG → navigate ke chatbot
+  return null;
 }

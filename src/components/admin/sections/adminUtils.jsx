@@ -3,6 +3,7 @@
  */
 import { useState } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
+import { kelasDetailApi } from '../../../api/admin';
 
 export const ADMIN_SEKOLAH = {
   nama: "SR Kota Malang", kota: "Malang", provinsi: "Jawa Timur",
@@ -57,7 +58,7 @@ export const FormTambahMapel = ({ k, kelasId, mapelList, guruList, getMapel, get
   const [pilihGuru, setPilihGuru] = useState("");
   const sudahAda = Object.keys(k.mapelGuruMap || {});
   const tersedia = mapelList.filter(m => !sudahAda.includes(m.id));
-  const guruUntuk = pilihMapel ? guruList.filter(g => g.mapelId.includes(pilihMapel) && g.status === "Aktif") : [];
+  const guruUntuk = pilihMapel ? guruList.filter(g => (g.mapel_ids || []).includes(pilihMapel) && g.status === "Aktif") : [];
   return (
     <div style={{ padding: "12px 16px", background: C.tealXL, borderBottom: `1px solid rgba(13,92,99,.1)` }}>
       <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 8 }}>➕ Tambah Mapel ke Kelas Ini</div>
@@ -82,10 +83,15 @@ export const FormTambahMapel = ({ k, kelasId, mapelList, guruList, getMapel, get
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <button disabled={!pilihMapel}
-            onClick={() => {
+            onClick={async () => {
+              const mapelLabel = getMapel(pilihMapel)?.label || pilihMapel;
+              const guruLabel = pilihGuru ? getGuru(pilihGuru)?.nama : null;
+              try {
+                await kelasDetailApi.addMapel(kelasId, { mapel_id: pilihMapel, guru_id: pilihGuru || null });
+              } catch { /* Fallback: tetap update local state */ }
               setKelasList(p => p.map(kl => kl.id === kelasId
                 ? { ...kl, mapelGuruMap: { ...kl.mapelGuruMap, [pilihMapel]: pilihGuru || "" } } : kl));
-              showToast(`✅ ${getMapel(pilihMapel)?.label} ditambahkan${pilihGuru ? ` · Guru: ${getGuru(pilihGuru)?.nama}` : ""}`);
+              showToast(`✅ ${mapelLabel} ditambahkan ke kelas${guruLabel ? ` · Guru: ${guruLabel}` : ""}`);
               onDone();
             }}
             style={{

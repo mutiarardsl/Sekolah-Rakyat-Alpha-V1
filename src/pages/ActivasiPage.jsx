@@ -1,20 +1,20 @@
 /**
- * SR MVP — Halaman Aktivasi Akun Siswa — FASE 3 REVISED v4
+ * SR MVP — Halaman Aktivasi Akun Siswa — FASE 3 REVISED v5
  * src/pages/ActivasiPage.jsx
  *
- * Alur (enroll key dihapus — admin sudah menetapkan identitas & kelas):
- *   Siswa login dengan NIS + password sementara
+ * Alur (sesuai API Contract POST /auth/aktivasi):
+ *   Siswa login dengan email + password sementara
  *   → Sistem deteksi is_first_login: true → redirect ke sini
  *
- *   Step 1: Ganti password (min 8 karakter)
- *     - Tidak bisa skip
- *     - Setelah berhasil → status: "Aktif", is_first_login: false
+ *   Step 1: Ganti password (min 8 karakter) — disimpan sementara di state
+ *   Step 2: Pilih 3 mata pelajaran
+ *     → Klik "Mulai Belajar" → 1 request atomik POST /auth/aktivasi
+ *        { user_id, password, mapel_ids }
+ *     → is_first_login: false → masuk dashboard siswa
  *
- *   Step 2: Pilih mata pelajaran (3 mapel)
- *     → Masuk dashboard siswa
- *
- * Catatan: enroll key dihapus karena admin sudah memverifikasi
- * identitas, email/NIS, dan kelas siswa saat bulk upload.
+ * PENTING: Aktivasi bersifat atomik. Password + mapel_ids dikirim
+ * bersamaan dalam 1 request. Jika salah satu gagal, seluruh aktivasi
+ * dianggap belum selesai (sesuai contract).
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -60,7 +60,7 @@ export default function ActivasiPage() {
     const siswaName = user?.nama || 'Siswa';
     const siswaInitials = siswaName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     const siswaKelas = user?.kelasId || 'Kelas';
-    const siswaEmail = user?.email || user?.nis || '—';
+    const siswaEmail = user?.email || '—';
 
     const inp = (err) => ({
         width: '100%', padding: '10px 14px', boxSizing: 'border-box',
@@ -69,34 +69,40 @@ export default function ActivasiPage() {
         fontFamily: 'inherit',
     });
 
-    /* ── Step 1: Set Password ──────────────────────────────────── */
-    // FIX ⑤: implementasi aktivasiAkun() via POST /auth/aktivasi
-    //  - user_id diambil dari sesi login (user.id)
-    //  - setelah sukses baru update local state dan lanjut ke step 2
-    const handleSetPassword = async () => {
+    /* ── Step 1: Validasi Password (simpan di state, belum kirim ke API) ── */
+    // Sesuai contract: aktivasi bersifat atomik — password + mapel_ids dikirim
+    // sekaligus di Step 2 via POST /auth/aktivasi { user_id, password, mapel_ids }.
+    const handleSetPassword = () => {
         const e = {};
         if (pass.length < 8) e.pass = 'Password minimal 8 karakter';
         else if (calcStr(pass) < 2) e.pass = 'Password terlalu lemah — tambahkan huruf kapital atau angka';
         if (pass !== confirmPass) e.confirm = 'Password tidak cocok';
         if (Object.keys(e).length) { setErrors(e); return; }
+        // Password valid → lanjut ke step 2, belum kirim API
+        setStep(2);
+    };
+
+    /* ── Step 2: Pilih Mapel → kirim 1 request atomik ke POST /auth/aktivasi ── */
+    const handlePilihMapel = async () => {
+        if (selectedMapelsDraft.length !== 3) return;
 
         setLoading(true); setError('');
         try {
-            await aktivasiAkun({ password: pass, user_id: user?.id });
-            updateUser({ is_first_login: false, status: 'Aktif' });
-            setStep(2);
+            // 1 request atomik: password + mapel_ids bersamaan (sesuai contract)
+            const result = await aktivasiAkun({
+                user_id: user?.id,
+                password: pass,
+                mapel_ids: selectedMapelsDraft,
+            });
+            // Simpan 3 mapel pilihan ke store lokal untuk rekomendasi awal di FE
+            setSelectedMapels(selectedMapelsDraft, result?.user?.id || user?.id);
+            // Update sesi — is_first_login: false, status: Aktif
+            updateUser({ ...(result?.user || {}), is_first_login: false, status: 'Aktif' });
+            navigate('/siswa', { replace: true });
         } catch (err) {
             setError(err?.response?.data?.message || 'Gagal mengaktifkan akun. Silakan coba lagi.');
         } finally {
             setLoading(false);
-        }
-    };
-
-    /* ── Step 2: Pilih Mapel ───────────────────────────────────── */
-    const handlePilihMapel = () => {
-        if (selectedMapelsDraft.length === 3) {
-            setSelectedMapels(selectedMapelsDraft, user?.id);
-            navigate('/siswa', { replace: true });
         }
     };
 
@@ -239,9 +245,9 @@ export default function ActivasiPage() {
                                 <div style={{ background: '#FFF5F5', color: '#E53E3E', border: '1px solid #FEB2B2', borderRadius: 8, padding: '10px 14px', fontSize: 12 }}>⚠ {error}</div>
                             )}
 
-                            <Btn variant="primary" onClick={handleSetPassword} disabled={loading || !pass || !confirmPass}
+                            <Btn variant="primary" onClick={handleSetPassword} disabled={!pass || !confirmPass}
                                 style={{ width: '100%', justifyContent: 'center', padding: 8, fontSize: 13 }}>
-                                {loading ? <><Spinner size={11} color={C.white} /> Mengaktifkan…</> : 'Aktifkan Akun →'}
+                                Lanjut Pilih Mapel →
                             </Btn>
 
                             <div style={{ textAlign: 'center' }}>
@@ -278,28 +284,34 @@ export default function ActivasiPage() {
                                         }} style={{
                                             display: 'inline-flex', alignItems: 'center', gap: 6,
                                             padding: '7px 13px', borderRadius: 99,
-                                            border: `1.5px solid ${selected ? m.color : C.tealXL}`,
-                                            background: selected ? `${m.color}15` : C.white,
+                                            border: `1.5px solid ${selected ? C.teal : C.tealXL}`,
+                                            background: selected ? `${C.teal}15` : C.white,
                                             cursor: maxReached ? 'not-allowed' : 'pointer',
                                             opacity: maxReached ? 0.4 : 1,
                                             fontFamily: 'inherit', transition: 'all .2s', whiteSpace: 'nowrap',
-                                            color: selected ? m.color : C.darkL,
+                                            color: selected ? C.teal : C.darkL,
                                             fontWeight: selected ? 700 : 500, fontSize: FS.sm,
                                         }}>
                                             <span style={{ fontSize: 14 }}>{m.icon}</span>
                                             {m.label}
-                                            {selected && <span style={{ width: 14, height: 14, borderRadius: '50%', background: m.color, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.xs, color: C.white, fontWeight: 800 }}>✓</span>}
+                                            {selected && <span style={{ width: 14, height: 14, borderRadius: '50%', background: C.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.xs, color: C.white, fontWeight: 800 }}>✓</span>}
                                         </button>
                                     );
                                 })}
                             </div>
 
+                            {error && (
+                                <div style={{ background: '#FFF5F5', color: '#E53E3E', border: '1px solid #FEB2B2', borderRadius: 8, padding: '10px 14px', fontSize: 12, marginBottom: 8 }}>⚠ {error}</div>
+                            )}
+
                             <Btn variant="primary" onClick={handlePilihMapel}
-                                disabled={selectedMapelsDraft.length < 3}
+                                disabled={selectedMapelsDraft.length < 3 || loading}
                                 style={{ width: '100%', justifyContent: 'center', padding: 10, fontSize: FS.base, opacity: selectedMapelsDraft.length < 3 ? 0.5 : 1 }}>
-                                {selectedMapelsDraft.length < 3
-                                    ? `Pilih ${3 - selectedMapelsDraft.length} mapel lagi`
-                                    : 'Mulai Belajar →'}
+                                {loading
+                                    ? <><Spinner size={11} color={C.white} /> Mengaktifkan…</>
+                                    : selectedMapelsDraft.length < 3
+                                        ? `Pilih ${3 - selectedMapelsDraft.length} mapel lagi`
+                                        : 'Mulai Belajar →'}
                             </Btn>
                         </div>
                     )}

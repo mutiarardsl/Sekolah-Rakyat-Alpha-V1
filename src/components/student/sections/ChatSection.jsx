@@ -22,9 +22,15 @@ import { useStudentStore } from '../../../stores/studentStore';
 import QuizModal, { getQuizV2 } from './QuizModal';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 // FIX P0: sambungkan ke API Mentor (Tim 5) dan Content (Tim 3)
-import { sendMessage, streamMessage, getChatHistory, resetSession } from '../../../api/mentor';
-import { getKontenSiswa } from '../../../api/content'; // bank konten guru — sudah ada, tinggal ambil
+import { sendMessage, streamMessage, getChatHistory } from '../../../api/mentor';
+import { getKontenSiswa, getQuizHistory } from '../../../api/content'; // bank konten guru + riwayat quiz dari BE
 // FIX 4: getKontenSiswa → prefetch bank konten guru saat topik dibuka
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+// katex/dist/katex.min.css diimport di main.jsx agar tersedia global,
+// tidak bergantung pada apakah ChatSection sudah di-render (penting untuk code-split).
 
 // Flag dari .env:
 //   VITE_MENTOR_STREAM : true → stream token-per-token, false → tunggu full response
@@ -36,85 +42,90 @@ const USE_STREAM = import.meta.env.VITE_MENTOR_STREAM === 'true';
 const makeKey = (mapelId, sub) => `${mapelId}__${sub}`;
 
 // Bobot agregasi quiz — MC 70%, Essay 30%
-const MC_WEIGHT = 0.7;
-const ESSAY_WEIGHT = 0.3;
+const MC_WEIGHT = 0.6;
+const ESSAY_WEIGHT = 0.4;
 const KKM_AGREGASI = 75;
 
 /* ─── Markdown renderer for AI messages ─────────────────────────── */
-const renderMarkdown = (text) => {
-    const lines = text.split('\n');
-    const elements = [];
-    let i = 0;
-
-    const parseLine = (line) => {
-        // Bold **text**
-        const parts = line.split(/(\*\*.*?\*\*)/g);
-        return parts.map((part, idx) => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-                return <strong key={idx} style={{ fontWeight: 700 }}>{part.slice(2, -2)}</strong>;
-            }
-            return <span key={idx}>{part}</span>;
-        });
-    };
-
-    while (i < lines.length) {
-        const line = lines[i];
-        if (!line.trim()) { elements.push(<div key={i} style={{ height: 8 }} />); i++; continue; }
-
-        // Heading
-        if (line.startsWith('## ')) {
-            elements.push(<div key={i} style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, marginTop: 12, marginBottom: 4, borderBottom: '1px solid rgba(13,92,99,.1)', paddingBottom: 4 }}>{parseLine(line.slice(3))}</div>);
-            i++; continue;
-        }
-        if (line.startsWith('# ')) {
-            elements.push(<div key={i} style={{ fontSize: FS.xl, fontWeight: 800, color: C.dark, marginTop: 8, marginBottom: 6 }}>{parseLine(line.slice(2))}</div>);
-            i++; continue;
-        }
-
-        // Numbered list
-        if (/^\d+\.\s/.test(line)) {
-            const listItems = [];
-            while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
-                const num = lines[i].match(/^(\d+)\./)[1];
-                listItems.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                    <span style={{ color: '#0D5C63', fontWeight: 700, minWidth: 18, fontSize: 12 }}>{num}.</span>
-                    <span style={{ lineHeight: 1.6, fontSize: 13 }}>{parseLine(lines[i].replace(/^\d+\.\s/, ''))}</span>
-                </div>);
-                i++;
-            }
-            elements.push(<div key={`ol-${i}`} style={{ marginTop: 6, marginBottom: 6 }}>{listItems}</div>);
-            continue;
-        }
-
-        // Bullet •
-        if (line.startsWith('• ') || line.startsWith('* ') || line.startsWith('- ')) {
-            const listItems = [];
-            while (i < lines.length && (lines[i].startsWith('• ') || lines[i].startsWith('* ') || lines[i].startsWith('- '))) {
-                listItems.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 3 }}>
-                    <span style={{ color: '#0D5C63', fontWeight: 700, fontSize: FS.lg, marginTop: 1 }}>·</span>
-                    <span style={{ lineHeight: 1.6, fontSize: 13 }}>{parseLine(lines[i].replace(/^[•*-]\s/, ''))}</span>
-                </div>);
-                i++;
-            }
-            elements.push(<div key={`ul-${i}`} style={{ marginTop: 4, marginBottom: 4 }}>{listItems}</div>);
-            continue;
-        }
-
-        // Arrow lines → 
-        if (line.startsWith('→ ')) {
-            elements.push(<div key={i} style={{ display: 'flex', gap: 8, marginBottom: 4, paddingLeft: 8 }}>
-                <span style={{ color: '#0D5C63', fontWeight: 700 }}>→</span>
-                <span style={{ lineHeight: 1.6, fontSize: 13 }}>{parseLine(line.slice(2))}</span>
-            </div>);
-            i++; continue;
-        }
-
-        // Regular paragraph
-        elements.push(<p key={i} style={{ lineHeight: 1.7, fontSize: FS.base, marginBottom: 2 }}>{parseLine(line)}</p>);
-        i++;
-    }
-    return elements;
-};
+const renderMarkdown = (text) => (
+    <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+            // ── Table styling ──
+            table: ({ children }) => (
+                <div style={{ overflowX: 'auto', margin: '8px 0' }}>
+                    <table style={{
+                        width: '100%', borderCollapse: 'collapse',
+                        fontSize: FS.base, fontFamily: FONTS.sans,
+                        border: `1px solid ${C.teal}30`,
+                        borderRadius: 8,
+                    }}>{children}</table>
+                </div>
+            ),
+            thead: ({ children }) => (
+                <thead style={{ background: `${C.teal}14` }}>{children}</thead>
+            ),
+            th: ({ children }) => (
+                <th style={{
+                    padding: '8px 12px', textAlign: 'left',
+                    fontWeight: 700, fontSize: FS.sm, color: C.teal,
+                    borderBottom: `2px solid ${C.teal}30`,
+                    fontFamily: FONTS.sans,
+                }}>{children}</th>
+            ),
+            td: ({ children }) => (
+                <td style={{
+                    padding: '7px 12px',
+                    borderBottom: `1px solid ${C.teal}15`,
+                    fontSize: FS.base, fontFamily: FONTS.sans,
+                }}>{children}</td>
+            ),
+            // ── Typography — semua diseragamkan ke FS.base ──
+            p: ({ children }) => (
+                <p style={{ margin: '3px 0', lineHeight: 1.65, fontSize: FS.base, fontFamily: FONTS.sans }}>{children}</p>
+            ),
+            h1: ({ children }) => (
+                // h1 → sedikit di atas base agar tidak terlalu jumbo
+                <div style={{ fontSize: FS.lg, fontWeight: 700, color: C.dark, margin: '10px 0 4px', fontFamily: FONTS.sans }}>{children}</div>
+            ),
+            h2: ({ children }) => (
+                <div style={{ fontSize: FS.base + 1, fontWeight: 700, color: C.dark, margin: '8px 0 3px', borderBottom: `1px solid ${C.teal}15`, paddingBottom: 3, fontFamily: FONTS.sans }}>{children}</div>
+            ),
+            h3: ({ children }) => (
+                <div style={{ fontSize: FS.base, fontWeight: 700, color: C.teal, margin: '6px 0 3px', fontFamily: FONTS.sans }}>{children}</div>
+            ),
+            // ── Lists ──
+            ul: ({ children }) => (
+                <ul style={{ margin: '3px 0', paddingLeft: 18, fontFamily: FONTS.sans }}>{children}</ul>
+            ),
+            ol: ({ children }) => (
+                <ol style={{ margin: '3px 0', paddingLeft: 18, fontFamily: FONTS.sans }}>{children}</ol>
+            ),
+            li: ({ children }) => (
+                <li style={{ marginBottom: 2, lineHeight: 1.6, fontSize: FS.base, fontFamily: FONTS.sans }}>{children}</li>
+            ),
+            // ── Code ──
+            pre: ({ children }) => (
+                <pre style={{ background: '#1A2332', color: '#E2E8F0', padding: 12, borderRadius: 8, fontSize: FS.sm, overflowX: 'auto', margin: '6px 0', lineHeight: 1.5 }}>{children}</pre>
+            ),
+            code: ({ children, ...props }) => (
+                <code style={{ background: `${C.teal}12`, padding: '1px 4px', borderRadius: 3, fontSize: FS.sm, fontFamily: 'monospace', color: C.teal }} {...props}>{children}</code>
+            ),
+            // ── Blockquote ──
+            blockquote: ({ children }) => (
+                <blockquote style={{ borderLeft: `3px solid ${C.teal}`, margin: '6px 0', paddingLeft: 12, color: C.darkL, fontStyle: 'italic', fontSize: FS.base, fontFamily: FONTS.sans }}>{children}</blockquote>
+            ),
+            // ── Strong / em ──
+            strong: ({ children }) => (
+                <strong style={{ fontWeight: 700, fontFamily: FONTS.sans }}>{children}</strong>
+            ),
+            em: ({ children }) => (
+                <em style={{ fontFamily: FONTS.sans }}>{children}</em>
+            ),
+        }}
+    >{text}</ReactMarkdown>
+);
 
 // Legacy simple renderer for user messages
 const renderText = (text) => text.split('\n').map((line, i, arr) => (
@@ -561,8 +572,9 @@ const BacaanView = ({ bacaanData, currentLevel, color, materiId }) => {
                     fontSize: FS.base,
                     color: C.dark,
                 }}
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
-            />
+            >
+                {renderMarkdown(text)}
+            </div>
             <div style={{ marginTop: 14, background: '#EBF8FF', borderRadius: 10, padding: '10px 14px', fontSize: FS.sm, color: '#2B6CB0', display: 'flex', gap: 8 }}>
                 <span>💡</span>
                 <span>Setelah membaca materi ini, kerjakan Flashcard untuk memantapkan hafalan, lalu selesaikan Quiz MC + Essay.</span>
@@ -607,7 +619,12 @@ const ChatSection = ({
     const [confModal, setConfModal] = useState(null);
     const [pendingQuizResult, setPendingQuizResult] = useState(null);
     // readDone[key] = true setelah siswa klik "Selesai Membaca" pada topik key
-    const [readDone, setReadDone] = useState({});
+    const [readDone, setReadDone] = useState(() => {
+        try {
+            const raw = localStorage.getItem(`sr_read_done`);
+            return raw ? JSON.parse(raw) : {};
+        } catch { return {}; }
+    });
 
     const [quizHistoryModal, setQuizHistoryModal] = useState(null);
     // Quiz modal: dua tombol terpisah (MC dan Essay), masing-masing bisa di-klik ulang untuk soal baru
@@ -645,48 +662,6 @@ const ChatSection = ({
      * tapi menanyakan soal mana yang ingin dibahas dulu.
      * Fase 3: digantikan stream dari Tim 5.
      */
-    useEffect(() => {
-        if (!needsQuizAnalysis || !lastQuizResult || analysisProcessedRef.current) return;
-        if (!camGranted) return;
-        if (!activeKey) return;
-
-        analysisProcessedRef.current = true;
-        clearQuizAnalysis();
-        setQuizAnalysisTyping(true);
-
-        const { quizType, score, correct, total, materiId, mapelLabel, wrongItems, essayAnswers, soalSnapshot } = lastQuizResult;
-
-        const discussionDelay = 1200 + Math.random() * 800;
-
-        setTimeout(() => {
-            const aiText = buildQuizDiscussionOpener({
-                quizType: quizType || 'mc',
-                score, correct, total, materiId, mapelLabel,
-                wrongItems, essayAnswers, soalSnapshot,
-            });
-
-            const aiMsg = {
-                id: Date.now() + 2,
-                role: 'ai',
-                text: aiText,
-                time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-                team: 'Tim 5',
-                isQuizAnalysis: true,
-            };
-
-            setMsgsByKey(prev => ({
-                ...prev,
-                [activeKey]: [...(prev[activeKey] || []), aiMsg],
-            }));
-
-            setQuizAnalysisTyping(false);
-            analysisProcessedRef.current = false;
-            setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-        }, discussionDelay);
-
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [needsQuizAnalysis]);
-
     /* ── TTS State (per-message, lokal) ──────────────────────────── */
     const [speakingMsgId, setSpeakingMsgId] = useState(null); // id pesan yang sedang disuarakan
     const [feedbacks, setFeedbacks] = useState({});           // { [msgId]: 'like' | 'dislike' }
@@ -934,7 +909,6 @@ const ChatSection = ({
                 addRecentActivity({
                     type: 'chat',
                     mapelIcon: chatMateri.mapelIcon,
-                    mapelColor: chatMateri.mapelColor,
                     label: `Memulai pelajaran ${chatMateri.materiId || chatMateri.mapelLabel}`,
                     ts: Date.now(),
                 });
@@ -1073,6 +1047,52 @@ const ChatSection = ({
             }
             setSubMateri(chatMateri.materiId);
 
+            // Hidrasi quizHistory + levelMap dari BE (GET /content/quiz/history).
+            // Dipanggil setiap kali topik dibuka — hanya mengisi store jika store masih kosong
+            // untuk topik ini, agar tidak menimpa data yang sudah ada di sesi aktif.
+            // Ini memastikan riwayat quiz & status naik-level tidak hilang saat siswa refresh.
+            const existingHistoryForKey = (useStudentStore.getState().quizHistory || {})[activeKey];
+            if (!existingHistoryForKey || existingHistoryForKey.length === 0) {
+                (async () => {
+                    try {
+                        const qh = await getQuizHistory({
+                            siswa_id: chatMateri.siswaId || 'usr_001',
+                            elemen_id: chatMateri.elemenId || chatMateri.materiId,
+                            materi_id: chatMateri.materiId || null,
+                        });
+                        if (!qh) return;
+                        // Hidrate levelMap (current_level dari BE)
+                        if (qh.current_level) {
+                            setLevelMap(p => ({
+                                ...p,
+                                // hanya set jika store lokal belum punya entry untuk key ini
+                                [activeKey]: p[activeKey] ?? qh.current_level,
+                            }));
+                        }
+                        // Hidrate quizHistory (history per level + locked flag dari BE)
+                        if (Array.isArray(qh.history) && qh.history.length > 0) {
+                            setQuizHistory(p => {
+                                // Jangan timpa jika sudah ada dari sesi ini
+                                if ((p[activeKey] || []).length > 0) return p;
+                                // Konversi shape BE → shape store lokal
+                                const converted = qh.history.map(item => ({
+                                    type: item.type,
+                                    level: item.level,
+                                    score: item.score,
+                                    locked: item.locked,   // flag read-only dari BE
+                                    ts: new Date(item.ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                                    // soalSnapshot, correct, dll tidak tersedia dari BE —
+                                    // panel review detail hanya aktif untuk quiz sesi ini
+                                }));
+                                return { ...p, [activeKey]: converted };
+                            });
+                        }
+                    } catch {
+                        // silent — store lokal tetap dipakai sebagai fallback
+                    }
+                })();
+            }
+
             // FIX 4b: REVISI FASE 3 -- prefetch bank konten guru (GET /content/siswa)
             // konten_list kini 16 item: bacaan*3 + quiz_pg*3 + quiz_essay*3 + flashcard*3 + mindmap*1 + game*3
             // SISTEM BACAAN MARKDOWN:
@@ -1103,6 +1123,8 @@ const ChatSection = ({
                     setConfContent(prev => {
                         const existing = prev[topikKeyForConf] || {};
                         const updated = { ...existing };
+                        // Simpan atp dari paket untuk dipakai di mentor payload
+                        if (paket.atp) updated._atp = paket.atp;
                         paket.konten_list.forEach(item => {
                             const tipeKey = item.tipe;
                             if (tipeKey === 'flashcard') {
@@ -1118,7 +1140,10 @@ const ChatSection = ({
                                     const lb = getConfContent(chatMateri.materiId, chatMateri.mapelLabel).mindmap || {};
                                     updated.mindmap = {
                                         ...lb, generated: true,
-                                        ...(item.content?.content ? { text: item.content.content } : {})
+                                        // Contract Tim 3: mindmap content = { nodes: [...] }
+                                        ...(Array.isArray(item.content?.nodes) && item.content.nodes.length
+                                            ? { nodes: item.content.nodes }
+                                            : {}),
                                     };
                                 }
                             } else if (tipeKey === 'bacaan' && item.content?.text) {
@@ -1134,6 +1159,24 @@ const ChatSection = ({
                                 else if (!updated.game.byLevel) updated.game.byLevel = {};
                                 updated.game.byLevel[item.level] = item.content;
                                 updated.game.generated = true;
+                            } else if (tipeKey === 'quiz_pg' && item.level) {
+                                // FIX T2: QUIZ PILIHAN GANDA — simpan per level dari API, override QUIZ_BANK_V2 lokal
+                                if (!updated.quiz_pg) updated.quiz_pg = { generated: true, byLevel: {} };
+                                else if (!updated.quiz_pg.byLevel) updated.quiz_pg.byLevel = {};
+                                const lvKey = (item.level || 'low').toLowerCase();
+                                if (Array.isArray(item.content?.soal) && item.content.soal.length) {
+                                    updated.quiz_pg.byLevel[lvKey] = item.content.soal;
+                                }
+                                updated.quiz_pg.generated = true;
+                            } else if (tipeKey === 'quiz_essay' && item.level) {
+                                // FIX T2: QUIZ ESSAY — simpan per level dari API, override bank lokal
+                                if (!updated.quiz_essay) updated.quiz_essay = { generated: true, byLevel: {} };
+                                else if (!updated.quiz_essay.byLevel) updated.quiz_essay.byLevel = {};
+                                const lvKey = (item.level || 'low').toLowerCase();
+                                if (Array.isArray(item.content?.pertanyaan) && item.content.pertanyaan.length) {
+                                    updated.quiz_essay.byLevel[lvKey] = item.content.pertanyaan;
+                                }
+                                updated.quiz_essay.generated = true;
                             }
                         });
                         return { ...prev, [topikKeyForConf]: updated };
@@ -1194,7 +1237,11 @@ const ChatSection = ({
 
     /* ── Selesai Membaca → unlock chat + inject pertanyaan opening ── */
     const handleSelesaiBaca = () => {
-        setReadDone(p => ({ ...p, [activeKey]: true }));
+        setReadDone(p => {
+            const updated = { ...p, [activeKey]: true };
+            try { localStorage.setItem('sr_read_done', JSON.stringify(updated)); } catch { }
+            return updated;
+        });
         const ctq = `Bagus sekali! Sekarang kita berdiskusi — **menurutmu, di mana kamu pernah menjumpai konsep ${materiId} dalam kehidupan sehari-hari?** Ceritakan pengalamanmu! 🤔`;
         const openingMsg = {
             id: Date.now(), role: 'ai',
@@ -1208,33 +1255,83 @@ const ChatSection = ({
 
     /* ── Send message — FIX P0: pakai api/mentor sendMessage/streamMessage ── */
     const cancelStreamRef = useRef(null);
-    const sendMsg = async () => {
-        if (!input.trim() && !chatAttachments.length) return;
 
-        const userMsg = {
-            id: Date.now(), role: 'user', text: input,
-            time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), userMsg] }));
-        const sentText = input;
-        setInput(''); setTyping(true);
-        if (textareaRef.current) textareaRef.current.style.height = '38px';
+    /**
+     * dispatchMentorMessage — core transport ke Tim 5 API.
+     * Memisahkan "kirim teks ke mentor" dari input-state agar bisa dipanggil
+     * oleh sendMsg() (chat normal) dan startQuizDiscussion() (CTA flow).
+     *
+     * @param {string} text        — teks pesan yang akan dikirim
+     * @param {object} [opts]
+     * @param {string|null} [opts.hasil_quiz_id]  — V3.1: inject konteks_quiz ke POST /sesi
+     * @param {boolean} [opts.suppressUserBubble] — true → jangan render user bubble (CTA opener)
+     */
+    const dispatchMentorMessage = async (text, opts = {}) => {
+        if (!text?.trim()) {
+            console.warn('[CTA] dispatchMentorMessage: text kosong, dibatalkan');
+            return;
+        }
+        if (!chatMateri) {
+            console.warn('[CTA] dispatchMentorMessage: chatMateri belum ada, dibatalkan');
+            return;
+        }
+        if (!activeKey) {
+            console.warn('[CTA] dispatchMentorMessage: activeKey belum ada, dibatalkan');
+            return;
+        }
 
-        // Bangun payload sesuai MentorChatPayload contract v2.1.0
+        const { hasil_quiz_id = null, suppressUserBubble = false } = opts;
+
+        // Tampilkan user bubble kecuali CTA opener (suppressUserBubble)
+        if (!suppressUserBubble) {
+            const userMsg = {
+                id: Date.now(), role: 'user', text,
+                time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            };
+            setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), userMsg] }));
+        }
+
+        setTyping(true);
+
+        // Bangun payload sesuai MentorChatPayload contract Tim 5
         const siswaId = chatMateri?.siswaId || 'usr_001';
         const currentEmosi = useStudentStore.getState().currentEmosi || null;
+        const elemenId = chatMateri?.elemenId || '';
+        const elemenLabel = chatMateri?.elemenLabel || chatMateri?.mapelLabel || '';
+        const activeLevelRaw = levelMap[activeKey] || chatMateri?.level || 'low';
+        const activeLevelForMentor = activeLevelRaw.charAt(0).toUpperCase() + activeLevelRaw.slice(1).toLowerCase();
+        const atpForMentor = confContent[activeKey]?._atp || confContent[makeKey(chatMateri?.mapelId, chatMateri?.materiId)]?._atp || '';
+
+        // V3.1: hasil_quiz_id dari parameter (CTA flow) — clear store jika masih ada
+        const storeHasilQuizId = useStudentStore.getState().ctaHasilQuizId ?? null;
+        if (storeHasilQuizId) useStudentStore.getState().clearCtaHasilQuizId();
+        const effectiveHasilQuizId = hasil_quiz_id || storeHasilQuizId || null;
+
         const payload = {
             siswa_id: siswaId,
             mapel_id: chatMateri?.mapelId || '',
-            materi: chatMateri?.mapelLabel || materiId || '',
-            materi_id: materiId || chatMateri?.mapelId || '',
-            message: sentText,
+            elemen_id: elemenId,
+            elemen_label: elemenLabel,
+            materi: chatMateri?.mapelLabel || materiId || null,
+            materi_id: materiId || null,
+            atp: atpForMentor,
+            level: activeLevelForMentor,
+            message: text,
             context: {
                 emosi: currentEmosi,
                 progress: null,
-                rekomendasi_guru: null,
             },
+            // V3.1: inject hasil_quiz_id hanya jika CTA flow — ensureSesiForMentor akan
+            // membungkusnya menjadi konteks_quiz saat POST /sesi
+            ...(effectiveHasilQuizId ? { hasil_quiz_id: effectiveHasilQuizId } : {}),
         };
+
+        console.log('[Mentor] dispatchMentorMessage payload:', {
+            activeKey,
+            message: text.slice(0, 60) + (text.length > 60 ? '…' : ''),
+            has_hasil_quiz_id: !!effectiveHasilQuizId,
+            suppressUserBubble,
+        });
 
         try {
             // FIX 4: hapus gate USE_MENTOR_API — selalu panggil API (MSW intercept jika aktif)
@@ -1310,6 +1407,108 @@ const ChatSection = ({
         }
     };
 
+    /**
+     * sendMsg — dipanggil saat user kirim pesan via input bar (chat normal).
+     * Delegate ke dispatchMentorMessage dengan teks dari input state.
+     */
+    const sendMsg = async () => {
+        if (!input.trim() && !chatAttachments.length) return;
+        const sentText = input;
+        setInput('');
+        if (textareaRef.current) textareaRef.current.style.height = '38px';
+        await dispatchMentorMessage(sentText);
+    };
+
+    /**
+     * startQuizDiscussion — CTA "Tanya Kak Nusa" orchestration.
+     *
+     * Dipanggil oleh useEffect saat needsQuizAnalysis === true.
+     * Flow:
+     *   1. Bangun opener message dari data quiz
+     *   2. Render user-visible trigger bubble (badge "📊 Evaluasi Kuis")
+     *   3. Call dispatchMentorMessage() → POST /sesi (+ konteks_quiz jika ada hasil_quiz_id)
+     *      → POST /mentor/pesan atau SSE stream
+     *   4. AI mentor merespons dengan analisis quiz kontekstual
+     *
+     * Race-condition guard: analysisProcessedRef mencegah double-fire.
+     */
+    const startQuizDiscussion = async (quizResult) => {
+        if (!quizResult) return;
+        if (!camGranted) {
+            console.warn('[CTA] startQuizDiscussion: kamera belum diizinkan, dibatalkan');
+            return;
+        }
+        if (!activeKey) {
+            console.warn('[CTA] startQuizDiscussion: activeKey belum ada, dibatalkan');
+            return;
+        }
+
+        const {
+            quizType, score, correct, total,
+            materiId: qMateriId, mapelLabel,
+            wrongItems, essayAnswers, soalSnapshot,
+            hasil_quiz_id,
+        } = quizResult;
+
+        // Bangun opener message yang akan dikirim ke Tim 5 sebagai pesan siswa
+        const openerText = buildQuizDiscussionOpener({
+            quizType: quizType || 'mc',
+            score, correct, total,
+            materiId: qMateriId, mapelLabel,
+            wrongItems, essayAnswers, soalSnapshot,
+        });
+
+        console.log('[CTA] startQuizDiscussion fired:', {
+            quizType,
+            score,
+            has_hasil_quiz_id: !!hasil_quiz_id,
+            activeKey,
+        });
+
+        // Tampilkan trigger bubble di chat dengan badge khusus CTA
+        const triggerBubble = {
+            id: Date.now(),
+            role: 'user',
+            text: `📊 **Evaluasi Kuis** — ${quizType === 'essay' ? 'Essay' : 'Pilihan Ganda'} (${score ?? '?'}/100)`,
+            time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            isCTATrigger: true,
+        };
+        setMsgsByKey(prev => ({
+            ...prev,
+            [activeKey]: [...(prev[activeKey] || []), triggerBubble],
+        }));
+
+        // Scroll ke bawah segera setelah bubble muncul
+        setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 60);
+
+        // Dispatch ke mentor pipeline — ini yang memicu network request
+        // suppressUserBubble = true karena trigger bubble sudah di-render manual di atas
+        try {
+            await dispatchMentorMessage(openerText, {
+                hasil_quiz_id: hasil_quiz_id ?? null,
+                suppressUserBubble: true,
+            });
+        } catch (err) {
+            console.error('[CTA] startQuizDiscussion: dispatchMentorMessage gagal:', err);
+        }
+    };
+
+    /* ── [TIM 5] CTA useEffect — dipasang setelah startQuizDiscussion agar closure valid ── */
+    useEffect(() => {
+        if (!needsQuizAnalysis || !lastQuizResult || analysisProcessedRef.current) return;
+
+        // Guard: set dulu sebelum async agar tidak double-fire
+        analysisProcessedRef.current = true;
+        clearQuizAnalysis();
+
+        // Jalankan orchestration — async, tidak perlu await di dalam useEffect
+        startQuizDiscussion(lastQuizResult).finally(() => {
+            analysisProcessedRef.current = false;
+        });
+
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [needsQuizAnalysis]);
+
     /* ── Buka Format Konten — konten sudah ada di bank (prefetch saat topik dibuka) ── */
     // Tidak ada generate on-demand lagi. Jika konten belum ada di confContent
     // (bank kosong / prefetch gagal), fallback ke getConfContent() lokal.
@@ -1343,8 +1542,13 @@ const ChatSection = ({
      * Essay score: diterima dari response POST /content/quiz/submit (essay_score dari RAG)
     */
     const handleQuizSubmit = (result) => {
-        const { type, score, correct, total, wrongItems, answers, essayAnswers, soalSnapshot, kkm } = result;
+        const { type, score, correct, total, wrongItems, answers, essayAnswers, soalSnapshot, kkm, hasil_quiz_id } = result;
         const KKM_BARU = kkm ?? KKM_AGREGASI;
+
+        // V3.1: simpan hasil_quiz_id ke store untuk CTA "Tanya Kak Nusa"
+        if (hasil_quiz_id) {
+            useStudentStore.getState().setCtaHasilQuizId(hasil_quiz_id);
+        }
         const currentLevelForRecord = levelMap[activeKey] || chatMateri?.level || 'low';
 
         const newRecord = {
@@ -1429,10 +1633,23 @@ const ChatSection = ({
                         store.setElemenLevel(chatMateri.mapelId, elemenId, nxtLvl);
                     }
                 }
+                // Tandai semua record di level lama sebagai locked:true — konsisten
+                // dengan shape BE (GET /content/quiz/history mengembalikan locked:true
+                // untuk level yang sudah dilewati). Ini memastikan panel kanan
+                // menampilkan '👁 Hanya lihat' tanpa perlu re-fetch dari BE.
+                setQuizHistory(p => {
+                    const records = p[activeKey] || [];
+                    const updated = records.map(r =>
+                        (r.level || 'low') === currentLevelForRecord
+                            ? { ...r, locked: true }
+                            : r
+                    );
+                    return { ...p, [activeKey]: updated };
+                });
                 const levelUpMsg = {
                     id: Date.now() + 5, role: 'ai', isLevelUp: true,
                     fromLevel: currentLevelForRecord, toLevel: nxtLvl,
-                    text: `🎉 Selamat! Kamu berhasil naik ke **Level ${LEVEL_LABELS_LOCAL[nxtLvl]}**!\n\n📊 **Rekap Nilai:**\n- Pilihan Ganda: ${mcS}/100\n- Essay: ${essayS}/100\n- **Nilai Agregasi (MC×70%+Essay×30%): ${aggregatedScore}/100** ✅\n\nSemua konten materi **${materiId}** sekarang naik ke Level ${LEVEL_LABELS_LOCAL[nxtLvl]}. Riwayat Level ${LEVEL_LABELS_LOCAL[currentLevelForRecord]} masih bisa kamu lihat di panel kanan. Terus semangat! 💪`,
+                    text: `🎉 Selamat! Kamu berhasil naik ke **Level ${LEVEL_LABELS_LOCAL[nxtLvl]}**!\n\n📊 **Rekap Nilai:**\n- Pilihan Ganda: ${mcS}/100\n- Essay: ${essayS}/100\n- **Nilai Agregasi (MC×60%+Essay×40%): ${aggregatedScore}/100** ✅\n\nSemua konten materi **${materiId}** sekarang naik ke Level ${LEVEL_LABELS_LOCAL[nxtLvl]}. Riwayat Level ${LEVEL_LABELS_LOCAL[currentLevelForRecord]} masih bisa kamu lihat di panel kanan. Terus semangat! 💪`,
                     time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
                     team: 'Tim 5',
                 };
@@ -1441,7 +1658,7 @@ const ChatSection = ({
         }
 
         addRecentActivity?.({
-            type: 'quiz', mapelIcon: chatMateri.mapelIcon, mapelColor: chatMateri.mapelColor,
+            type: 'quiz', mapelIcon: chatMateri.mapelIcon,
             label: `Menyelesaikan ${type === 'essay' ? 'essay' : 'quiz PG'} ${materiId || chatMateri.mapelLabel}`,
             level: currentLevelForRecord, ts: Date.now(),
         });
@@ -1453,7 +1670,6 @@ const ChatSection = ({
         addRecentActivity?.({
             type: 'chat',
             mapelIcon: chatMateri.mapelIcon,
-            mapelColor: chatMateri.mapelColor,
             label: `Mempelajari ${materiId || chatMateri.mapelLabel}`,
             level: levelMap[activeKey] || chatMateri?.level || 'low',
             ts: Date.now(),
@@ -1531,10 +1747,10 @@ const ChatSection = ({
                     </button>
 
                     {/* Mapel info */}
-                    <div style={{ width: 38, height: 38, borderRadius: 10, background: `${chatMateri.mapelColor}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, marginBottom: 6 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h1, marginBottom: 6 }}>
                         {chatMateri.mapelIcon}
                     </div>
-                    <div style={{ fontSize: FS.xs, color: chatMateri.mapelColor, fontWeight: 700, marginBottom: 2 }}>{chatMateri.mapelLabel}</div>
+                    <div style={{ fontSize: FS.xs, color: C.teal, fontWeight: 700, marginBottom: 2 }}>{chatMateri.mapelLabel}</div>
                     {materiId ? (
                         <>
                             <div style={{ fontFamily: FONTS.serif, fontSize: FS.md, fontWeight: 600, color: C.dark, lineHeight: 1.4, marginBottom: 8 }}>{materiId}</div>
@@ -1595,7 +1811,7 @@ const ChatSection = ({
                                             setSubMateri(sess.sub);
                                             setChatMateri(cm => ({ ...cm, materiId: sess.sub }));
                                             setQuizActive(false); setQuizAnswers({}); setQuizSubmitted(false); setConfOverlay(null);
-                                        }} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 9px', borderRadius: 8, border: `1px solid ${isActive ? chatMateri.mapelColor : C.tealXL}`, background: isActive ? `${chatMateri.mapelColor}12` : C.white, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .15s' }}
+                                        }} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 9px', borderRadius: 8, border: `1px solid ${isActive ? C.teal : C.tealXL}`, background: isActive ? `${C.teal}12` : C.white, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'all .15s' }}
                                             onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = C.cream; e.currentTarget.style.borderColor = C.tealL; } }}
                                             onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = C.white; e.currentTarget.style.borderColor = C.tealXL; } }}>
                                             <span style={{ fontSize: 12 }}>{chatMateri.mapelIcon}</span>
@@ -1615,7 +1831,7 @@ const ChatSection = ({
                                                     </span>
                                                 </div>
                                             </div>
-                                            {isActive && <span style={{ fontSize: FS.xs, color: chatMateri.mapelColor }}>●</span>}
+                                            {isActive && <span style={{ fontSize: FS.xs, color: C.teal }}>●</span>}
                                         </button>
                                     );
                                 })}
@@ -1760,7 +1976,7 @@ const ChatSection = ({
                                             color: C.dark, lineHeight: 1.7,
                                             // Highlight subtle saat sedang disuarakan
                                             ...(speakingMsgId === msg.id ? {
-                                                background: `${C.purple}08`,
+                                                background: `${C.teal}08`,
                                                 borderRadius: 8,
                                                 padding: '4px 8px',
                                                 margin: '-4px -8px',
@@ -1814,18 +2030,18 @@ const ChatSection = ({
                                                 style={{
                                                     display: 'flex', alignItems: 'center', gap: 4,
                                                     padding: '3px 8px', borderRadius: 99,
-                                                    border: `1px solid ${speakingMsgId === msg.id ? C.purple : 'transparent'}`,
-                                                    background: speakingMsgId === msg.id ? `${C.purple}12` : 'transparent',
-                                                    color: speakingMsgId === msg.id ? C.purple : C.slate,
+                                                    border: `1px solid ${speakingMsgId === msg.id ? C.teal : 'transparent'}`,
+                                                    background: speakingMsgId === msg.id ? `${C.teal}12` : 'transparent',
+                                                    color: speakingMsgId === msg.id ? C.teal : C.slate,
                                                     cursor: 'pointer', fontSize: FS.sm, fontFamily: 'inherit',
                                                     transition: 'all .15s',
                                                     animation: speakingMsgId === msg.id ? 'pulse 1.4s infinite' : 'none',
                                                 }}
                                                 onMouseEnter={e => {
                                                     if (speakingMsgId !== msg.id) {
-                                                        e.currentTarget.style.borderColor = C.purple;
-                                                        e.currentTarget.style.color = C.purple;
-                                                        e.currentTarget.style.background = `${C.purple}08`;
+                                                        e.currentTarget.style.borderColor = C.teal;
+                                                        e.currentTarget.style.color = C.teal;
+                                                        e.currentTarget.style.background = `${C.teal}08`;
                                                     }
                                                 }}
                                                 onMouseLeave={e => {
@@ -2129,7 +2345,7 @@ const ChatSection = ({
                         const isEssayResult = result.type === 'essay';
                         const pass = isMcResult && result.score >= 70;
                         const attemptNumber = index + 1;
-                        const headerColor = isMcResult ? chatMateri.mapelColor : C.purple;
+                        const headerColor = isMcResult ? `linear-gradient(135deg,${C.teal},${C.tealL})` : `linear-gradient(135deg,${C.teal},${C.tealL})`;
                         // Pakai soalSnapshot dari riwayat jika ada, fallback ke quizSoal bank
                         const reviewSoal = result.soalSnapshot || (isMcResult ? quizSoal : []);
                         return (
@@ -2154,7 +2370,7 @@ const ChatSection = ({
                                     </div>
                                     <button onClick={() => setQuizHistoryModal(null)}
                                         style={{
-                                            background: 'rgba(255,255,255,.2)', border: 'none',
+                                            background: "transparent", border: 'none',
                                             borderRadius: 6, width: 26, height: 26, color: C.white,
                                             cursor: 'pointer', fontSize: FS.base, flexShrink: 0,
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2183,10 +2399,10 @@ const ChatSection = ({
                                     <div style={{
                                         padding: '12px 14px 8px', textAlign: 'center',
                                         borderBottom: `1px solid rgba(13,92,99,.07)`, flexShrink: 0,
-                                        background: `${C.purple}08`,
+                                        background: `${C.teal}08`,
                                     }}>
                                         <div style={{ fontSize: 26, marginBottom: 2 }}>✅</div>
-                                        <div style={{ fontWeight: 700, fontSize: FS.base, color: C.purple, marginBottom: 2 }}>
+                                        <div style={{ fontWeight: 700, fontSize: FS.base, color: C.teal, marginBottom: 2 }}>
                                             Jawaban Essay Terkirim
                                         </div>
                                         {result.score != null ? (
@@ -2194,7 +2410,7 @@ const ChatSection = ({
                                                 {result.score}
                                             </div>
                                         ) : (
-                                            <div style={{ fontSize: FS.xs, color: C.purple }}>⏳ Sedang dinilai...</div>
+                                            <div style={{ fontSize: FS.xs, color: C.teal }}>⏳ Sedang dinilai...</div>
                                         )}
                                     </div>
                                 )}
@@ -2245,14 +2461,14 @@ const ChatSection = ({
                                                 return (
                                                     <div key={s.id} style={{
                                                         marginBottom: 10, paddingBottom: 10,
-                                                        borderBottom: si < (result.soalSnapshot?.length ?? 0) - 1 ? `1px solid ${C.purple}18` : 'none',
+                                                        borderBottom: si < (result.soalSnapshot?.length ?? 0) - 1 ? `1px solid ${C.teal}18` : 'none',
                                                     }}>
                                                         <div style={{ fontSize: FS.xs, fontWeight: 600, color: C.dark, marginBottom: 4, lineHeight: 1.4 }}>
                                                             Essay {si + 1}: {s.soal.slice(0, 70)}{s.soal.length > 70 ? '…' : ''}
                                                         </div>
                                                         <div style={{
                                                             fontSize: FS.xs, color: C.darkL, lineHeight: 1.6,
-                                                            background: `${C.purple}08`, borderRadius: 6,
+                                                            background: `${C.teal}08`, borderRadius: 6,
                                                             padding: '6px 8px',
                                                             fontStyle: jawaban ? 'normal' : 'italic',
                                                         }}>
@@ -2296,9 +2512,9 @@ const ChatSection = ({
                                                 }}
                                                 style={{
                                                     width: '100%', padding: '8px 10px', borderRadius: 8,
-                                                    border: `1.5px solid ${headerColor}`,
-                                                    background: `${headerColor}0F`,
-                                                    color: headerColor, fontWeight: 700, fontSize: FS.sm,
+                                                    border: `1.0px solid ${C.teal}`,
+                                                    background: `linear-gradient(135deg,${C.teal},${C.tealL})`,
+                                                    color: C.white, fontWeight: 700, fontSize: FS.sm,
                                                     cursor: 'pointer', fontFamily: 'inherit',
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                                                     transition: 'background .15s',
@@ -2320,6 +2536,8 @@ const ChatSection = ({
                                         <span>💬 {isMcResult ? 'Bahas soal yang salah' : 'Minta feedback'} dengan <strong>Kak Nusa</strong></span>
                                         <button
                                             onClick={() => {
+                                                // V3.1: ambil hasil_quiz_id dari store untuk CTA flow
+                                                const hasilQuizId = useStudentStore.getState().ctaHasilQuizId ?? null;
                                                 useStudentStore.getState().setQuizAnalysisNeeded({
                                                     quizType: result.type || 'mc',
                                                     score: result.score,
@@ -2330,6 +2548,7 @@ const ChatSection = ({
                                                     wrongItems: result.wrongItems || [],
                                                     essayAnswers: result.essayAnswers || {},
                                                     soalSnapshot: result.soalSnapshot || [],
+                                                    hasil_quiz_id: hasilQuizId,
                                                 });
                                                 setQuizHistoryModal(null);
                                             }}
@@ -2361,7 +2580,7 @@ const ChatSection = ({
                                 {/* Header */}
                                 <div style={{
                                     padding: '12px 14px',
-                                    background: chatMateri.mapelColor,
+                                    background: `linear-gradient(135deg,${C.teal},${C.tealL})`,
                                     display: 'flex', alignItems: 'center', gap: 8,
                                     flexShrink: 0,
                                 }}>
@@ -2374,7 +2593,7 @@ const ChatSection = ({
                                     </div>
                                     <button onClick={() => setConfModal(null)}
                                         style={{
-                                            background: 'rgba(255,255,255,.2)', border: 'none',
+                                            background: 'transparent', border: 'none',
                                             borderRadius: 6, width: 26, height: 26, color: '#fff',
                                             cursor: 'pointer', fontSize: FS.lg, flexShrink: 0,
                                             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -2439,32 +2658,42 @@ const ChatSection = ({
                             <div style={{ padding: '8px 12px', borderBottom: `1px solid rgba(13,92,99,.06)`, flexShrink: 0 }}>
                                 <button
                                     onClick={() => {
-                                        if (materiId && openGame) openGame({
-                                            mapelId: chatMateri.mapelId,
-                                            mapelLabel: chatMateri.mapelLabel,
-                                            mapelIcon: chatMateri.mapelIcon,
-                                            mapelColor: chatMateri.mapelColor,
-                                            elemenId: chatMateri.elemenId || null,
-                                            elemenLabel: chatMateri.elemenLabel || null,
-                                            materiId,
-                                            level: chatMateri.level || 'Low',
-                                            // game_id tidak diisi di sini — siswa pilih game dari getGameList
-                                            // di produksi: buka modal pilih game, set game_id sebelum openGame
-                                        });
+                                        if (materiId && openGame) {
+                                            // FIX T4: Baca game_id dari byLevel sesuai level aktif siswa
+                                            // byLevel disimpan saat prefetch getKontenSiswa (forEach di atas)
+                                            const activeLvl = (levelMap[activeKey] || chatMateri?.level || 'Low');
+                                            const activeLvlNorm = activeLvl.charAt(0).toUpperCase() + activeLvl.slice(1).toLowerCase();
+                                            const gameConf = kConf.game?.byLevel?.[activeLvlNorm]
+                                                || kConf.game?.byLevel?.[activeLvl]
+                                                || kConf.game?.byLevel?.['Low']
+                                                || null;
+                                            openGame({
+                                                mapelId: chatMateri.mapelId,
+                                                mapelLabel: chatMateri.mapelLabel,
+                                                mapelIcon: chatMateri.mapelIcon,
+                                                elemenId: chatMateri.elemenId || null,
+                                                elemenLabel: chatMateri.elemenLabel || null,
+                                                materiId,
+                                                level: activeLvlNorm,
+                                                // FIX T4: game_id diteruskan dari byLevel → polling & iframe jalan
+                                                game_id: gameConf?.game_id || gameConf?.id || null,
+                                                html_url: gameConf?.html_url || null,
+                                            });
+                                        }
                                     }}
                                     disabled={!materiId}
                                     style={{
                                         width: '100%', padding: '9px 0', borderRadius: 9,
-                                        border: `1.5px solid ${materiId ? chatMateri.mapelColor : C.tealXL}`,
-                                        background: materiId ? `${chatMateri.color}10` : C.bg,
-                                        color: materiId ? chatMateri.color : C.slate,
+                                        border: `1.5px solid ${materiId ? C.teal : C.tealXL}`,
+                                        background: materiId ? `${C.teal}10` : C.bg,
+                                        color: materiId ? C.teal : C.slate,
                                         fontSize: FS.md, fontWeight: 700, cursor: materiId ? 'pointer' : 'not-allowed',
                                         fontFamily: 'inherit', transition: 'all .2s',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                                         opacity: materiId ? 1 : .5,
                                     }}
-                                    onMouseEnter={e => { if (materiId) { e.currentTarget.style.background = chatMateri.mapelColor; e.currentTarget.style.color = '#fff'; } }}
-                                    onMouseLeave={e => { if (materiId) { e.currentTarget.style.background = `${chatMateri.mapelColor}10`; e.currentTarget.style.color = chatMateri.mapelColor; } }}
+                                    onMouseEnter={e => { if (materiId) { e.currentTarget.style.background = C.teal; e.currentTarget.style.color = '#fff'; } }}
+                                    onMouseLeave={e => { if (materiId) { e.currentTarget.style.background = `${C.teal}10`; e.currentTarget.style.color = C.teal; } }}
                                 >
                                     <span style={{ fontSize: 15 }}>🎮</span>
                                     <span>Main Game</span>
@@ -2499,9 +2728,9 @@ const ChatSection = ({
                                                         title={mcDoneAtHigh ? 'Sudah dikerjakan di level High. Gunakan tombol Ulangi di riwayat.' : undefined}
                                                         style={{
                                                             flex: 1, padding: '9px 4px', borderRadius: 8,
-                                                            border: `1.5px solid ${mcDoneAtHigh ? '#CBD5E0' : chatMateri.mapelColor}`,
-                                                            background: mcDoneAtHigh ? '#F7FAFC' : `${chatMateri.mapelColor}0F`,
-                                                            color: mcDoneAtHigh ? '#A0AEC0' : chatMateri.mapelColor,
+                                                            border: `1.5px solid ${mcDoneAtHigh ? '#CBD5E0' : C.teal}`,
+                                                            background: mcDoneAtHigh ? '#F7FAFC' : `${C.teal}0F`,
+                                                            color: mcDoneAtHigh ? '#A0AEC0' : C.teal,
                                                             fontWeight: 700, fontSize: FS.xs,
                                                             cursor: mcDoneAtHigh ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                                                             display: 'flex', flexDirection: 'column',
@@ -2509,8 +2738,8 @@ const ChatSection = ({
                                                             transition: 'all .15s',
                                                             opacity: mcDoneAtHigh ? .65 : 1,
                                                         }}
-                                                        onMouseEnter={e => { if (!mcDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}20`; }}
-                                                        onMouseLeave={e => { if (!mcDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}0F`; }}
+                                                        onMouseEnter={e => { if (!mcDoneAtHigh) e.currentTarget.style.background = `${C.teal}20`; }}
+                                                        onMouseLeave={e => { if (!mcDoneAtHigh) e.currentTarget.style.background = `${C.teal}0F`; }}
                                                     >
                                                         <span style={{ fontSize: 14 }}>{mcDoneAtHigh ? '🔒' : '🔘'}</span>
                                                         <span>Pilihan Ganda</span>
@@ -2526,9 +2755,9 @@ const ChatSection = ({
                                                         title={essayDoneAtHigh ? 'Sudah dikerjakan di level High. Gunakan tombol Ulangi di riwayat.' : undefined}
                                                         style={{
                                                             flex: 1, padding: '9px 4px', borderRadius: 8,
-                                                            border: `1.5px solid ${essayDoneAtHigh ? '#CBD5E0' : chatMateri.mapelColor}`,
-                                                            background: essayDoneAtHigh ? '#F7FAFC' : `${chatMateri.mapelColor}0F`,
-                                                            color: essayDoneAtHigh ? '#A0AEC0' : chatMateri.mapelColor,
+                                                            border: `1.5px solid ${essayDoneAtHigh ? '#CBD5E0' : C.teal}`,
+                                                            background: essayDoneAtHigh ? '#F7FAFC' : `${C.teal}0F`,
+                                                            color: essayDoneAtHigh ? '#A0AEC0' : C.teal,
                                                             fontWeight: 700, fontSize: FS.xs,
                                                             cursor: essayDoneAtHigh ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                                                             display: 'flex', flexDirection: 'column',
@@ -2536,8 +2765,8 @@ const ChatSection = ({
                                                             transition: 'all .15s',
                                                             opacity: essayDoneAtHigh ? .65 : 1,
                                                         }}
-                                                        onMouseEnter={e => { if (!essayDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}20`; }}
-                                                        onMouseLeave={e => { if (!essayDoneAtHigh) e.currentTarget.style.background = `${chatMateri.mapelColor}0F`; }}
+                                                        onMouseEnter={e => { if (!essayDoneAtHigh) e.currentTarget.style.background = `${C.teal}20`; }}
+                                                        onMouseLeave={e => { if (!essayDoneAtHigh) e.currentTarget.style.background = `${C.teal}0F`; }}
                                                     >
                                                         <span style={{ fontSize: 14 }}>{essayDoneAtHigh ? '🔒' : '✍️'}</span>
                                                         <span>Essay</span>
@@ -2600,7 +2829,10 @@ const ChatSection = ({
                                                         const lvRecs = allHistory.filter(r => (r.level || 'low') === lv);
                                                         if (lvRecs.length === 0) return null;
                                                         const lvMeta = LEVEL_CLR_DISP[lv];
+                                                        // isLocked: gunakan flag `locked` dari BE jika ada (hidrasi dari GET /content/quiz/history).
+                                                        // Fallback ke kalkulasi lokal (isPast) jika record dari sesi ini (belum ada locked dari BE).
                                                         const isPast = LEVEL_ORDER_DISP.indexOf(lv) < LEVEL_ORDER_DISP.indexOf(currentLvl);
+                                                        const isLocked = lvRecs.some(r => r.locked === true) || isPast;
                                                         return (
                                                             <div key={lv} style={{ marginBottom: 10 }}>
                                                                 {/* Level header with aggregation */}
@@ -2627,7 +2859,7 @@ const ChatSection = ({
                                                                         const originalIndex = allHistory.indexOf(r);
                                                                         const isActiveItem = quizHistoryModal?.index === originalIndex;
                                                                         const isMcItem = r.type === 'mc' || !r.type;
-                                                                        const itemColor = isMcItem ? chatMateri.mapelColor : C.purple;
+                                                                        const itemColor = isMcItem ? C.teal : C.teal;
                                                                         return (
                                                                             <button key={i}
                                                                                 onClick={() => setQuizHistoryModal(isActiveItem ? null : { result: r, index: originalIndex })}
@@ -2640,7 +2872,7 @@ const ChatSection = ({
                                                                                         {isMcItem ? 'Pilihan Ganda' : 'Essay'}
                                                                                     </div>
                                                                                     <div style={{ fontSize: FS.xs, color: isActiveItem ? itemColor : C.teal, fontWeight: 600 }}>
-                                                                                        {isPast ? '👁 Hanya lihat' : isActiveItem ? 'Sedang dilihat ●' : 'Lihat detail →'}
+                                                                                        {isLocked ? '👁 Hanya lihat' : isActiveItem ? 'Sedang dilihat ●' : 'Lihat detail →'}
                                                                                     </div>
                                                                                     <div style={{ fontSize: FS.xs, color: C.slate }}>{r.ts}</div>
                                                                                 </div>
@@ -2672,6 +2904,8 @@ const ChatSection = ({
                 activeKey={activeKey}
                 quizType="mc"
                 soalSnapshot={retrySnapshot?.type === 'mc' ? retrySnapshot.soal : null}
+                currentLevel={(levelMap[activeKey] || chatMateri?.level || 'low').toLowerCase()}
+                apiSoal={kConf.quiz_pg?.byLevel?.[(levelMap[activeKey] || chatMateri?.level || 'low').toLowerCase()] || null}
                 onSubmit={handleQuizSubmit}
             />
 
@@ -2684,6 +2918,8 @@ const ChatSection = ({
                 activeKey={activeKey}
                 quizType="essay"
                 soalSnapshot={retrySnapshot?.type === 'essay' ? retrySnapshot.soal : null}
+                currentLevel={(levelMap[activeKey] || chatMateri?.level || 'low').toLowerCase()}
+                apiSoal={kConf.quiz_essay?.byLevel?.[(levelMap[activeKey] || chatMateri?.level || 'low').toLowerCase()] || null}
                 onSubmit={handleQuizSubmit}
             />
 

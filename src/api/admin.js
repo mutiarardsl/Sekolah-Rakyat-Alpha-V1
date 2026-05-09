@@ -32,14 +32,21 @@
  *            PUT    /admin/mapel/:id
  *            DELETE /admin/mapel/:id
  *
+ *  Elemen : GET    /admin/elemen?mapel_id=:id         → daftar elemen per mapel
+ *            POST   /admin/elemen                      → tambah elemen ke mapel
+ *            PUT    /admin/elemen/:id                  → edit label/deskripsi elemen
+ *            DELETE /admin/elemen/:id                  → hapus elemen
+ *
+ *  Kelas Detail (manajemen isi kelas):
+ *            POST   /admin/kelas/:id/mapel             → tambah mapel + assign guru ke kelas
+ *            DELETE /admin/kelas/:id/mapel/:mapel_id   → lepas mapel dari kelas
+ *            PUT    /admin/kelas/:id/mapel/:mapel_id/guru → ganti guru pengampu mapel di kelas
+ *            POST   /admin/kelas/:id/siswa             → tambah siswa ke kelas (single)
+ *            DELETE /admin/kelas/:id/siswa/:siswa_id   → lepas siswa dari kelas
+ *
  *  Rekomendasi Guru → Siswa:
  *            POST   /guru/rekomendasi   → guru kirim catatan/rekomendasi ke siswa
  *            GET    /guru/rekomendasi   → siswa ambil rekomendasi yang diterima
- *
- * ── Catatan Nilai ────────────────────────────────────────────────────
- *  Upload nilai dilakukan oleh guru langsung via /content/quiz/submit
- *  per sesi quiz. Tidak ada endpoint bulk upload nilai dari sisi FE.
- *
  * ── Auth Requirement ────────────────────────────────────────────────
  *  Semua endpoint butuh Bearer token.
  *  role: admin       → semua endpoint /admin/*
@@ -52,7 +59,9 @@
  *  - siswaIds / wali_kelas_id: mengacu ke id dari entitas lain (relasi)
  */
 
-import { apiClient } from "./client";
+import { apiClient } from "./client.js";
+import { v3 } from "../http/requestV3.js";
+import { unwrapEnvelope } from "../http/envelope.js";
 
 // ════════════════════════════════════════════════════════════════════
 // KELAS
@@ -67,74 +76,20 @@ import { apiClient } from "./client";
  * @property {number}      jumlah_siswa
  * @property {string|null} wali_kelas_id      - id guru, null jika belum ada
  * @property {string[]}    siswa_ids          - daftar id siswa di kelas ini
- * @property {string}      sekolah_id
  */
 
 export const kelasApi = {
-  /**
-   * GET /admin/kelas
-   * Ambil semua kelas. Filter opsional via params.
-   *
-   * @param {{ sekolah_id?: string, tingkat?: string }} [params]
-   * @returns {Promise<Kelas[]>}
-   */
-  list: (params) => apiClient.get("/admin/kelas", { params }).then((r) => r.data),
+  list: (params) => v3.get("/admin/kelas", { params }),
 
-  /**
-   * GET /admin/kelas/:id
-   * Ambil detail satu kelas termasuk siswa_ids dan wali_kelas_id.
-   *
-   * @param {string} id
-   * @returns {Promise<Kelas>}
-   */
-  get: (id) => apiClient.get(`/admin/kelas/${id}`).then((r) => r.data),
+  get: (id) => v3.get(`/admin/kelas/${id}`),
 
-  /**
-   * GET /admin/kelas/:id/siswa
-   * Ambil daftar siswa yang terdaftar di kelas ini.
-   *
-   * @param {string} id
-   * @returns {Promise<Array<{ id: string, nama: string, nis: string, email: string, status: string }>>}
-   */
-  siswa: (id) => apiClient.get(`/admin/kelas/${id}/siswa`).then((r) => r.data),
+  siswa: (id) => v3.get(`/admin/kelas/${id}/siswa`),
 
-  /**
-   * POST /admin/kelas
-   * Buat kelas baru.
-   *
-   * Success 201 → Kelas (dengan id yang di-generate server)
-   *
-   * @param {{
-   *   nama: string,
-   *   tingkat: "X"|"XI"|"XII",
-   *   tahun_ajaran: string,
-   *   sekolah_id: string,
-   *   wali_kelas_id?: string|null
-   * }} payload
-   * @returns {Promise<Kelas>}
-   */
-  create: (payload) => apiClient.post("/admin/kelas", payload).then((r) => r.data),
+  create: (payload) => v3.post("/admin/kelas", payload),
 
-  /**
-   * PUT /admin/kelas/:id
-   * Update data kelas. Partial update (hanya field yang dikirim).
-   *
-   * @param {string} id
-   * @param {{ nama?: string, wali_kelas_id?: string|null, tahun_ajaran?: string }} payload
-   * @returns {Promise<Kelas>}
-   */
-  update: (id, payload) => apiClient.put(`/admin/kelas/${id}`, payload).then((r) => r.data),
+  update: (id, payload) => v3.patch(`/admin/kelas/${id}`, payload),
 
-  /**
-   * DELETE /admin/kelas/:id
-   * Hapus kelas. Relasi siswa ke kelas ini akan dilepas (kelas_id siswa → null).
-   *
-   * Success 200 → { deleted: boolean }
-   *
-   * @param {string} id
-   * @returns {Promise<{ deleted: boolean }>}
-   */
-  delete: (id) => apiClient.delete(`/admin/kelas/${id}`).then((r) => r.data),
+  delete: (id) => v3.delete(`/admin/kelas/${id}`),
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -147,7 +102,6 @@ export const kelasApi = {
  * @property {string}   nama
  * @property {string}   nip              - 18 digit, tipe string
  * @property {string}   email
- * @property {string}   sekolah_id
  * @property {string[]} mapel_ids        - mapel yang diajar
  * @property {string[]} kelas_ids        - kelas yang diajar
  * @property {Record<string, string[]>} mapel_kelas_map
@@ -155,85 +109,16 @@ export const kelasApi = {
  */
 
 export const guruApi = {
-  /**
-   * GET /admin/guru
-   * Ambil semua guru. Filter opsional.
-   *
-   * @param {{ sekolah_id?: string }} [params]
-   * @returns {Promise<Guru[]>}
-   */
-  list: (params) => apiClient.get("/admin/guru", { params }).then((r) => r.data),
+  list: (params) => v3.get("/admin/guru", { params }),
 
-  /**
-   * GET /admin/guru/:id
-   * Ambil detail satu guru termasuk mapel_kelas_map lengkap.
-   *
-   * @param {string} id
-   * @returns {Promise<Guru>}
-   */
-  get: (id) => apiClient.get(`/admin/guru/${id}`).then((r) => r.data),
+  get: (id) => v3.get(`/admin/guru/${id}`),
 
-  /**
-   * POST /admin/guru
-   * Tambah guru baru. Password awal dikirim via email oleh backend.
-   *
-   * Success 201 → Guru (dengan id yang di-generate server)
-   * Error   409 → email / NIP sudah terdaftar
-   *
-   * @param {{
-   *   nama: string,
-   *   nip: string,
-   *   email: string,
-   *   sekolah_id: string,
-   *   mapel_kelas_map: Record<string, string[]>
-   * }} payload
-   * @returns {Promise<Guru>}
-   */
-  create: (payload) => apiClient.post("/admin/guru", payload).then((r) => r.data),
+  create: (payload) => v3.post("/admin/guru", payload),
 
-  /**
-   * PUT /admin/guru/:id
-   * Update data guru. mapel_kelas_map bersifat replace penuh (bukan patch per-mapel).
-   *
-   * @param {string} id
-   * @param {{
-   *   nama?: string,
-   *   email?: string,
-   *   nip?: string,
-   *   mapel_kelas_map?: Record<string, string[]>
-   * }} payload
-   * @returns {Promise<Guru>}
-   */
-  update: (id, payload) => apiClient.put(`/admin/guru/${id}`, payload).then((r) => r.data),
+  update: (id, payload) => v3.patch(`/admin/guru/${id}`, payload),
 
-  /**
-   * DELETE /admin/guru/:id
-   * Hapus guru. Otomatis melepas relasi wali kelas dari semua kelas.
-   *
-   * Success 200 → { deleted: boolean }
-   *
-   * @param {string} id
-   * @returns {Promise<{ deleted: boolean }>}
-   */
-  delete: (id) => apiClient.delete(`/admin/guru/${id}`).then((r) => r.data),
+  delete: (id) => v3.delete(`/admin/guru/${id}`),
 
-  /**
-   * POST /admin/guru/bulk
-   * Upload data guru massal via CSV/XLSX.
-   * Dipakai BulkUploadGuru.jsx.
-   * Multipart/form-data.
-   *
-   * Success 200 → {
-   *   total: number,
-   *   berhasil: number,
-   *   gagal: number,
-   *   errors: Array<{ row: number, pesan: string }>
-   * }
-   *
-   * @param {File} file  - CSV atau XLSX
-   * @param {function(number):void} [onProgress]
-   * @returns {Promise<object>}
-   */
   bulk: (file, onProgress) => {
     const form = new FormData();
     form.append("file", file);
@@ -242,7 +127,7 @@ export const guruApi = {
       onUploadProgress: (e) => {
         if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
       },
-    }).then((r) => r.data);
+    }).then((r) => unwrapEnvelope(r.data));
   },
 };
 
@@ -257,7 +142,6 @@ export const guruApi = {
  * @property {string}                           nis
  * @property {string}                           email
  * @property {string}                           kelas_id
- * @property {string}                           sekolah_id
  * @property {"Aktif"|"Belum Aktif"|"Nonaktif"} status
  * @property {boolean}                          is_first_login
  * @property {string|null}                      bergabung    - ISO8601 date
@@ -265,82 +149,16 @@ export const guruApi = {
  */
 
 export const siswaApi = {
-  /**
-   * GET /admin/siswa
-   * Ambil semua siswa. Filter opsional.
-   *
-   * @param {{ kelas_id?: string, sekolah_id?: string, status?: string }} [params]
-   * @returns {Promise<Siswa[]>}
-   */
-  list: (params) => apiClient.get("/admin/siswa", { params }).then((r) => r.data),
+  list: (params) => v3.get("/admin/siswa", { params }),
 
-  /**
-   * GET /admin/siswa/:id
-   * Ambil detail satu siswa termasuk bergabung & last_login.
-   *
-   * @param {string} id
-   * @returns {Promise<Siswa>}
-   */
-  get: (id) => apiClient.get(`/admin/siswa/${id}`).then((r) => r.data),
+  get: (id) => v3.get(`/admin/siswa/${id}`),
 
-  /**
-   * POST /admin/siswa
-   * Tambah siswa baru (satu per satu).
-   * Backend generate password sementara + kirim ke email siswa.
-   *
-   * Success 201 → Siswa (status: "Belum Aktif", is_first_login: true)
-   * Error   409 → NIS / email sudah terdaftar
-   *
-   * @param {{
-   *   nama: string,
-   *   nis: string,
-   *   email: string,
-   *   kelas_id: string,
-   *   sekolah_id: string
-   * }} payload
-   * @returns {Promise<Siswa>}
-   */
-  create: (payload) => apiClient.post("/admin/siswa", payload).then((r) => r.data),
+  create: (payload) => v3.post("/admin/siswa", payload),
 
-  /**
-   * PUT /admin/siswa/:id
-   * Update data siswa. Jika kelas_id berubah, relasi kelas lama dilepas otomatis.
-   *
-   * @param {string} id
-   * @param {{ nama?: string, nis?: string, email?: string, kelas_id?: string, status?: string }} payload
-   * @returns {Promise<Siswa>}
-   */
-  update: (id, payload) => apiClient.put(`/admin/siswa/${id}`, payload).then((r) => r.data),
+  update: (id, payload) => v3.patch(`/admin/siswa/${id}`, payload),
 
-  /**
-   * DELETE /admin/siswa/:id
-   * Hapus siswa. Otomatis melepas relasi dari kelas.
-   *
-   * Success 200 → { deleted: boolean }
-   *
-   * @param {string} id
-   * @returns {Promise<{ deleted: boolean }>}
-   */
-  delete: (id) => apiClient.delete(`/admin/siswa/${id}`).then((r) => r.data),
+  delete: (id) => v3.delete(`/admin/siswa/${id}`),
 
-  /**
-   * POST /admin/siswa/bulk
-   * Upload data siswa massal via CSV/XLSX.
-   * Dipakai BulkUploadSiswa.jsx.
-   * Multipart/form-data.
-   *
-   * Success 200 → {
-   *   total: number,
-   *   berhasil: number,
-   *   gagal: number,
-   *   errors: Array<{ row: number, pesan: string }>
-   * }
-   *
-   * @param {File} file  - CSV atau XLSX
-   * @param {string} kelas_id  - Semua siswa di file akan masuk ke kelas ini
-   * @param {function(number):void} [onProgress]
-   * @returns {Promise<object>}
-   */
   bulk: (file, kelas_id, onProgress) => {
     const form = new FormData();
     form.append("file", file);
@@ -350,7 +168,7 @@ export const siswaApi = {
       onUploadProgress: (e) => {
         if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
       },
-    }).then((r) => r.data);
+    }).then((r) => unwrapEnvelope(r.data));
   },
 };
 
@@ -360,54 +178,80 @@ export const siswaApi = {
 
 /**
  * @typedef {Object} Mapel
- * @property {string} id     - slug unik, misal "mat", "bio", "fis"
- * @property {string} label  - nama tampilan, misal "Matematika"
- * @property {string} icon   - emoji, misal "📐"
- * @property {string} color  - hex color, misal "#2D9CDB"
+ * @property {string} id            - slug unik, misal "mat", "bio", "fis"
+ * @property {string} label         - nama tampilan, misal "Matematika"
+ * @property {string} icon          - emoji, misal "📐"
+ * @property {string} fase          - fase kurikulum merdeka, misal "Fase E (Kelas X)"
+ * @property {string} deskripsi_cp  - deskripsi Capaian Pembelajaran umum mapel ini
  */
 
 export const mapelApi = {
-  /**
-   * GET /admin/mapel
-   * Ambil semua mata pelajaran yang terdaftar.
-   *
-   * @returns {Promise<Mapel[]>}
-   */
-  list: () => apiClient.get("/admin/mapel").then((r) => r.data),
+  list: () => v3.get("/admin/mapel"),
 
-  /**
-   * POST /admin/mapel
-   * Tambah mata pelajaran baru.
-   *
-   * Success 201 → Mapel
-   * Error   409 → id sudah dipakai
-   *
-   * @param {{ id: string, label: string, icon?: string, color?: string }} payload
-   * @returns {Promise<Mapel>}
-   */
-  create: (payload) => apiClient.post("/admin/mapel", payload).then((r) => r.data),
+  get: (id) => v3.get(`/admin/mapel/${id}`),
 
-  /**
-   * PUT /admin/mapel/:id
-   * Update mata pelajaran. id tidak bisa diubah.
-   *
-   * @param {string} id
-   * @param {{ label?: string, icon?: string, color?: string }} payload
-   * @returns {Promise<Mapel>}
-   */
-  update: (id, payload) => apiClient.put(`/admin/mapel/${id}`, payload).then((r) => r.data),
+  create: (payload) => v3.post("/admin/mapel", payload),
 
-  /**
-   * DELETE /admin/mapel/:id
-   * Hapus mata pelajaran. Relasi guru ke mapel ini dilepas otomatis.
-   * PERHATIAN: ini akan menghilangkan konten belajar yang terkait.
-   *
-   * Success 200 → { deleted: boolean }
-   *
-   * @param {string} id
-   * @returns {Promise<{ deleted: boolean }>}
-   */
-  delete: (id) => apiClient.delete(`/admin/mapel/${id}`).then((r) => r.data),
+  update: (id, payload) => v3.patch(`/admin/mapel/${id}`, payload),
+
+  delete: (id) => v3.delete(`/admin/mapel/${id}`),
+};
+
+// ════════════════════════════════════════════════════════════════════
+// ELEMEN (per Mapel — Kurikulum Merdeka)
+// ════════════════════════════════════════════════════════════════════
+
+/**
+ * @typedef {Object} Elemen
+ * @property {string} id        - slug unik, misal "bil_aljabar"
+ * @property {string} mapel_id  - id mapel induk
+ * @property {string} label     - nama elemen, misal "Bilangan dan Aljabar"
+ *
+ * CATATAN: `fase` dan `deskripsi_cp` ada di level MAPEL (GET /admin/mapel),
+ * BUKAN di level elemen. Elemen hanya menyimpan { id, mapel_id, label }.
+ */
+
+export const elemenApi = {
+  list: (mapel_id) =>
+    v3.get(`/admin/mapel/${encodeURIComponent(mapel_id)}/elemen`),
+
+  create: (payload) =>
+    v3.post(
+      `/admin/mapel/${encodeURIComponent(payload.mapel_id)}/elemen`,
+      { label: payload.label },
+    ),
+
+  update: (id, payload, mapel_id) =>
+    v3.patch(
+      `/admin/mapel/${encodeURIComponent(mapel_id)}/elemen/${encodeURIComponent(id)}`,
+      payload,
+    ),
+
+  delete: (id, mapel_id) =>
+    v3.delete(
+      `/admin/mapel/${encodeURIComponent(mapel_id)}/elemen/${encodeURIComponent(id)}`,
+    ),
+};
+
+// ════════════════════════════════════════════════════════════════════
+// KELAS DETAIL — manajemen mapel, guru pengampu, dan siswa per kelas
+// ════════════════════════════════════════════════════════════════════
+
+export const kelasDetailApi = {
+  addMapel: (kelasId, payload) =>
+    v3.post(`/admin/kelas/${kelasId}/mapel`, payload),
+
+  removeMapel: (kelasId, mapelId) =>
+    v3.delete(`/admin/kelas/${kelasId}/mapel/${mapelId}`),
+
+  updateGuruMapel: (kelasId, mapelId, payload) =>
+    v3.patch(`/admin/kelas/${kelasId}/mapel/${mapelId}`, payload),
+
+  addSiswa: (kelasId, payload) =>
+    v3.post(`/admin/kelas/${kelasId}/siswa`, payload),
+
+  removeSiswa: (kelasId, siswaId) =>
+    v3.delete(`/admin/kelas/${kelasId}/siswa/${siswaId}`),
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -434,8 +278,11 @@ export const mapelApi = {
  * @returns {Promise<{ id: string, created_at: string }>}
  */
 export async function kirimRekomendasi(payload) {
-  const { data } = await apiClient.post("/guru/rekomendasi", payload);
-  return data;
+  const raw = await v3.post("/notifikasi", payload);
+  return {
+    id: raw.id,
+    created_at: raw.dibuat_at ?? raw.created_at,
+  };
 }
 
 /**
@@ -457,6 +304,26 @@ export async function kirimRekomendasi(payload) {
  * @returns {Promise<object[]>}
  */
 export async function getRekomendasiSiswa(params) {
-  const { data } = await apiClient.get("/guru/rekomendasi", { params });
-  return data;
+  const rows = await v3.get(`/siswa/${encodeURIComponent(params.siswa_id)}/notifikasi`, {
+    params: { dibaca: params.dibaca, page: params.page, limit: params.limit },
+  });
+  return (rows || []).map((r) => ({
+    ...r,
+    created_at: r.dibuat_at ?? r.created_at,
+  }));
+}
+// ─── PATCH /guru/rekomendasi/:id/baca ────────────────────────────────
+/**
+ * Tandai notifikasi rekomendasi sudah dibaca.
+ * Dipanggil NotifikasiBell saat siswa membuka/expand notifikasi.
+ * Fire-and-forget — state lokal tetap diupdate meski API gagal.
+ *
+ * Success 200 → { dibaca: true }
+ * Error   404 → notifikasi tidak ditemukan
+ *
+ * @param {string} id - ID notifikasi rekomendasi
+ * @returns {Promise<{ dibaca: boolean }>}
+ */
+export async function markRekomendasiBaca(id) {
+  return v3.patch(`/notifikasi/${encodeURIComponent(id)}/baca`, {});
 }

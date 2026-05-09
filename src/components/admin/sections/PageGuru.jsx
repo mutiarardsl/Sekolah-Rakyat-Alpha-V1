@@ -8,6 +8,17 @@
 import { useState } from 'react';
 import { Avatar, Btn, EmptyState } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
+
+// Normalisasi field mapel: API response pakai mapel_ids (snake_case), form state pakai mapelId (camelCase)
+// Prioritas: mapel_ids (snake_case dari API) karena selalu up-to-date setelah normalisasi saveGuru
+const getMapelIds = (g) => {
+  // Gunakan snake_case jika ada dan tidak kosong, fallback ke camelCase
+  const fromSnake = Array.isArray(g.mapel_ids) ? g.mapel_ids : null;
+  const fromCamel = Array.isArray(g.mapelId) ? g.mapelId
+    : (typeof g.mapelId === 'string' && g.mapelId ? [g.mapelId] : null);
+  const raw = fromSnake && fromSnake.length > 0 ? fromSnake : (fromCamel ?? []);
+  return [...new Set(raw)];
+};
 import { MultiCheckbox, INP_STYLE, ADMIN_SEKOLAH } from './adminUtils';
 import BulkUploadGuru from './BulkUploadGuru';
 import AddMenu from './AddMenu';
@@ -49,7 +60,7 @@ export const GuruDrawer = ({ guruId, guruList, kelasList, getMapel, getKelas, se
   const g = guruList.find(x => x.id === guruId);
   if (!g) return null;
 
-  const waliDi = kelasList.filter(k => k.waliKelasId === g.id);
+  const waliDi = kelasList.filter(k => (k.wali_kelas_id || k.waliKelasId) === g.id);
 
   return (
     <>
@@ -83,23 +94,6 @@ export const GuruDrawer = ({ guruId, guruList, kelasList, getMapel, getKelas, se
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '16px 18px' }}>
-
-            {/* Status + Bergabung */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{
-                fontSize: FS.sm, padding: '3px 10px', borderRadius: 99, fontWeight: 700,
-                background: g.status === 'Non-Aktif' ? '#FFF5F5' : '#F0FFF4',
-                color: g.status === 'Non-Aktif' ? '#C53030' : '#276749',
-                border: `1px solid ${g.status === 'Non-Aktif' ? '#FEB2B2' : '#9AE6B4'}`
-              }}>
-                {g.status === 'Non-Aktif' ? '⛔ Non-Aktif' : '✅ Aktif'}
-              </span>
-              {g.bergabung && (
-                <span style={{ fontSize: FS.sm, color: C.slate, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  📅 Bergabung {g.bergabung}
-                </span>
-              )}
-            </div>
 
             {/* Login Info — password sementara */}
             {g._tempPassword && (
@@ -144,20 +138,22 @@ export const GuruDrawer = ({ guruId, guruList, kelasList, getMapel, getKelas, se
 
             {/* Mapel */}
             <div style={{ fontSize: FS.base, fontWeight: 700, color: C.dark, marginBottom: 10, marginTop: 14 }}>📚 Mapel yang Diajar</div>
-            {g.mapelId.length === 0 && (
+            {getMapelIds(g).length === 0 && (
               <span style={{ fontSize: FS.base, color: C.slate, fontStyle: 'italic' }}>Belum ada mapel</span>
             )}
-            {g.mapelId.map(mid => {
+            {getMapelIds(g).map(mid => {
               const m = getMapel(mid);
-              const kelasIds = (g.mapelKelasMap || {})[mid] || g.kelasId || [];
+              // Support both camelCase (form state) and snake_case (API response)
+              const mkm = g.mapelKelasMap || g.mapel_kelas_map || {};
+              const kelasIds = mkm[mid] || g.kelas_ids || g.kelasId || [];
               return m ? (
                 <div key={mid} style={{
                   marginBottom: 10, background: C.bg,
-                  borderRadius: 10, padding: '10px 12px', border: `1.5px solid ${m.color}22`
+                  borderRadius: 10, padding: '10px 12px', border: `1.5px solid ${C.teal}22`
                 }}>
                   <span style={{
                     fontSize: FS.md, padding: '7px 14px', borderRadius: 99,
-                    background: m.color + '18', color: m.color, fontWeight: 700,
+                    background: C.teal + '18', color: C.teal, fontWeight: 700,
                     display: 'inline-block', marginBottom: 6
                   }}>{m.icon} {m.label}</span>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -166,7 +162,7 @@ export const GuruDrawer = ({ guruId, guruList, kelasList, getMapel, getKelas, se
                     )}
                     {kelasIds.map(kid => {
                       const k = getKelas(kid);
-                      const isWali = k?.waliKelasId === g.id;
+                      const isWali = (k?.wali_kelas_id || k?.waliKelasId) === g.id;
                       return k ? (
                         <span key={kid} style={{
                           fontSize: FS.xs, padding: '2px 8px', borderRadius: 99,
@@ -192,7 +188,7 @@ export const GuruDrawer = ({ guruId, guruList, kelasList, getMapel, getKelas, se
                 cursor: 'pointer', fontFamily: 'inherit'
               }}>🗑</button>
             <Btn variant="soft" onClick={() => { setModalData({ ...g }); setModal('edit-guru'); setSelectedGuru(null); }}
-              style={{ flex: 1, fontSize: FS.md, justifyContent: 'center' }}>✏️ Edit Data</Btn>
+              style={{ flex: 1, fontSize: FS.md, justifyContent: 'center', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, color: C.white }}>✏️ Edit Data</Btn>
           </div>
         </div>
       </div>
@@ -218,7 +214,15 @@ export const ModalGuru = ({ modalData, mapelList, kelasList, saveGuru, onClose }
   };
   const [form, setForm] = useState(() => {
     const d = modalData || emptyGuru;
-    const base = { ...emptyGuru, ...d, mapelKelasMap: d.mapelKelasMap || {}, status: d.status || 'Aktif' };
+    const base = {
+      ...emptyGuru,
+      ...d,
+      // Support both camelCase (form state) and snake_case (API response) for mapelId
+      mapelId: d.mapelId || d.mapel_ids || [],
+      // Support both camelCase and snake_case for mapelKelasMap
+      mapelKelasMap: d.mapelKelasMap || d.mapel_kelas_map || {},
+      status: d.status || 'Aktif',
+    };
     if (!d.id) {
       base._tempPassword = genTempPasswordGuru();
       base.bergabung = formatBergabung();
@@ -351,10 +355,10 @@ export const ModalGuru = ({ modalData, mapelList, kelasList, saveGuru, onClose }
               if (!m) return null;
               return (
                 <div key={mid} style={{
-                  marginBottom: 12, background: C.white,
-                  borderRadius: 10, padding: '10px 12px', border: `1.5px solid ${m.color}22`
+                  marginBottom: 12, background: C.bg,
+                  borderRadius: 10, padding: '10px 12px',
                 }}>
-                  <div style={{ fontSize: FS.sm, fontWeight: 700, color: m.color, marginBottom: 8 }}>
+                  <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 8 }}>
                     {m.icon} {m.label}
                   </div>
                   <MultiCheckbox
@@ -412,7 +416,7 @@ const PageGuru = ({ guruList, mapelList, kelasList, getMapel, getKelas, setSelec
       || g.nama.toLowerCase().includes(q)
       || g.email.toLowerCase().includes(q)
       || (g.nip || '').includes(q);
-    const matchMapel = filterMapel === 'semua' || g.mapelId.includes(filterMapel);
+    const matchMapel = filterMapel === 'semua' || getMapelIds(g).includes(filterMapel);
     const matchStatus = filterStatus === 'semua' || (g.status || 'Aktif') === filterStatus;
     return matchSearch && matchMapel && matchStatus;
   });
@@ -430,8 +434,8 @@ const PageGuru = ({ guruList, mapelList, kelasList, getMapel, getKelas, setSelec
           <div style={{ fontFamily: FONTS.serif, fontSize: 19, fontWeight: 600, color: C.dark }}>👨‍🏫 Manajemen Guru</div>
           <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span>{guruList.length} guru terdaftar</span>
-            {counts.aktif > 0 && <span style={{ color: '#276749', fontWeight: 600 }}>· ✅ {counts.aktif} aktif</span>}
-            {counts.nonAktif > 0 && <span style={{ color: C.red, fontWeight: 600 }}>· ⛔ {counts.nonAktif} non-aktif</span>}
+            {counts.aktif > 0 && <span style={{ color: '#276749', fontWeight: 600 }}>· ✅ {counts.aktif} Aktif</span>}
+            {counts.nonAktif > 0 && <span style={{ color: C.red, fontWeight: 600 }}>· ⛔ {counts.nonAktif} Non-Aktif</span>}
           </div>
         </div>
 
@@ -498,23 +502,21 @@ const PageGuru = ({ guruList, mapelList, kelasList, getMapel, getKelas, setSelec
                 </td>
                 <td style={{ padding: '11px 14px', maxWidth: 240 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {g.mapelId.map(mid => {
+                    {getMapelIds(g).map(mid => {
                       const m = getMapel(mid);
                       return m ? (
-                        <span key={mid} style={{ fontSize: FS.sm, padding: '2px 7px', borderRadius: 99, background: m.color + '18', color: m.color, fontWeight: 700, display: 'inline-block' }}>
+                        <span key={mid} style={{ fontSize: FS.sm, padding: '2px 7px', borderRadius: 99, background: C.teal + '18', color: C.teal, fontWeight: 700, display: 'inline-block' }}>
                           {m.icon} {m.label}
                         </span>
                       ) : null;
                     })}
-                    {g.mapelId.length === 0 && <span style={{ fontSize: FS.sm, color: C.slate }}>—</span>}
+                    {getMapelIds(g).length === 0 && <span style={{ fontSize: FS.sm, color: C.slate }}>—</span>}
                   </div>
                 </td>
                 <td style={{ padding: '11px 14px' }}>
                   <span style={{
-                    fontSize: FS.sm, padding: '3px 9px', borderRadius: 99, fontWeight: 700,
-                    background: g.status === 'Non-Aktif' ? '#FFF5F5' : '#F0FFF4',
-                    color: g.status === 'Non-Aktif' ? '#C53030' : '#276749',
-                    border: `1px solid ${g.status === 'Non-Aktif' ? '#FEB2B2' : '#9AE6B4'}`
+                    fontSize: FS.sm, fontWeight: 700,
+                    color: g.status === 'Non-Aktif' ? '#C53030' : C.teal,
                   }}>
                     {g.status === 'Non-Aktif' ? '⛔ Non-Aktif' : '✅ Aktif'}
                   </span>

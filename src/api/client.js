@@ -1,16 +1,14 @@
 /**
  * SR MVP — API Client Base
- * Tim 6 Fase 2 | src/api/client.js
+ * Tim 6 Fase 3 | src/api/client.js
  *
  * Axios instance tunggal yang dipakai semua modul API.
  * - Base URL dari .env (VITE_API_BASE_URL)
  * - Auto-attach JWT token dari localStorage
- * - 401 → clear token + dispatch event "sr:unauthorized"
+ * - 401 → coba refresh token dulu, baru clear + dispatch "sr:unauthorized"
  * - Request/response logging di mode development
  *
  * Contract: apiContract.json v2.1.0
- * Fase 3 TODO: tambah auto-refresh token di interceptor 401
- *              menggunakan refreshToken() dari auth.js
  */
 
 import axios from "axios";
@@ -40,6 +38,24 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// ─── Refresh token state — cegah multiple concurrent refresh ────────
+let _isRefreshing = false;
+let _refreshQueue = []; // [{ resolve, reject }]
+
+function _processQueue(err, token = null) {
+  _refreshQueue.forEach(({ resolve, reject }) =>
+    err ? reject(err) : resolve(token)
+  );
+  _refreshQueue = [];
+}
+
+function _clearSession() {
+  localStorage.removeItem("sr_access_token");
+  localStorage.removeItem("sr_refresh_token");
+  localStorage.removeItem("sr_user");
+  window.dispatchEvent(new Event("sr:unauthorized"));
+}
+
 // ─── Response Interceptor — handle 401 & logging ────────────────────
 apiClient.interceptors.response.use(
   (response) => {
@@ -48,14 +64,61 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     const status = error.response?.status;
-    if (status === 401) {
-      // Contract: 401 → clear localStorage + dispatch sr:unauthorized
-      // Fase 3: tambah logika refresh token di sini sebelum clear
-      localStorage.removeItem("sr_access_token");
-      localStorage.removeItem("sr_user");
-      window.dispatchEvent(new Event("sr:unauthorized"));
+    const originalRequest = error.config;
+
+    // Jangan coba refresh untuk endpoint auth itu sendiri
+    const isAuthEndpoint = originalRequest?.url?.includes("/auth/refresh") ||
+      originalRequest?.url?.includes("/auth/login");
+
+    if (status === 401 && !originalRequest._retried && !isAuthEndpoint) {
+      const refreshToken = localStorage.getItem("sr_refresh_token");
+
+      // Tidak ada refresh token → langsung paksa logout
+      if (!refreshToken) {
+        _clearSession();
+        if (IS_DEV) console.warn("[API] 401 tanpa refresh token — session dihapus.");
+        return Promise.reject(error);
+      }
+
+      // Ada request lain yang sedang refresh → antri
+      if (_isRefreshing) {
+        return new Promise((resolve, reject) => {
+          _refreshQueue.push({ resolve, reject });
+        }).then((newToken) => {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return apiClient(originalRequest);
+        });
+      }
+
+      // Mulai refresh
+      originalRequest._retried = true;
+      _isRefreshing = true;
+
+      try {
+        // Dynamic import untuk hindari circular dependency (auth.js → client.js → auth.js)
+        const { refreshToken: doRefresh } = await import('./auth.js');
+        const res = await doRefresh(refreshToken);
+        const newAccessToken = res.access_token;
+        // Simpan token baru ke localStorage
+        localStorage.setItem('sr_access_token', newAccessToken);
+        if (res.refresh_token) localStorage.setItem('sr_refresh_token', res.refresh_token);
+        // Update default header agar request berikutnya otomatis pakai token baru
+        apiClient.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
+        _processQueue(null, newAccessToken);
+        if (IS_DEV) console.log('[API] Token di-refresh berhasil.');
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return apiClient(originalRequest);
+      } catch (refreshErr) {
+        _processQueue(refreshErr);
+        _clearSession();
+        if (IS_DEV) console.warn('[API] Refresh token gagal — session dihapus.', refreshErr.message);
+        return Promise.reject(refreshErr);
+      } finally {
+        _isRefreshing = false;
+      }
     }
-    if (IS_DEV) console.error(`[API] ✗ ${status} ${error.config?.url}`, error.response?.data);
+
+    if (IS_DEV && error.config) console.error(`[API] ✗ ${status ?? 'network'} ${error.config?.url ?? ''}`, error.response?.data ?? error.message);
     return Promise.reject(error);
   }
 );

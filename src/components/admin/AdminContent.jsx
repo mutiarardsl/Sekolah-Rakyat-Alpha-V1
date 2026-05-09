@@ -31,6 +31,7 @@ const AdminContent = () => {
     saveGuru, deleteGuru, saveBulkGuru,
     saveSiswa, deleteSiswa, saveBulkSiswa,
     saveKelas, deleteKelas,
+    saveMapel, deleteMapel,
   } = useAdmin(); // FIX C: saveBulkGuru/saveBulkSiswa dari context (bukan local)
 
   /* ── Navigation ───────────────────────────────────────────────── */
@@ -52,7 +53,7 @@ const AdminContent = () => {
   const getKelas = (id) => kelasList.find(k => k.id === id);
   const getGuru = (id) => guruList.find(g => g.id === id);
   const getMapel = (id) => mapelList.find(m => m.id === id);
-  const getSiswaOfKelas = (kelasId) => siswaList.filter(s => s.kelasId === kelasId);
+  const getSiswaOfKelas = (kelasId) => siswaList.filter(s => s.kelas_id === kelasId);
 
   /* ── Save wrappers ─────────────────────────────────────────────── */
   const handleSaveGuru = async (data) => {
@@ -151,7 +152,7 @@ const AdminContent = () => {
 
         <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,.07)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: `linear-gradient(135deg,${C.amber},${C.orange})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.dark, fontWeight: 800, fontSize: FS.lg, flexShrink: 0 }}>A</div>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.amber, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.white, fontWeight: 800, fontSize: FS.lg, flexShrink: 0 }}>A</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ color: C.white, fontWeight: 700, fontSize: FS.md }}>Admin</div>
               <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.xs, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>SR Kota Malang</div>
@@ -230,6 +231,8 @@ const AdminContent = () => {
             guruList={guruList}
             setMapelList={setMapelList}
             setGuruList={setGuruList}
+            saveMapel={saveMapel}
+            deleteMapel={deleteMapel}
             showToast={showToast}
           />
         )}

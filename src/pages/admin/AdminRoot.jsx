@@ -14,9 +14,15 @@ const ADMIN_MAPEL_WITH_ELEMEN = ADMIN_MAPEL_LIST.map(m => ({
   elemen: m.elemen?.length ? m.elemen : (KURIKULUM_ELEMEN[m.id] || []),
 }));
 
+// SR hanya punya satu sekolah — tidak perlu sekolah_id dinamis dari user.
+// Konstanta ini dipakai sebagai placeholder display saja; tidak dikirim ke endpoint manapun.
+export const SEKOLAH_LABEL = 'SR Kota Malang';
+
 export default function AdminRoot() {
   return (
-    <AdminProvider initialData={{ guru: ADMIN_GURU_INIT, kelas: ADMIN_KELAS_INIT, siswa: ADMIN_SISWA_INIT, mapel: ADMIN_MAPEL_WITH_ELEMEN }}>
+    <AdminProvider
+      initialData={{ guru: ADMIN_GURU_INIT, kelas: ADMIN_KELAS_INIT, siswa: ADMIN_SISWA_INIT, mapel: ADMIN_MAPEL_WITH_ELEMEN }}
+    >
       <AdminView />
     </AdminProvider>
   );

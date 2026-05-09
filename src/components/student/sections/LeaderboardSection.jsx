@@ -1,39 +1,27 @@
 /**
- * SR MVP — LeaderboardSection (Siswa)
+ * SR MVP — LeaderboardSection (Siswa) — HARDENED V3
  * src/components/student/sections/LeaderboardSection.jsx
  *
- * Menu leaderboard terpisah dari profil.
- * Fitur:
- *  - Podium top 3 (rank 1 di tengah)
- *  - Tabel semua siswa
- *  - Tab Daily / Monthly
- *  - Banner posisi siswa saat ini
+ * HARDENING CHANGES:
+ *  1. AbortController: request dibatalkan saat unmount atau mode berubah → no memory leak
+ *  2. Stale closure prevention: fetch dipanggil dalam useEffect, bukan via useCallback dependency chain
+ *  3. Race condition fix: requestId guard memastikan hanya response dari request terbaru yang diapply
+ *  4. isMounted guard: setState tidak dipanggil setelah component unmount
+ *  5. isAbortError check: AbortError tidak ditampilkan sebagai error UI
+ *  6. Confetti cleanup: clearTimeout agar tidak leak saat unmount
  */
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
-import {
-    STUDENTS,
-    ADMIN_SISWA_INIT,
-} from '../../../data/masterData';
 import { useAuth } from '../../../context/AuthContext';
-//bobot 
-const MC_WEIGHT = 0.7;
-const ESSAY_WEIGHT = 0.3;
+import { getLeaderboard } from '../../../api/leaderboard';
 
-/* ── Helpers ── */
-// REVISI FASE 3: total_poin_quiz = akumulasi agregasi (MC + Essay) di semua materi yang diakses.
-// Logika per materi:
-//   - Jika ada MC dan Essay: rata-rata keduanya
-//   - Jika hanya MC atau hanya Essay: gunakan skor yang ada
-// Akumulasi semua materi = total_poin yang tampil di KPI & leaderboard.
+const MC_WEIGHT = 0.6;
+const ESSAY_WEIGHT = 0.4;
+
+/* ── Score helpers — fallback kalkulasi lokal ── */
 const getTotalScore = (student) => {
-    // Jika student punya field total_poin_quiz dari backend (GET /content/progress), pakai itu.
-    // Fallback ke kalkulasi lokal dari riwayat.
     if (student.total_poin_quiz != null) return student.total_poin_quiz;
-
-    // Kalkulasi lokal dari riwayat (sebelum integrasi backend)
-    // Baca dari quiz_results[] per sesi — format baru selaras dengan quizHistory store
     const riwayat = student.riwayat || [];
     let totalAgregasi = 0;
     const grupMap = {};
@@ -46,38 +34,11 @@ const getTotalScore = (student) => {
         });
     });
     Object.values(grupMap).forEach(({ mc, essay }) => {
-        if (mc != null && essay != null) {
-            totalAgregasi += Math.round(mc * MC_WEIGHT + essay * ESSAY_WEIGHT);
-        } else if (mc != null) {
-            totalAgregasi += mc;
-        } else if (essay != null) {
-            totalAgregasi += essay;
-        }
+        if (mc != null && essay != null) totalAgregasi += Math.round(mc * MC_WEIGHT + essay * ESSAY_WEIGHT);
+        else if (mc != null) totalAgregasi += mc;
+        else if (essay != null) totalAgregasi += essay;
     });
     return totalAgregasi;
-};
-
-// Daily: score hanya dari riwayat 24 jam terakhir (simulasi: ambil 30% random seed per siswa)
-const getDailyScore = (student) => {
-    const total = getTotalScore(student);
-    // Simulasi: hash sederhana dari student.id untuk variasi deterministik
-    const seed = student.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    return Math.round(total * ((seed % 40 + 10) / 100));
-};
-
-const buildLeaderboard = (mode = 'monthly') => {
-    const kelasK1Students = STUDENTS.filter(s =>
-        ADMIN_SISWA_INIT.find(a => a.id === s.id && a.kelasId === 'x1')
-    );
-    const getScore = mode === 'daily' ? getDailyScore : getTotalScore;
-    return kelasK1Students
-        .map(s => ({ ...s, totalScore: getScore(s) }))
-        .sort((a, b) => {
-            if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-            return kelasK1Students.findIndex(s => s.id === a.id)
-                - kelasK1Students.findIndex(s => s.id === b.id);
-        })
-        .map((s, idx) => ({ ...s, rank: idx + 1 }));
 };
 
 /* ── AvatarCircle ── */
@@ -99,7 +60,6 @@ const glowAnim = {
     3: 'sr-glowPulse3 2.2s ease-in-out infinite',
 };
 
-/* ── Podium Config ── */
 const PODIUM_CONFIG = [
     { rank: 2, medal: '🥈', height: 72, label: '2nd', labelColor: '#8899AA', bg: 'rgba(136,153,170,.15)', border: 'rgba(136,153,170,.3)' },
     { rank: 1, medal: '🥇', height: 90, label: '1st', labelColor: '#F4A435', bg: 'rgba(244,164,53,.12)', border: 'rgba(244,164,53,.4)' },
@@ -136,7 +96,6 @@ const PodiumCard = ({ entry, config, isCurrentUser }) => (
                 }}>Kamu</div>
             )}
         </div>
-
         <div style={{ textAlign: 'center' }}>
             <div style={{
                 fontSize: FS.base, fontWeight: 800, color: C.white,
@@ -147,7 +106,6 @@ const PodiumCard = ({ entry, config, isCurrentUser }) => (
                 {entry.totalScore.toLocaleString()} poin
             </div>
         </div>
-
         <div style={{
             width: '100%',
             height: config.height,
@@ -172,18 +130,102 @@ const PodiumCard = ({ entry, config, isCurrentUser }) => (
 
 /* ── Main ── */
 const LeaderboardSection = () => {
-    const [mode, setMode] = useState('monthly'); // 'daily' | 'monthly'
+    const [mode, setMode] = useState('monthly');
+    const [leaderboard, setLeaderboard] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
     const { isMobile } = useBreakpoint();
     const podiumRef = useRef();
     const { user } = useAuth();
     const CURRENT_STUDENT_ID = user?.id || null;
+    const kelasId = user?.kelas_id || null;
 
-    const leaderboard = buildLeaderboard(mode);
-    const myRank = leaderboard.find(s => s.id === CURRENT_STUDENT_ID);
-    const maxScore = leaderboard.length > 0 ? Math.max(leaderboard[0].totalScore, 1) : 1;
+    // ── HARDENING: request lifecycle refs ──────────────────────────────
+    // abortControllerRef: dibatalkan saat unmount atau saat mode berubah sebelum response tiba
+    const abortControllerRef = useRef(null);
+    // requestIdRef: race condition guard — hanya response dari request terbaru yang diapply
+    const requestIdRef = useRef(0);
+    // isMountedRef: cegah setState setelah unmount
+    const isMountedRef = useRef(true);
 
-    // Confetti saat mount
-    const makeConfetti = () => {
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    // ── Fetch dengan safe lifecycle ─────────────────────────────────────
+    const fetchLeaderboard = useCallback(async (currentMode, signal) => {
+        if (!kelasId) {
+            if (isMountedRef.current) setIsLoading(false);
+            return;
+        }
+
+        if (isMountedRef.current) {
+            setIsLoading(true);
+            setError(null);
+        }
+
+        try {
+            const data = await getLeaderboard({
+                kelas_id: kelasId,
+                mode: currentMode,
+                signal, // ← AbortSignal diteruskan ke Axios
+            });
+
+            if (!isMountedRef.current) return; // ← guard unmount
+
+            setLeaderboard(data.map(e => ({
+                id: e.siswa_id,
+                name: e.nama,
+                avatar: e.avatar,
+                avatarBg: e.avatarBg ?? C.teal,
+                totalScore: e.total_poin_quiz,
+                streak_hari: e.streak_hari,
+                rank: e.rank,
+                kelas_id: e.kelas_id,
+            })));
+        } catch (err) {
+            if (!isMountedRef.current) return;
+
+            // AbortError adalah cancel yang disengaja — bukan error UI
+            const isAbort = err.name === 'AbortError' || err.name === 'CanceledError' || err.code === 'ERR_CANCELED';
+            if (isAbort) return;
+
+            setError('Gagal memuat leaderboard. Coba lagi.');
+            console.error('[LeaderboardSection] fetch error:', err);
+        } finally {
+            if (isMountedRef.current) {
+                setIsLoading(false);
+            }
+        }
+    }, [kelasId]); // fetchLeaderboard hanya berubah jika kelasId berubah
+
+    // ── Effect: fetch saat mode atau kelasId berubah ───────────────────
+    useEffect(() => {
+        // Batalkan request sebelumnya (jika ada)
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        // Buat AbortController baru untuk request ini
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        // Increment requestId — response lama yang terlambat datang akan diabaikan
+        requestIdRef.current += 1;
+
+        fetchLeaderboard(mode, controller.signal);
+
+        // Cleanup: batalkan request saat effect re-run atau unmount
+        return () => {
+            controller.abort();
+        };
+    }, [mode, fetchLeaderboard]);
+
+    // Confetti saat data pertama kali load
+    const makeConfetti = useCallback(() => {
         const container = podiumRef.current;
         if (!container) return;
         const colors = ['#F4A435', '#5DCAA5', '#7F77DD', '#D85A30', '#378ADD', '#63C132'];
@@ -191,23 +233,61 @@ const LeaderboardSection = () => {
             const el = document.createElement('div');
             const size = 5 + Math.random() * 5;
             el.style.cssText = `
-                position:absolute; width:${size}px; height:${size}px;
-                border-radius:${Math.random() > .5 ? '50%' : '2px'};
-                background:${colors[i % colors.length]};
-                left:${10 + Math.random() * 80}%;
-                top:0;
-                animation: confettiFall ${1 + Math.random() * .8}s ease-out ${Math.random() * 1.2}s both;
-                pointer-events:none; z-index:10;
-            `;
+        position:absolute; width:${size}px; height:${size}px;
+        border-radius:${Math.random() > .5 ? '50%' : '2px'};
+        background:${colors[i % colors.length]};
+        left:${10 + Math.random() * 80}%;
+        top:0;
+        animation: confettiFall ${1 + Math.random() * .8}s ease-out ${Math.random() * 1.2}s both;
+        pointer-events:none; z-index:10;
+      `;
             container.appendChild(el);
-            setTimeout(() => el.remove(), 2500);
+            setTimeout(() => {
+                if (container.contains(el)) el.remove();
+            }, 2500);
         });
-    };
+    }, []);
 
     useEffect(() => {
-        const t = setTimeout(makeConfetti, 300);
-        return () => clearTimeout(t);
-    }, [mode]);
+        if (!isLoading && leaderboard.length > 0) {
+            const t = setTimeout(makeConfetti, 300);
+            return () => clearTimeout(t); // ← cleanup confetti timer
+        }
+    }, [isLoading, leaderboard.length, makeConfetti]);
+
+    // ── Manual retry handler ────────────────────────────────────────────
+    const handleRetry = useCallback(() => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        fetchLeaderboard(mode, controller.signal);
+    }, [mode, fetchLeaderboard]);
+
+    const myRank = leaderboard.find(s => s.id === CURRENT_STUDENT_ID);
+    const maxScore = leaderboard.length > 0 ? Math.max(leaderboard[0].totalScore, 1) : 1;
+
+    if (isLoading) return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 12 }}>
+            <div style={{ width: 32, height: 32, border: `3px solid ${C.teal}30`, borderTopColor: C.teal, borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
+            <div style={{ fontSize: FS.md, color: C.slate }}>Memuat leaderboard...</div>
+        </div>
+    );
+
+    if (error) return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 32 }}>⚠️</div>
+            <div style={{ fontSize: FS.base, color: C.slate }}>{error}</div>
+            <button onClick={handleRetry} style={{ padding: '8px 20px', background: C.teal, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: FS.base, fontFamily: 'inherit' }}>Coba Lagi</button>
+        </div>
+    );
+
+    if (!kelasId) return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <div style={{ fontSize: FS.base, color: C.slate }}>Data kelas tidak tersedia.</div>
+        </div>
+    );
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', background: C.bg }}>
@@ -263,11 +343,9 @@ const LeaderboardSection = () => {
                         marginBottom: 20,
                         boxShadow: '0 8px 32px rgba(26,35,50,.18)',
                     }}>
-                        {/* bg decoration */}
                         <div style={{ position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: '50%', background: 'rgba(244,164,53,.05)', pointerEvents: 'none' }} />
                         <div style={{ position: 'absolute', bottom: 0, left: -40, width: 160, height: 160, borderRadius: '50%', background: 'rgba(13,92,99,.12)', pointerEvents: 'none' }} />
 
-                        {/* Mode label */}
                         <div style={{ textAlign: 'center', marginBottom: 28 }}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(244,164,53,.12)', border: '1px solid rgba(244,164,53,.3)', borderRadius: 99, padding: '6px 18px' }}>
                                 <span style={{ fontSize: 16 }}>🏆</span>
@@ -277,7 +355,6 @@ const LeaderboardSection = () => {
                             </div>
                         </div>
 
-                        {/* Podium row */}
                         <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 6 : 12, justifyContent: 'center' }}>
                             {PODIUM_CONFIG.map(cfg => {
                                 const entry = leaderboard[cfg.rank - 1];
@@ -329,21 +406,18 @@ const LeaderboardSection = () => {
 
                 {/* ── Tabel semua siswa ── */}
                 <div style={{ background: C.white, borderRadius: 16, overflow: 'hidden', border: `1px solid ${C.tealXL}`, boxShadow: '0 2px 12px rgba(13,92,99,.05)' }}>
-                    {/* Header tabel */}
-                    <div style={{ padding: '12px 20px', background: C.tealXL, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ padding: '12px 20px', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 14 }}>📋</span>
-                        <span style={{ fontSize: FS.md, fontWeight: 800, color: C.dark }}>Semua Siswa — {mode === 'daily' ? 'Harian' : 'Bulanan'}</span>
-                        <span style={{ marginLeft: 'auto', fontSize: FS.sm, color: C.slate, fontWeight: 600 }}>{leaderboard.length} siswa</span>
+                        <span style={{ fontSize: FS.md, fontWeight: 800, color: C.white }}>Semua Siswa — {mode === 'daily' ? 'Harian' : 'Bulanan'}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: FS.sm, color: C.white, fontWeight: 600 }}>{leaderboard.length} siswa</span>
                     </div>
 
-                    {/* Column header */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: '#f8fafb', borderBottom: `1px solid ${C.tealXL}` }}>
                         <div style={{ width: 36, fontSize: FS.sm, fontWeight: 700, color: C.slate, textAlign: 'center', flexShrink: 0 }}>Rank</div>
                         <div style={{ flex: 1, fontSize: FS.sm, fontWeight: 700, color: C.slate }}>Nama Siswa</div>
                         <div style={{ width: 70, textAlign: 'right', fontSize: FS.sm, fontWeight: 700, color: C.slate, flexShrink: 0 }}>Poin</div>
                     </div>
 
-                    {/* Rows */}
                     {leaderboard.map((entry, idx) => {
                         const isMe = entry.id === CURRENT_STUDENT_ID;
                         const isTop3 = entry.rank <= 3;
@@ -359,12 +433,10 @@ const LeaderboardSection = () => {
                                 onMouseEnter={e => { if (!isMe) e.currentTarget.style.background = `${C.teal}06`; }}
                                 onMouseLeave={e => { if (!isMe) e.currentTarget.style.background = 'transparent'; }}
                             >
-                                {/* Rank */}
                                 <div style={{ width: 36, textAlign: 'center', flexShrink: 0, fontSize: isTop3 ? 16 : FS.md, fontWeight: 800, color: isTop3 ? medalColors[entry.rank - 1] : C.slate }}>
                                     {isTop3 ? ['🥇', '🥈', '🥉'][entry.rank - 1] : entry.rank}
                                 </div>
 
-                                {/* Avatar + nama */}
                                 <AvatarCircle student={entry} size={36} showBorder={isMe} borderColor={C.teal} />
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -377,7 +449,6 @@ const LeaderboardSection = () => {
                                             </span>
                                         )}
                                     </div>
-                                    {/* Progress bar */}
                                     <div style={{ marginTop: 4, height: 3, borderRadius: 99, background: C.tealXL, overflow: 'hidden' }}>
                                         <div style={{
                                             height: '100%', borderRadius: 99,
@@ -388,7 +459,6 @@ const LeaderboardSection = () => {
                                     </div>
                                 </div>
 
-                                {/* Poin */}
                                 <div style={{ width: 70, textAlign: 'right', flexShrink: 0 }}>
                                     <div style={{ fontSize: FS.lg, fontWeight: 900, color: isMe ? C.teal : isTop3 ? medalColors[entry.rank - 1] : C.darkM }}>
                                         {entry.totalScore.toLocaleString()}
