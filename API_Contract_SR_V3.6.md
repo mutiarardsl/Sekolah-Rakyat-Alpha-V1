@@ -1,35 +1,38 @@
 # API CONTRACT — SEKOLAH RAKYAT MVP
-## Versi 3.1 — Production-Ready | Single Source of Truth
+## Versi 3.6 — Production-Ready | Single Source of Truth
 
 > **Status:** FINAL — Acuan wajib untuk Tim 6 BE, Tim 3 RAG, Tim 4 Game, Tim 5 Mentor, Tim 1 Emosi, Tim 6 FE  
-> **Tanggal:** 2026-05-07  
-> **Basis:** V3.0 FINAL + Addendum MVP CTA "Tanya Kak Nusa" (context injection hasil quiz ke Tim 5)
+> **Tanggal:** 2026-05-12  
+> **Basis:** V3.5 + V3.6 (Fix audit: GET /kelas/:id/progress sebagai section resmi, hasil_quiz_id di riwayat quiz, atomik note publish, WebSocket siswa endpoint, timing trigger pretest)
 
 ---
 
 ## DAFTAR ISI
 
 1. [Konvensi Global](#1-konvensi-global)
-2. [Changelog V3.1 — CTA "Tanya Kak Nusa"](#2-changelog-v31-addendum-mvp-cta-tanya-kak-nusa)
-3. [Audit & Changelog dari V2](#3-audit--changelog-dari-v2)
-4. [Peta Domain Endpoint](#4-peta-domain-endpoint)
-5. [AUTH — Tim 6 BE](#5-auth--tim-6-be)
-6. [ADMIN — Tim 6 BE](#6-admin--tim-6-be)
-7. [GURU — Tim 6 BE](#7-guru--tim-6-be)
-8. [SISWA — Tim 6 BE](#8-siswa--tim-6-be)
-9. [KONTEN — Tim 3 RAG + Tim 6 BE](#9-konten--tim-3-rag--tim-6-be)
-10. [SESI — Tim 6 BE](#10-sesi--tim-6-be)
-11. [PRETEST — Tim 3 RAG + Tim 6 BE](#11-pretest--tim-3-rag--tim-6-be)
-12. [QUIZ — Tim 6 BE](#12-quiz--tim-6-be)
-13. [RAG — Tim 3](#13-rag--tim-3)
-14. [GAME — Tim 4](#14-game--tim-4)
-15. [EMOSI — Tim 1](#15-emosi--tim-1)
-16. [MENTOR — Tim 5](#16-mentor--tim-5)
-17. [LEADERBOARD — Tim 6 BE](#17-leaderboard--tim-6-be)
-18. [NOTIFIKASI — Tim 6 BE](#18-notifikasi--tim-6-be)
-19. [WebSocket Spec — Tim 6 BE](#19-websocket-spec--tim-6-be)
-20. [Hirarki Kurikulum (Aturan Global)](#20-hirarki-kurikulum-aturan-global)
-21. [Standard Response & Error](#21-standard-response--error)
+2. [Changelog V3.1 — Addendum Sesi & Konteks Mentor](#2-changelog-v31-addendum-sesi--konteks-mentor)
+3. [Changelog V3.3 — Pemisahan Endpoint Quiz, Konten, Game, Mentor](#3-changelog-v33-pemisahan-endpoint-quiz-konten-game-mentor)
+4. [Changelog V3.4 — Penyesuaian Struktur Konten](#4-changelog-v34-penyesuaian-struktur-konten)
+5. [Changelog V3.5 — Fix Audit Contract](#5-changelog-v35-fix-audit-contract)
+6. [Changelog V3.6 — Fix Audit Contract (Lanjutan)](#6-changelog-v36-fix-audit-contract-lanjutan)
+7. [Peta Domain Endpoint](#7-peta-domain-endpoint)
+8. [AUTH — Tim 6 BE](#8-auth--tim-6-be)
+9. [ADMIN — Tim 6 BE](#9-admin--tim-6-be)
+10. [GURU — Tim 6 BE](#10-guru--tim-6-be)
+11. [SISWA — Tim 6 BE](#11-siswa--tim-6-be)
+12. [KONTEN — Tim 3 RAG + Tim 6 BE](#12-konten--tim-3-rag--tim-6-be)
+13. [SESI — Tim 6 BE](#13-sesi--tim-6-be)
+14. [PRETEST — Tim 3 RAG (generate) + Tim 6 BE (serve)](#14-pretest--tim-3-rag-generate--tim-6-be-serve)
+15. [QUIZ — Tim 6 BE](#15-quiz--tim-6-be)
+16. [RAG — Tim 3](#16-rag--tim-3)
+17. [GAME — Tim 4](#17-game--tim-4)
+18. [EMOSI — Tim 1](#18-emosi--tim-1)
+19. [MENTOR — Tim 5](#19-mentor--tim-5)
+20. [LEADERBOARD — Tim 6 BE](#20-leaderboard--tim-6-be)
+21. [NOTIFIKASI — Tim 6 BE](#21-notifikasi--tim-6-be)
+22. [WebSocket Spec — Tim 6 BE](#22-websocket-spec--tim-6-be)
+23. [Hirarki Kurikulum (Aturan Global)](#23-hirarki-kurikulum-aturan-global)
+24. [Standard Response & Error](#24-standard-response--error)
 
 ---
 
@@ -107,11 +110,13 @@ Endpoint list yang mungkin besar WAJIB mendukung pagination:
 ### 1.6 Konvensi Naming
 - **Bahasa:** Field names dalam **Bahasa Indonesia** untuk domain bisnis; `id`, `status`, `level`, `score`, `role`, `email` tetap Inggris (common terms)
 - **Format:** `snake_case` untuk semua field
-- **Timestamp:** ISO 8601 (`2026-05-01T09:00:00.000Z`) untuk semua field waktu
+- **Timestamp:** ISO 8601 (`2026-05-01T09:00:00.000Z`) untuk semua field waktu — termasuk WebSocket
 - **ID:** String (bukan number) — hindari integer overflow
 - **NIP:** String 18 digit
-- **Level konten:** Kapital di awal → `"Low"` | `"Mid"` | `"High"` (generate/publish)
-- **Level pretest/result RAG:** Lowercase → `"low"` | `"mid"` | `"high"`
+- **Level input dari UI (request):** Kapital di awal → `"Low"` | `"Mid"` | `"High"`
+- **Level response dari BE (semua response):** Lowercase → `"low"` | `"mid"` | `"high"`
+
+> **Aturan level casing wajib dipatuhi semua tim.** BE mengembalikan `"low"/"mid"/"high"` di semua response. FE mengirim `"Low"/"Mid"/"High"` hanya di request generate/publish/submit. Pelanggaran menyebabkan bug silent di FE saat compare string.
 
 ### 1.7 HTTP Methods
 | Method | Semantik |
@@ -134,86 +139,133 @@ GET /admin/siswa?kelas_id=x1&status=Aktif&sort=nama&order=asc
 
 ## 2. CHANGELOG V3.1 (Addendum Sesi & Konteks Mentor)
 
-Perubahan V3.1 new bersifat **additive dan backward-compatible**.
+Perubahan V3.1 bersifat **additive dan backward-compatible**.
 
 | Titik | Perubahan |
 |-------|-----------|
 | `POST /sesi` — Request | **Hapus** field `konteks_quiz` — tidak lagi diperlukan |
-| `POST /mentor/pesan` & `/stream` — Request | **Tambah** field opsional `hasil_quiz_id` di root body |
 | `POST /mentor/pesan` — Request | **Tambah** field `konteks.publish_id` dan `konteks.bacaan` |
 | `POST /sesi` — Timing | Dipanggil saat siswa **masuk chatbot** (bukan saat pesan pertama) |
 
-**Alasan perubahan `konteks_quiz` → `hasil_quiz_id` di body pesan:**
-Sesi merepresentasikan satu kunjungan siswa ke chatbot elemen/materi. CTA "Tanya Kak Nusa"
-adalah bagian dari sesi yang sama — bukan kunjungan baru. Membuat sesi baru hanya untuk
-membawa `konteks_quiz` menghasilkan sesi orphan yang tidak akurat untuk tracking durasi.
-`hasil_quiz_id` cukup dikirim di body `POST /mentor/pesan` — BE Tim 6 lookup dan inject
-konteks quiz ke Tim 5 pada saat menerima pesan, bukan saat sesi dibuat.
-
 ---
 
-## 3. AUDIT & CHANGELOG DARI V2
+## 3. CHANGELOG V3.3 (Pemisahan Endpoint Quiz, Konten, Game, Mentor)
 
-### 2.1 Masalah di V2 yang Diperbaiki
+Perubahan V3.3 bersifat **additive**.
+
+| Titik | Perubahan |
+|-------|-----------|
+| `POST /siswa/:id/quiz` | **Deprecated** → dipecah menjadi `POST /siswa/:id/quiz/mc` dan `POST /siswa/:id/quiz/essay` |
+| `POST /konten/generate` | **Tambah** field `konten_id` di response — identifier per konten per level untuk regenerate |
+| `POST /konten/regenerate` | **Baru** — iterative refinement per konten per level menggunakan `konten_id` |
+| `POST /game/regenerate` | **Baru** — iterative refinement per game menggunakan `game_id` |
+| `POST /mentor/evaluasi` | **Baru** — evaluasi quiz CTA, system prompt Tim 5 terpisah dari chat normal |
+| `POST /mentor/evaluasi/stream` | **Baru** — versi SSE dari evaluasi |
+| WebSocket | **Tambah** event `essay_dinilai` — push agregasi setelah Tim 3 selesai nilai essay |
+
+### 3.1 Masalah di V2 yang Diperbaiki
 
 **A. Endpoint Tidak Konsisten / Action-Based (diperbaiki ke resource-based):**
-- `POST /summary/siswa/:id` → `POST /sesi/:id/summary` *(summary adalah sub-resource sesi)*
-- `POST /content/generate` → `POST /konten/generate` *(pisahkan domain konten guru vs siswa)*
-- `GET /content/siswa` → `GET /siswa/:id/konten` *(resource-centric)*
-- `GET /content/progress/siswa` → `GET /siswa/:id/progress` *(milik siswa, bukan konten)*
-- `GET /content/progress/guru` → `GET /kelas/:id/progress` *(milik kelas)*
-- `POST /game/selesai` → `PATCH /game/:id/penyelesaian` *(partial update resource)*
-- `GET /game/list` → `GET /game` *(RESTful)*
+- `POST /summary/siswa/:id` → `POST /sesi/:id/summary`
+- `GET /content/siswa` → `GET /siswa/:id/konten`
+- `GET /content/progress/siswa` → `GET /siswa/:id/progress`
+- `GET /content/progress/guru` → `GET /kelas/:id/progress`
+- `POST /game/selesai` → `PATCH /game/:id/penyelesaian`
 
 **B. Endpoint Overloaded (dipecah):**
-- `GET /content/progress/siswa` mengandung KPI + progress + sudah_selesai_ids → dipecah ke:
-  - `GET /siswa/:id/kpi` — KPI dashboard (streak, topik, poin, durasi)
-  - `GET /siswa/:id/progress` — progress per elemen/materi
-- `POST /content/quiz/submit` merangkap scoring MC + grading essay → logika grading tetap di BE, interface dipertahankan tapi dirapikan
+- `GET /content/progress/siswa` → `GET /siswa/:id/kpi` + `GET /siswa/:id/progress`
 
 **C. Redundansi & Overlap:**
-- `GET /guru/rekomendasi?siswa_id=:id` dan `POST /guru/rekomendasi` → digabung dalam domain `/notifikasi` yang lebih generik dan konsisten
-- `GET /emotion/history` ownership tidak jelas (komentar "Tim 6 BE (?)")  → dipindah ke `GET /sesi/:id/emosi` (sub-resource sesi)
-- `GET /mentor/chat/history` → `GET /sesi/:id/chat` (sub-resource sesi)
+- `GET /guru/rekomendasi` dan `POST /guru/rekomendasi` → domain `/notifikasi`
+- `GET /emotion/history` → `GET /sesi/:id/emosi`
+- `GET /mentor/chat/history` → `GET /sesi/:id/chat`
 
-**D. Query Param vs Path Param Tidak Konsisten:**
-- `GET /content/quiz/history?siswa_id=...&elemen_id=...` → `GET /siswa/:id/quiz/history?elemen_id=...`
-- `GET /content/pretest/status?siswa_id=...&mapel_id=...` → `GET /siswa/:id/pretest/status?mapel_id=...`
+**D. FE Mengirim Data yang Seharusnya Dihitung BE:**
+- `POST /content/quiz/submit` meminta FE mengirim `score` → BE hitung sendiri
+- `POST /content/insight` meminta FE mengirim KPI → BE ambil dari database
 
-**E. FE Mengirim Data yang Seharusnya Dihitung BE:**
-- `POST /content/quiz/submit` meminta FE mengirim `score` untuk MC → BE hitung sendiri dari `answers`
-- `POST /content/insight` meminta FE mengirim KPI kalkulasi → BE ambil langsung dari database
+### 3.2 Ringkasan Perubahan URL
 
-**F. Inkonsistensi Level Casing:**
-- V2 mendefinisikan `"Low"/"Mid"/"High"` dan `"low"/"mid"/"high"` di endpoint berbeda tanpa pola jelas → V3 buat aturan: Level yang **disimpan/dikembalikan BE** selalu `lowercase`; Level sebagai **input/filter dari UI** menggunakan kapital (generate konten)
-
-**G. Endpoint Tanpa Ownership Jelas:**
-- `GET /mentor/chat/history - Tim 6 BE (?)` → dipertegas sebagai `GET /sesi/:id/chat` milik Tim 6 BE
-
-### 2.2 Ringkasan Perubahan URL
-
-| V2 (Lama) | V3 (Baru) | Alasan |
-|-----------|-----------|--------|
-| `POST /summary/siswa/:id` | `POST /sesi/:id/summary` | summary sub-resource sesi |
-| `GET /content/siswa` | `GET /siswa/:id/konten` | resource-centric |
-| `GET /content/progress/siswa` | `GET /siswa/:id/progress` | milik siswa |
-| `GET /content/progress/guru` | `GET /kelas/:id/progress` | milik kelas |
-| `GET /content/riwayat` | `GET /guru/:id/konten` | milik guru |
-| `POST /content/quiz/submit` | `POST /siswa/:id/quiz` | sub-resource siswa |
-| `GET /content/quiz/history` | `GET /siswa/:id/quiz?elemen_id=` | sub-resource siswa |
-| `GET /content/pretest/status` | `GET /siswa/:id/pretest/status` | sub-resource siswa |
-| `POST /content/recommend` | `POST /rag/rekomendasi` | domain RAG jelas |
-| `POST /content/insight` | `POST /rag/insight` | domain RAG jelas |
-| `GET /guru/rekomendasi` | `GET /siswa/:id/notifikasi` | resource notifikasi |
-| `POST /guru/rekomendasi` | `POST /notifikasi` | domain notifikasi |
-| `GET /emotion/history` | `GET /sesi/:id/emosi` | sub-resource sesi |
-| `GET /mentor/chat/history` | `GET /sesi/:id/chat` | sub-resource sesi |
-| `POST /game/selesai` | `PATCH /game/:id/penyelesaian` | partial update resource |
-| `GET /game/list` | `GET /game` | RESTful list |
+| V2 (Lama) | V3 (Baru) |
+|-----------|-----------|
+| `POST /summary/siswa/:id` | `POST /sesi/:id/summary` |
+| `GET /content/siswa` | `GET /siswa/:id/konten` |
+| `GET /content/progress/siswa` | `GET /siswa/:id/progress` |
+| `GET /content/progress/guru` | `GET /kelas/:id/progress` |
+| `GET /content/riwayat` | `GET /guru/:id/konten` |
+| `POST /content/quiz/submit` | `POST /siswa/:id/quiz/mc` + `/essay` |
+| `GET /content/quiz/history` | `GET /siswa/:id/quiz?elemen_id=` |
+| `GET /content/pretest/status` | `GET /siswa/:id/pretest/status` |
+| `POST /content/recommend` | `POST /rag/rekomendasi` |
+| `POST /content/insight` | `POST /rag/insight` |
+| `GET /guru/rekomendasi` | `GET /siswa/:id/notifikasi` |
+| `POST /guru/rekomendasi` | `POST /notifikasi` |
+| `GET /emotion/history` | `GET /sesi/:id/emosi` |
+| `GET /mentor/chat/history` | `GET /sesi/:id/chat` |
+| `POST /game/selesai` | `PATCH /game/:id/penyelesaian` |
 
 ---
 
-## 4. PETA DOMAIN ENDPOINT
+## 4. CHANGELOG V3.4 (Penyesuaian Struktur Konten)
+
+Perubahan V3.4 bersifat **additive pada struktur `content`** — tidak ada endpoint baru atau perubahan URL.
+
+| # | Titik | Perubahan |
+|---|-------|-----------|
+| 1 | `POST /game/generate`, `POST /game/regenerate`, `GET /game/:id`, `POST /konten/publish` (item game) | **`html_url` → `html_string`** — Tim 4 kirim game sebagai HTML string penuh. FE render via `<iframe srcDoc={html_string}>` |
+| 2 | `POST /konten/generate` (tipe `quiz_pg`), semua endpoint yang kembalikan/simpan `quiz_pg` | **Tambah field `penjelasan`** di setiap soal MC |
+| 3 | `POST /konten/generate` (tipe `mindmap`), semua endpoint yang kembalikan/simpan `mindmap` | **Tambah field `penjelasan`** di setiap node mindmap |
+| 4 | `POST /konten/generate` (tipe `bacaan` & `flashcard`), semua endpoint yang kembalikan/simpan tipe tersebut | **Tambah field `source`** — sumber buku/dokumen hasil retrieve RAG |
+| 5 | `POST /konten/generate`, `POST /konten/publish`, semua endpoint terkait pretest | **Pretest di-generate bersamaan konten** oleh Tim 3 RAG secara internal; tidak dikembalikan ke FE/guru |
+| 6 | `PATCH /game/:id/penyelesaian` | **Trigger selesai via `postMessage`** — game HTML kirim `{ type: 'game:selesai' }` ke parent FE |
+
+> **Catatan kompatibilitas:** FE yang masih membaca `html_url` dari response game akan gagal. Adapter `studentContent.js` dan `game.js` **wajib diperbarui** untuk menggunakan `html_string`.
+
+---
+
+## 5. CHANGELOG V3.5 (Fix Audit Contract)
+
+| # | Titik | Perubahan |
+|---|-------|-----------|
+| 1 | Konvensi 1.6 | **Perjelas aturan level casing** — semua response BE wajib lowercase; ditegaskan dengan catatan wajib |
+| 2 | Semua response endpoint | **Fix level casing** — ganti semua `"Low"/"Mid"/"High"` di response menjadi `"low"/"mid"/"high"` |
+| 3 | `GET /siswa/:id/progress` | **Fix trailing comma JSON** di `nilai_agregasi_terakhir` dalam object materi |
+| 4 | `GET /admin/mapel/:id`, `GET /admin/mapel/:mapel_id/elemen/:id` | **Fix envelope** — tambahkan standard response envelope yang sebelumnya hilang |
+| 5 | Struktur dokumen | **Fix penomoran section** — section ADMIN dari 5.x → 6.x, WebSocket dari 18.x → 21.x, Kurikulum dari 19.x → 22.x, Standard Response dari 20.x → 23.x |
+| 6 | `POST /rag/insight` | **Fix kontradiksi request body** — hapus catatan menyesatkan; FE tetap kirim KPI sesuai body yang sudah ada |
+| 7 | `POST /konten/publish` | **Fix error 409** — hapus kalimat "Gunakan endpoint update" karena endpoint tersebut tidak ada |
+| 8 | `POST /konten/publish` — item game | **Fix konten_id game** — hapus klaim "keduanya wajib"; item game cukup gunakan `game_id` tanpa `konten_id` |
+| 9 | Quick reference | **Fix path elemen** — `/admin/elemen` → `/admin/mapel/:mapel_id/elemen` |
+| 10 | Quick reference | **Fix notifikasi** — pisahkan GET dan PATCH ke path yang benar |
+| 11 | Quick reference | **Fix POST kelas mapel** — `POST /admin/kelas/:id/mapel/:mapel_id` → `POST /admin/kelas/:id/mapel` |
+| 12 | Section 15 QUIZ | **Update referensi** — ganti `POST /siswa/:id/quiz` (deprecated) ke endpoint baru `/mc` dan `/essay` |
+| 13 | Caching strategy | **Fix path elemen** — `/admin/elemen` → `/admin/mapel/:mapel_id/elemen` |
+| 14 | WebSocket semua event | **Fix timestamp** — seragamkan semua WS timestamp ke ISO 8601 penuh |
+| 15 | Section pretest | **Fix ownership** — perjelas Tim 3 RAG generate, Tim 6 BE serve |
+| 16 | Footer | **Fix versi** — "End of API Contract SR MVP V3.1" → V3.5 |
+| 17 | `POST /sesi` — catatan | **Hapus referensi V3.2** yang tidak ada; ganti dengan keterangan yang benar |
+| 18 | Section Context Injection Mentor | **Hapus referensi V3.2**; perbarui narasi sesuai kondisi aktual (hasil_quiz_id hanya untuk /mentor/evaluasi) |
+
+---
+
+## 6. CHANGELOG V3.6 (Fix Audit Contract — Lanjutan)
+
+Perubahan V3.6 bersifat **additive dan backward-compatible**.
+
+| # | Titik | Perubahan |
+|---|-------|-----------|
+| 1 | `GET /siswa/:id/quiz` — response | **Tambah field `hasil_quiz_id`** di setiap item `riwayat[]` — dipakai FE trigger CTA "Tanya Kak Nusa" dari riwayat lama |
+| 2 | `POST /konten/publish` — deskripsi | **Tambah catatan atomik** — operasi ini atomik, FE aman retry jika gagal |
+| 3 | `POST /konten/generate` — catatan Pretest | **Perjelas timing trigger pretest** — generate pretest di-trigger pada panggilan `POST /konten/generate` pertama dari 13 panggilan paralel |
+| 4 | Section 10 GURU | **Tambah `GET /kelas/:id/progress` sebagai section resmi** — endpoint kritis untuk initial load monitoring guru; sebelumnya hanya ada di Quick Reference |
+| 5 | Section 22 WebSocket | **Tambah `22.1.2 WebSocket Siswa`** — endpoint `wss://.../ws/siswa` tersendiri untuk siswa; clarify bahwa event `essay_dinilai` dikirim ke dua channel (siswa + guru) |
+| 6 | Daftar Isi | **Renumbering** — tambah entry Changelog V3.6 (nomor 6), section domain mulai dari 7 |
+| 7 | Quick Reference WebSocket | **Tambah baris WS siswa** |
+| 8 | Footer | **Fix versi** — V3.5 → V3.6 |
+
+---
+
+## 7. PETA DOMAIN ENDPOINT
 
 ```
 /auth          → Autentikasi & sesi
@@ -224,7 +276,6 @@ konteks quiz ke Tim 5 pada saat menerima pesan, bukan saat sesi dibuat.
 /konten        → Generate & publish konten (role: guru)
 /sesi          → Sesi belajar siswa
 /pretest       → Soal & submit pretest
-/quiz          → Riwayat quiz (sub-resource siswa)
 /rag           → Semua permintaan ke Tim 3 RAG (insight, rekomendasi)
 /game          → Generate & aksi game (Tim 4)
 /emosi         → Deteksi emosi frame (Tim 1)
@@ -236,7 +287,7 @@ konteks quiz ke Tim 5 pada saat menerima pesan, bukan saat sesi dibuat.
 
 ---
 
-## 5. AUTH — Tim 6 BE
+## 8. AUTH — Tim 6 BE
 
 ### `[PUBLIC]` POST /auth/login
 Login siswa, guru, atau admin. **Hanya email + password** — tidak ada NIS/NIP login, tidak ada OAuth.
@@ -272,7 +323,6 @@ Login siswa, guru, atau admin. **Hanya email + password** — tidak ada NIS/NIP 
 }
 ```
 
-> **Catatan field `user`:**
 > - `nis`: hanya siswa, `null` untuk guru/admin
 > - `nip`: hanya guru (string 18 digit), `null` untuk siswa/admin
 > - `is_first_login: true` → FE wajib paksa alur aktivasi (ganti password + pilih 3 mapel)
@@ -331,8 +381,7 @@ Aktivasi akun siswa saat **first login** — ganti password + simpan 3 mapel pil
 
 > - `password_baru`: min 8 karakter, kombinasi huruf + angka
 > - `mapel_ids`: tepat 3 elemen
-
-> **Catatan:** `user_id` diambil dari JWT token — tidak perlu dikirim di body.
+> - `user_id` diambil dari JWT token — tidak perlu dikirim di body
 
 **Response 200:**
 ```json
@@ -424,13 +473,13 @@ Upload / ganti foto profil user aktif.
 
 ---
 
-## 6. ADMIN — Tim 6 BE
+## 9. ADMIN — Tim 6 BE
 
 > Semua endpoint section ini hanya untuk role **`admin`**. Response `403` jika role lain mengakses.
 
 ---
 
-### 5.1 Mapel (Mata Pelajaran)
+### 8.1 Mapel (Mata Pelajaran)
 
 #### GET /admin/mapel
 Daftar semua mapel.
@@ -456,21 +505,25 @@ Daftar semua mapel.
 ```
 
 #### GET /admin/mapel/:id
-Detail satu mapel. **Response 200:** `data` = satu objek `Mapel`.
+Detail satu mapel.
 
 **Response 200:**
 ```json
 {
-  "id": "mat",
-  "label": "Matematika",
-  "icon": "📐",
-  "tingkat": "X",
-  "fase": "Fase E (Kelas X)",
-  "deskripsi_cp": "Pada akhir fase ini...",
-  "elemen": [
-    { "id": "bil_aljabar", "label": "Bilangan dan Aljabar" },
-    { "id": "geometri", "label": "Geometri dan Pengukuran" }
-  ]
+  "data": {
+    "id": "mat",
+    "label": "Matematika",
+    "icon": "📐",
+    "tingkat": "X",
+    "fase": "Fase E (Kelas X)",
+    "deskripsi_cp": "Pada akhir fase ini...",
+    "elemen": [
+      { "id": "bil_aljabar", "label": "Bilangan dan Aljabar" },
+      { "id": "geometri", "label": "Geometri dan Pengukuran" }
+    ]
+  },
+  "meta": null,
+  "error": null
 }
 ```
 
@@ -490,7 +543,7 @@ Detail satu mapel. **Response 200:** `data` = satu objek `Mapel`.
 **Error 409:** "ID mapel sudah digunakan."
 
 #### PATCH /admin/mapel/:id
-`id` tidak bisa diubah. Body: `{ "label"?, "icon"?, "fase"?, "deskripsi_cp"? }`
+`id` tidak bisa diubah.
 
 **Request Body (partial):**
 ```json
@@ -505,11 +558,11 @@ Detail satu mapel. **Response 200:** `data` = satu objek `Mapel`.
 **Response 200:** `data` = `Mapel` yang diperbarui.
 
 #### DELETE /admin/mapel/:id
-**Response 200:** `{ "data": { "deleted": true } }` — elemen di bawah mapel ini dihapus cascade.
+**Response 200:** `{ "data": { "deleted": true }, "meta": null, "error": null }` — elemen di bawah mapel ini dihapus cascade.
 
 ---
 
-### 5.2 Elemen (Kurikulum)
+### 8.2 Elemen (Kurikulum)
 
 > Elemen adalah level kurikulum langsung di bawah mapel. Hanya menyimpan `{ id, mapel_id, label }`.
 
@@ -529,16 +582,18 @@ Ambil semua elemen untuk satu mapel. `mapel_id` wajib.
 ```
 
 #### GET /admin/mapel/:mapel_id/elemen/:id
-Detail satu elemen. 
+Detail satu elemen.
 
 **Response 200:**
 ```json
-{ "id": "bil_aljabar", "mapel_id": "mat", "label": "Bilangan dan Aljabar" }
+{
+  "data": { "id": "bil_aljabar", "mapel_id": "mat", "label": "Bilangan dan Aljabar" },
+  "meta": null,
+  "error": null
+}
 ```
 
 #### POST /admin/mapel/:mapel_id/elemen
-Tambah elemen ke mapel.
-
 **Request Body:**
 ```json
 { "label": "Bilangan dan Aljabar" }
@@ -546,15 +601,17 @@ Tambah elemen ke mapel.
 
 **Response 201:**
 ```json
-{ "id": "bil_aljabar", "mapel_id": "mat", "label": "Bilangan dan Aljabar" }
+{
+  "data": { "id": "bil_aljabar", "mapel_id": "mat", "label": "Bilangan dan Aljabar" },
+  "meta": null,
+  "error": null
+}
 ```
 
 **Error 409:** "Label elemen sudah ada di mapel ini."
 
----
-
 #### PATCH /admin/mapel/:mapel_id/elemen/:id
-`id` dan `mapel_id` tidak bisa diubah. 
+`id` dan `mapel_id` tidak bisa diubah.
 
 **Request Body:**
 ```json
@@ -563,20 +620,24 @@ Tambah elemen ke mapel.
 
 **Response 200:**
 ```json
-{ "id": "bil_aljabar", "mapel_id": "mat", "label": "Bilangan dan Aljabar" }
+{
+  "data": { "id": "bil_aljabar", "mapel_id": "mat", "label": "Nama Elemen Baru" },
+  "meta": null,
+  "error": null
+}
 ```
 
 **Error 409:** "Label elemen sudah ada di mapel ini."
 
 #### DELETE /admin/mapel/:mapel_id/elemen/:id
-**Response 200:** `{ "data": { "deleted": true } }` — konten guru yang terkait dilepas otomatis.
+**Response 200:** `{ "data": { "deleted": true }, "meta": null, "error": null }` — konten guru yang terkait dilepas otomatis.
 
 ---
 
-### 5.3 Kelas
+### 8.3 Kelas
 
-#### GET /admin/kelas?tingkat=:tingkat
-Daftar semua kelas. `tingkat` opsional.
+#### GET /admin/kelas
+Daftar semua kelas.
 
 **Query Params (opsional):** `tingkat` (`X` | `XI` | `XII`)
 
@@ -636,7 +697,7 @@ Body: field yang diubah saja (`nama`, `wali_kelas_id`, `tahun_ajaran`).
 **Response 200:** `data` = `Kelas` yang diperbarui.
 
 #### DELETE /admin/kelas/:id
-**Response 200:** `{ "data": { "deleted": true } }` — siswa dilepas dari kelas (`kelas_id` → null), tidak dihapus.
+**Response 200:** `{ "data": { "deleted": true }, "meta": null, "error": null }` — siswa dilepas dari kelas (`kelas_id` → null), tidak dihapus.
 
 ---
 
@@ -654,11 +715,11 @@ Tambah mapel ke kelas + assign guru pengampu.
 #### PATCH /admin/kelas/:id/mapel/:mapel_id
 Ganti guru pengampu untuk mapel di kelas ini.  
 **Request:** `{ "guru_id": "g2" }`  
-**Response 200:** `{ "data": { "mapel_id": "mat", "guru_id": "g2" } }`
+**Response 200:** `{ "data": { "mapel_id": "mat", "guru_id": "g2" }, "meta": null, "error": null }`
 
 #### DELETE /admin/kelas/:id/mapel/:mapel_id
 Lepas mapel dari kelas.  
-**Response 200:** `{ "data": { "deleted": true } }`
+**Response 200:** `{ "data": { "deleted": true }, "meta": null, "error": null }`
 
 #### POST /admin/kelas/:id/siswa
 Tambah siswa ke kelas. **Request:** `{ "siswa_id": "s5" }`  
@@ -667,14 +728,16 @@ Tambah siswa ke kelas. **Request:** `{ "siswa_id": "s5" }`
 
 #### DELETE /admin/kelas/:id/siswa/:siswa_id
 Lepas siswa dari kelas.  
-**Response 200:** `{ "data": { "deleted": true } }`
+**Response 200:** `{ "data": { "deleted": true }, "meta": null, "error": null }`
 
 ---
 
-### 5.4 Guru
+### 8.4 Guru
 
-#### GET /admin/guru?sort=nama&order=asc
+#### GET /admin/guru
 Daftar semua guru.
+
+**Query Params (opsional):** `sort=nama&order=asc`
 
 **Response 200:**
 ```json
@@ -721,7 +784,7 @@ Detail satu guru. **Response 200:** `data` = satu objek `Guru`.
 **Response 200:** `data` = `Guru` yang diperbarui.
 
 #### DELETE /admin/guru/:id
-**Response 200:** `{ "data": { "deleted": true } }` — relasi wali kelas dilepas otomatis.
+**Response 200:** `{ "data": { "deleted": true }, "meta": null, "error": null }` — relasi wali kelas dilepas otomatis.
 
 #### POST /admin/guru/bulk
 Upload data guru massal.
@@ -751,10 +814,12 @@ Ibu Sari,199001012020012001,sari@sekolah.id
 
 ---
 
-### 5.5 Siswa
+### 8.5 Siswa
 
-#### GET /admin/siswa?kelas_id=:id&status=Aktif
-Daftar semua siswa. Query params opsional: `kelas_id`, `status`.
+#### GET /admin/siswa
+Daftar semua siswa.
+
+**Query Params (opsional):** `kelas_id`, `status`
 
 **Response 200:**
 ```json
@@ -798,7 +863,7 @@ Detail satu siswa. **Response 200:** `data` = satu objek `Siswa`.
 > BE generate password sementara dan kirim via email.
 
 #### PATCH /admin/siswa/:id
-Jika `kelas_id` berubah, relasi kelas lama dilepas otomatis.  
+Jika `kelas_id` berubah, relasi kelas lama dilepas otomatis.
 
 **Request Body (partial):**
 ```json
@@ -810,7 +875,7 @@ Jika `kelas_id` berubah, relasi kelas lama dilepas otomatis.
 **Response 200:** `data` = `Siswa` yang diperbarui.
 
 #### DELETE /admin/siswa/:id
-**Response 200:** `{ "data": { "deleted": true } }`
+**Response 200:** `{ "data": { "deleted": true }, "meta": null, "error": null }`
 
 #### POST /admin/siswa/bulk
 Upload data siswa massal.
@@ -828,7 +893,7 @@ Budi Santoso,1234567890,budi@sekolah.id
 
 ---
 
-## 7. GURU — Tim 6 BE
+## 10. GURU — Tim 6 BE
 
 > Endpoint profil dan data guru yang diakses oleh guru itu sendiri.
 
@@ -865,11 +930,11 @@ Profil guru. Guru hanya bisa mengakses profil sendiri; admin bisa akses semua.
 ---
 
 ### GET /guru/:id/konten
-Riwayat konten yang pernah dipublish guru. Menggantikan `GET /content/riwayat`.
+Riwayat konten yang pernah dipublish guru.
 
 **Auth:** role `guru` (hanya `id` sendiri)
 
-**Query Params:** `mapel_id`? `kelas_id`? (opsional), `page`?, `limit`?
+**Query Params:** `mapel_id`?, `kelas_id`?, `page`?, `limit`?
 
 **Response 200:**
 ```json
@@ -891,7 +956,7 @@ Riwayat konten yang pernah dipublish guru. Menggantikan `GET /content/riwayat`.
       "published_at": "2026-05-01T09:00:00.000Z",
       "game_penyelesaian": [
         {
-          "level": "Low",
+          "level": "low",
           "game_id": "game_1746342000_low",
           "siswa_selesai": [
             { "siswa_id": "s1", "nama": "Budi Santoso", "selesai_at": "2026-05-01T10:00:00.000Z" }
@@ -910,7 +975,57 @@ Riwayat konten yang pernah dipublish guru. Menggantikan `GET /content/riwayat`.
 
 ---
 
-## 8. SISWA — Tim 6 BE
+### GET /kelas/:id/progress — Tim 6 BE
+Progress belajar semua siswa dalam satu kelas untuk satu mapel. Digunakan guru sebagai **initial load** sebelum WebSocket aktif di halaman monitoring, dan sebagai **fallback polling** jika WebSocket tidak tersedia.
+
+**Auth:** role `guru` (hanya kelas yang diampu) atau `admin`
+
+**Query Params:**
+- `mapel_id` (wajib jika guru mengampu >1 mapel di kelas ini; opsional jika hanya 1 mapel)
+
+**Response 200:**
+```json
+{
+  "data": {
+    "kelas_id": "x1",
+    "mapel_id": "mat",
+    "total_siswa": 30,
+    "aktif_hari_ini": 12,
+    "rata_rata_progress": 68,
+    "siswa": [
+      {
+        "siswa_id": "s1",
+        "nama": "Budi Santoso",
+        "avatar": null,
+        "elemen_id": "bil_aljabar",
+        "elemen_label": "Bilangan dan Aljabar",
+        "materi": "Persamaan Linear",
+        "materi_id": "mat__persamaan_linear",
+        "level": "mid",
+        "nilai_terakhir": 84,
+        "durasi_menit": 45,
+        "last_active": "2026-05-01T09:15:00.000Z",
+        "aktif": true
+      }
+    ]
+  },
+  "meta": null,
+  "error": null
+}
+```
+
+> - `aktif_hari_ini`: jumlah siswa yang membuka chatbot hari ini (berdasarkan `sesi.dimulai_at` hari berjalan WIB).
+> - `rata_rata_progress`: rata-rata `progress_pct` seluruh siswa di kelas ini untuk mapel yang dipilih.
+> - `siswa[].aktif: true` = siswa sedang aktif di chatbot saat ini; `false` = tidak sedang aktif. Siswa yang belum pernah aktif ditandai dengan `nilai_terakhir: null` dan `durasi_menit: 0`.
+> - `siswa[].level`: level konten terakhir siswa. `null` jika belum pernah belajar.
+> - Response ini adalah **snapshot** — tidak real-time. Untuk data real-time gunakan WebSocket `wss://.../ws/monitoring`.
+
+**Error 400:** `mapel_id` wajib diisi jika guru mengampu lebih dari 1 mapel di kelas ini.  
+**Error 403:** Guru tidak mengampu kelas ini.
+
+---
+
+## 11. SISWA — Tim 6 BE
 
 ### GET /siswa/:id
 Profil siswa. Siswa hanya bisa akses profil sendiri; guru dan admin bisa akses semua.
@@ -960,8 +1075,8 @@ KPI dashboard siswa — streak, topik, poin quiz, durasi. Dipakai di Hero Banner
 ```
 
 > **Formula poin quiz:** `Σ (mc_score × 60% + essay_score × 40%)` di semua sesi.  
-> **Total topik:** jumlah elemen/materi unik yang pernah dipelajari.
-> **Total_durasi_menit:** total waktu yang dihabiskan siswa untuk belajar.
+> **Total topik:** jumlah elemen/materi unik yang pernah dipelajari.  
+> **Total durasi menit:** total waktu yang dihabiskan siswa untuk belajar.
 
 ---
 
@@ -971,6 +1086,8 @@ Progress belajar siswa per mapel dan elemen. Dipakai di dashboard + ProgressSect
 **Auth:** role `siswa` (hanya `id` sendiri)
 
 **Query Params:** `mapel_id`? (opsional, filter per mapel)
+
+> **Formula `progress_pct`:** `round(selesai / (selesai + dalam_proses + belum_dimulai) × 100)` — integer, dihitung BE.
 
 **Response 200:**
 ```json
@@ -985,7 +1102,7 @@ Progress belajar siswa per mapel dan elemen. Dipakai di dashboard + ProgressSect
         "selesai": 2,
         "dalam_proses": 1,
         "belum_dimulai": 3,
-        "progress_pct": 55,
+        "progress_pct": 33,
         "elemen": [
           {
             "elemen_id": "bil_aljabar",
@@ -999,7 +1116,7 @@ Progress belajar siswa per mapel dan elemen. Dipakai di dashboard + ProgressSect
                 "materi_label": "Persamaan Linear",
                 "status": "selesai",
                 "level_terakhir": "high",
-                "nilai_agregasi_terakhir": 88,
+                "nilai_agregasi_terakhir": 88
               }
             ]
           }
@@ -1019,7 +1136,7 @@ Progress belajar siswa per mapel dan elemen. Dipakai di dashboard + ProgressSect
 ---
 
 ### GET /siswa/:id/konten
-Semua paket konten yang sudah dipublish guru untuk kelas siswa ini. Menggantikan `GET /content/siswa`.
+Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
 
 **Auth:** role `siswa` (hanya `id` sendiri)
 
@@ -1041,30 +1158,38 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini. Menggantikan
       "kelas_id": "x1",
       "jenjang": "X",
       "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel.",
-      "published_at": "2026-05-01T09:00:00.000Z",
       "konten_list": [
         {
+          "konten_id": "konten_mat_bacaan_low_1746342000",
           "tipe": "bacaan",
-          "level": "Low",
-          "content": { "text": "# Persamaan Linear\n\n## A. Pengertian\n..." }
+          "level": "low",
+          "content": {
+            "text": "# Persamaan Linear\n\n## A. Pengertian\n...",
+            "source": [
+              { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
+            ]
+          }
         },
         {
+          "konten_id": "konten_mat_quiz_pg_low_1746342000",
           "tipe": "quiz_pg",
-          "level": "Low",
+          "level": "low",
           "content": {
             "soal": [
               {
                 "id": "q1",
                 "soal": "Berapakah nilai x dari persamaan 2x + 3 = 7?",
                 "pilihan": ["1", "2", "3", "4"],
-                "jawaban": 1
+                "jawaban": 1,
+                "penjelasan": "2x + 3 = 7 → 2x = 4 → x = 2, maka jawaban yang benar adalah indeks 1 (nilai '2')."
               }
             ]
           }
         },
         {
+          "konten_id": "konten_mat_quiz_essay_low_1746342000",
           "tipe": "quiz_essay",
-          "level": "Low",
+          "level": "low",
           "content": {
             "pertanyaan": [
               {
@@ -1077,31 +1202,37 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini. Menggantikan
           }
         },
         {
+          "konten_id": "konten_mat_flashcard_low_1746342000",
           "tipe": "flashcard",
-          "level": "Low",
+          "level": "low",
           "content": {
             "cards": [
               { "depan": "Persamaan Linear", "belakang": "Persamaan berderajat satu dengan satu atau lebih variabel" }
+            ],
+            "source": [
+              { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
             ]
           }
         },
         {
+          "konten_id": "konten_mat_mindmap_1746342000",
           "tipe": "mindmap",
           "level": null,
           "content": {
             "nodes": [
-              { "id": "n1", "label": "Persamaan Linear", "parent_id": null },
-              { "id": "n2", "label": "Pengertian", "parent_id": "n1" }
+              { "id": "n1", "label": "Persamaan Linear", "parent_id": null, "penjelasan": "" },
+              { "id": "n2", "label": "Pengertian", "parent_id": "n1", "penjelasan": "Persamaan berderajat satu dengan satu variabel." }
             ]
           }
         },
         {
+          "game_id": "game_1746342000_low",
           "tipe": "game",
-          "level": "Low",
+          "level": "low",
           "content": {
-            "game_id": "game_1746342000_low",
             "status": "ready",
-            "html_url": "https://game.sekolahrakyat.id/play/game_1746342000_low"
+            "game_selesai": true,
+            "selesai_at": "2026-05-01T10:00:00.000Z"
           }
         }
       ]
@@ -1115,13 +1246,15 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini. Menggantikan
 > **Catatan konten_list:** 16 item total per paket:
 > `bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 + game×3`
 >
-> FE memfilter `konten_list` berdasarkan level siswa saat ini (hasil pretest).
-> Konten `bacaan` dirender dari `content.text` (markdown) di chatbot.
+> FE memfilter `konten_list` berdasarkan level siswa saat ini (hasil pretest).  
+> Konten `bacaan` dirender dari `content.text` (markdown) di chatbot.  
+> Konten `game` di sini **tidak** mengandung `html_string` — FE fetch `html_string` via `GET /game/:id` saat siswa klik "Main Game".  
+> Field `game_selesai: true` berarti siswa sudah menyelesaikan game di level tersebut; `false` atau `null` berarti belum.
 
 ---
 
 ### GET /siswa/:id/pretest/status
-Status pretest siswa untuk semua elemen/materi dalam satu mapel. Dipakai FE untuk menghidrasi store lokal.
+Status pretest siswa untuk semua elemen/materi dalam satu mapel.
 
 **Auth:** role `siswa` (hanya `id` sendiri)
 
@@ -1149,7 +1282,7 @@ Status pretest siswa untuk semua elemen/materi dalam satu mapel. Dipakai FE untu
 ---
 
 ### GET /siswa/:id/quiz
-Riwayat quiz siswa per elemen/materi, dikelompokkan per level. Menggantikan `GET /content/quiz/history`.
+Riwayat quiz siswa per elemen/materi, dikelompokkan per level.
 
 **Auth:** role `siswa` (hanya `id` sendiri)
 
@@ -1163,9 +1296,9 @@ Riwayat quiz siswa per elemen/materi, dikelompokkan per level. Menggantikan `GET
   "data": {
     "level_aktif": "mid",
     "riwayat": [
-      { "tipe": "mc", "level": "low", "nilai": 85, "terkunci": true, "dikerjakan_at": "2026-05-01T09:00:00.000Z" },
-      { "tipe": "essay", "level": "low", "nilai": 78, "terkunci": true, "dikerjakan_at": "2026-05-01T09:10:00.000Z" },
-      { "tipe": "mc", "level": "mid", "nilai": 60, "terkunci": false, "dikerjakan_at": "2026-05-01T10:00:00.000Z" }
+      { "hasil_quiz_id": "hq_20260501_0001", "tipe": "mc", "level": "low", "nilai": 85, "terkunci": true, "dikerjakan_at": "2026-05-01T09:00:00.000Z" },
+      { "hasil_quiz_id": "hq_20260501_0002", "tipe": "essay", "level": "low", "nilai": 78, "terkunci": true, "dikerjakan_at": "2026-05-01T09:10:00.000Z" },
+      { "hasil_quiz_id": "hq_20260501_0003", "tipe": "mc", "level": "mid", "nilai": 60, "terkunci": false, "dikerjakan_at": "2026-05-01T10:00:00.000Z" }
     ]
   },
   "meta": null,
@@ -1176,6 +1309,7 @@ Riwayat quiz siswa per elemen/materi, dikelompokkan per level. Menggantikan `GET
 > - `level_aktif`: level aktif siswa sekarang. Dipakai FE untuk mengisi `levelMap[activeKey]`.
 > - `riwayat[].terkunci: true` = level sudah dilewati (siswa naik level) → quiz level ini **read-only**.
 > - Riwayat per level: **1 record per tipe** (yang terbaru). BE simpan hanya hasil terakhir per `(siswa_id, elemen_id, materi_id, level, tipe)`.
+> - `riwayat[].hasil_quiz_id`: dipakai FE untuk trigger CTA "Tanya Kak Nusa" dari panel riwayat quiz — tersedia meski siswa membuka kembali sesi lama.
 
 **Response jika belum pernah quiz:**
 ```json
@@ -1186,8 +1320,8 @@ Riwayat quiz siswa per elemen/materi, dikelompokkan per level. Menggantikan `GET
 
 ---
 
-### POST /siswa/:id/quiz
-Submit hasil quiz siswa (MC atau Essay). Menggantikan `POST /content/quiz/submit`.
+### POST /siswa/:id/quiz/mc — Tim 6 BE
+Submit jawaban Quiz Pilihan Ganda. BE menilai langsung karena kunci jawaban tersedia.
 
 **Auth:** role `siswa` (hanya `id` sendiri)
 
@@ -1200,7 +1334,6 @@ Submit hasil quiz siswa (MC atau Essay). Menggantikan `POST /content/quiz/submit
   "elemen_label": "Bilangan dan Aljabar",
   "materi": "Persamaan Linear",
   "materi_id": "mat__persamaan_linear",
-  "tipe": "mc",
   "level": "Low",
   "jawaban": {
     "q1": "1",
@@ -1210,47 +1343,123 @@ Submit hasil quiz siswa (MC atau Essay). Menggantikan `POST /content/quiz/submit
 }
 ```
 
-> - `tipe`: `"mc"` | `"essay"`
-> - `jawaban`: key = `id` soal dari konten. Value = string jawaban (untuk MC: string index pilihan; untuk essay: string teks jawaban)
-> - **BE menghitung nilai MC sendiri** — FE tidak mengirim `score`
-> - Untuk essay: BE kirim ke Tim 3 RAG untuk dinilai secara async
+> - `jawaban`: key = `id` soal. Value = string index pilihan
+> - **BE menghitung nilai sendiri** — FE tidak mengirim `score`
 
 **Response 200:**
 ```json
 {
   "data": {
-    "disimpan": true,
     "tipe": "mc",
     "nilai": 80,
-    "nilai_essay": null,
+    "benar": 8,
+    "total": 10,
     "elemen_id": "bil_aljabar",
     "level": "low",
-    "agregasi": null,
     "naik_level": false,
+    "agregasi": null,
+    "menunggu_essay": true,
     "kkm": 75,
-    "menunggu_agregasi": false,
-    "dicatat_at": "2026-05-01T09:15:00.000Z",
-    "hasil_quiz_id": "hq_20260501_0001"
+    "hasil_quiz_id": "hq_20260501_0001",
+    "dicatat_at": "2026-05-01T09:15:00.000Z"
   },
   "meta": null,
   "error": null
 }
 ```
 
-> **`hasil_quiz_id`:** Identifier opaque yang di-generate BE untuk referensi hasil quiz ini. FE menyimpan nilai ini dan meneruskannya ke `POST /mentor/pesan` (bukan ke `POST /sesi`) saat siswa membuka CTA "Tanya Kak Nusa". FE tidak perlu parsing format ID ini.
+> - `menunggu_essay: true` → agregasi belum dihitung, essay belum dikerjakan
+> - `menunggu_essay: false` → essay sudah dikerjakan, agregasi tersedia di field `agregasi`
+> - `hasil_quiz_id`: FE simpan dan teruskan ke `POST /mentor/evaluasi` saat siswa klik CTA "Tanya Kak Nusa"
+> - `naik_level`: selalu `false` dari endpoint ini — naik level baru ditentukan setelah agregasi MC+Essay selesai. BE push via WebSocket event `essay_dinilai`
 
-> **Logika naik level (di BE):**
+---
+
+### POST /siswa/:id/quiz/essay — Tim 6 BE + Tim 3 RAG
+Submit jawaban Quiz Essay. BE forward ke Tim 3 RAG untuk dinilai secara asinkronus.
+
+**Auth:** role `siswa` (hanya `id` sendiri)
+
+**Request:**
+```json
+{
+  "publish_id": "pub_mat_bil_aljabar_x1_20260501",
+  "mapel_id": "mat",
+  "elemen_id": "bil_aljabar",
+  "elemen_label": "Bilangan dan Aljabar",
+  "materi": "Persamaan Linear",
+  "materi_id": "mat__persamaan_linear",
+  "level": "Low",
+  "jawaban": {
+    "e1": "Langkah pertama adalah memindahkan konstanta ke ruas kanan...",
+    "e2": "Variabel adalah simbol yang mewakili nilai yang tidak diketahui..."
+  }
+}
+```
+
+> - `jawaban`: key = `id` soal essay. Value = string teks jawaban siswa
+
+**Response 200:**
+```json
+{
+  "data": {
+    "tipe": "essay",
+    "nilai": null,
+    "elemen_id": "bil_aljabar",
+    "level": "low",
+    "menunggu_penilaian": true,
+    "naik_level": null,
+    "agregasi": null,
+    "hasil_quiz_id": "hq_20260501_0002",
+    "dicatat_at": "2026-05-01T09:20:00.000Z"
+  },
+  "meta": null,
+  "error": null
+}
+```
+
+> - `menunggu_penilaian: true` → Tim 3 sedang menilai, FE tampilkan indikator loading di panel quiz
+> - `nilai: null` → akan diisi setelah Tim 3 selesai, BE push via WebSocket
+> - Jika Tim 3 gagal: BE retry otomatis dengan exponential backoff — FE tidak perlu spam retry
+> - `hasil_quiz_id`: FE simpan untuk referensi CTA evaluasi
+
+> **Logika agregasi & naik level (di BE, otomatis setelah essay dinilai):**
 > ```
 > agregasi = nilai_mc × 60% + nilai_essay × 40%
 > naik_level = agregasi >= 75
 > ```
-> `naik_level: true` → FE buka akses level berikutnya; quiz level sebelumnya jadi read-only.
->
-> `menunggu_agregasi: true` jika essay baru disubmit dan masih menunggu penilaian RAG.
+> BE push hasil via WebSocket event `essay_dinilai` → FE update UI naik level tanpa polling.
 
 ---
 
-## 9. KONTEN — Tim 3 RAG + Tim 6 BE
+### GET /siswa/:id/notifikasi
+Siswa ambil semua notifikasi dari guru.
+
+**Auth:** role `siswa` (hanya `id` sendiri)
+
+**Query Params:** `dibaca`? (`true`|`false`), `page`?, `limit`?
+
+**Response 200:**
+```json
+{
+  "data": [
+    {
+      "id": "notif_123",
+      "guru_nama": "Ibu Sari",
+      "guru_mapel": "📐 Matematika",
+      "pesan": "Coba ulangi materi persamaan linear.",
+      "dibaca": false,
+      "dibuat_at": "2026-05-01T09:00:00.000Z"
+    }
+  ],
+  "meta": { "page": 1, "limit": 20, "total": 3, "total_pages": 1 },
+  "error": null
+}
+```
+
+---
+
+## 12. KONTEN — Tim 3 RAG + Tim 6 BE
 
 > **Ownership endpoint:**
 > - `POST /konten/generate` → **Tim 3 RAG** — generate konten dari VectorDB
@@ -1281,24 +1490,26 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
   "jenjang": "X",
   "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel dalam konteks nyata.",
   "tipe": "bacaan",
-  "level": "Low",
-  "instruksi_revisi": "Soal terlalu mudah. Buat soal yang melibatkan persamaan dua variabel dan konteks cerita soal."
+  "level": "Low"
 }
 ```
 
 > - `materi` dan `materi_id`: opsional — hanya diisi jika guru menentukan sub-materi spesifik
-> - `atp`: opsional tapi **sangat disarankan** untuk konten yang relevan dengan tujuan pembelajaran
-> - `level`: `"Low"` | `"Mid"` | `"High"` — **null atau omit** untuk `mindmap` (mindmap tidak berlevel)
-> - `instruksi_revisi`: opsional — HANYA diisi saat guru klik "Ulangi" di panel review. Generate pertama: kosong/tidak ada
+> - `atp`: opsional tapi **sangat disarankan**
+> - `level`: `"Low"` | `"Mid"` | `"High"` — **null atau omit** untuk `mindmap`
 
-**Response 200:**
+**Response 200 (contoh `bacaan`):**
 ```json
 {
   "data": {
+    "konten_id": "konten_mat_bacaan_low_1746342000",
     "tipe": "bacaan",
-    "level": "Low",
+    "level": "low",
     "content": {
-      "text": "# Persamaan Linear\n\n## A. Pengertian\n..."
+      "text": "# Persamaan Linear\n\n## A. Pengertian\n...",
+      "source": [
+        { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
+      ]
     },
     "dibuat_at": "2026-05-01T09:00:00.000Z"
   },
@@ -1307,25 +1518,135 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
 }
 ```
 
+**Response 200 (contoh `quiz_pg`):**
+```json
+{
+  "data": {
+    "konten_id": "konten_mat_quiz_pg_low_1746342000",
+    "tipe": "quiz_pg",
+    "level": "low",
+    "content": {
+      "soal": [
+        {
+          "id": "q1",
+          "soal": "Berapakah nilai x dari persamaan 2x + 3 = 7?",
+          "pilihan": ["1", "2", "3", "4"],
+          "jawaban": 1,
+          "penjelasan": "2x + 3 = 7 → 2x = 7 - 3 = 4 → x = 4 ÷ 2 = 2, maka jawaban yang benar adalah indeks 1 (nilai '2')."
+        }
+      ]
+    },
+    "dibuat_at": "2026-05-01T09:00:00.000Z"
+  },
+  "meta": null,
+  "error": null
+}
+```
+
+**Response 200 (contoh `mindmap`):**
+```json
+{
+  "data": {
+    "konten_id": "konten_mat_mindmap_1746342000",
+    "tipe": "mindmap",
+    "level": null,
+    "content": {
+      "nodes": [
+        { "id": "n1", "label": "Persamaan Linear", "parent_id": null, "penjelasan": "" },
+        { "id": "n2", "label": "Pengertian", "parent_id": "n1", "penjelasan": "Persamaan berderajat satu dengan satu variabel, berbentuk ax + b = c." },
+        { "id": "n3", "label": "Langkah Penyelesaian", "parent_id": "n1", "penjelasan": "Isolasi variabel dengan operasi aljabar yang sama di kedua ruas." }
+      ]
+    },
+    "dibuat_at": "2026-05-01T09:00:00.000Z"
+  },
+  "meta": null,
+  "error": null
+}
+```
+
+> `konten_id`: identifier per konten per level, di-generate Tim 3. FE simpan di state review guru untuk dipakai di `POST /konten/regenerate` jika guru klik "Ulangi".
+
 **Struktur `content` per `tipe`:**
 
 | tipe | Struktur `content` | Jumlah |
 |------|-------------------|--------|
-| `bacaan` | `{ "text": "markdown string" }` | — |
-| `quiz_pg` | `{ "soal": [{ "id", "soal", "pilihan": string[], "jawaban": number }] }` | 10 soal |
+| `bacaan` | `{ "text": "markdown string", "source": [{ "judul", "penulis", "tahun" }] }` | — |
+| `quiz_pg` | `{ "soal": [{ "id", "soal", "pilihan": string[], "jawaban": number, "penjelasan": string }] }` | 10 soal |
 | `quiz_essay` | `{ "pertanyaan": [{ "id", "soal", "rubrik", "placeholder" }] }` | 5 pertanyaan |
-| `flashcard` | `{ "cards": [{ "depan", "belakang" }] }` | 5–10 kartu |
-| `mindmap` | `{ "nodes": [{ "id", "label", "parent_id" }] }` | — |
+| `flashcard` | `{ "cards": [{ "depan", "belakang" }], "source": [{ "judul", "penulis", "tahun" }] }` | 5–10 kartu |
+| `mindmap` | `{ "nodes": [{ "id", "label", "parent_id", "penjelasan": string }] }` | — |
 
-> `quiz_pg.soal[].jawaban` = **index integer** dari array `pilihan` (bukan string jawaban).
+> `quiz_pg.soal[].jawaban` = **index integer** dari array `pilihan` (bukan string jawaban).  
+> `quiz_pg.soal[].penjelasan` = ditampilkan FE **setelah** siswa submit quiz MC, tidak saat mengerjakan.  
+> `mindmap.nodes[].penjelasan` = tooltip saat hover. Boleh string kosong `""` untuk node root.  
+> `bacaan.source` & `flashcard.source` = array kosong `[]` jika tidak ada sumber spesifik.
+
+> **Pretest (V3.4):** Tim 3 generate soal pretest bersamaan dengan ke-13 konten — **secara internal, tanpa request tambahan dari FE**. Trigger generate pretest terjadi pada **panggilan `POST /konten/generate` pertama** dari 13 panggilan paralel (Tim 3 RAG mendeteksi ini adalah batch baru berdasarkan kombinasi `mapel_id + elemen_id + materi_id + kelas_id`). Soal pretest disimpan langsung ke database Tim 6 BE. **Tidak dikembalikan** di response ini dan **tidak ditampilkan** di panel review guru.
 
 **Error 422:** "elemen_id tidak dikenal di VectorDB."  
 **Error 429:** "Terlalu banyak request. Coba beberapa saat lagi."
 
 ---
 
+### POST /konten/regenerate — Tim 3 RAG
+Guru minta generate ulang satu konten spesifik. Iterative refinement — Tim 3 menggunakan konten sebelumnya sebagai referensi.
+
+Dipanggil saat guru klik **"Ulangi"** di panel review per konten per level.
+
+**Auth:** role `guru`
+
+**Request:**
+```json
+{
+  "konten_id": "konten_mat_bacaan_low_1746342000",
+  "mapel_id": "mat",
+  "elemen_id": "bil_aljabar",
+  "elemen_label": "Bilangan dan Aljabar",
+  "materi": "Persamaan Linear",
+  "materi_id": "mat__persamaan_linear",
+  "jenjang": "X",
+  "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel dalam konteks nyata.",
+  "tipe": "bacaan",
+  "level": "Low",
+  "instruksi_revisi": "Tambahkan contoh soal cerita konteks kehidupan sehari-hari di setiap sub-bab"
+}
+```
+
+> - `konten_id`: **wajib** — identifier dari response `POST /konten/generate`
+> - `instruksi_revisi`: **wajib** — deskripsi perubahan yang diinginkan guru
+
+**Response 200:**
+```json
+{
+  "data": {
+    "konten_id": "konten_mat_bacaan_low_1746342000",
+    "tipe": "bacaan",
+    "level": "low",
+    "content": {
+      "text": "# Persamaan Linear\n\n## A. Pengertian\n... (versi baru)",
+      "source": [
+        { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
+      ]
+    },
+    "dibuat_at": "2026-05-01T09:05:00.000Z"
+  },
+  "meta": null,
+  "error": null
+}
+```
+
+> `konten_id` tetap sama — hanya `content` yang berubah. FE replace konten di state review guru.
+
+**Error 404:** "konten_id tidak ditemukan."  
+**Error 422:** "instruksi_revisi wajib diisi untuk regenerate."  
+**Error 429:** "Terlalu banyak request. Coba beberapa saat lagi."
+
+---
+
 ### POST /konten/publish — Tim 6 BE
-Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disimpan permanen di database MVP.
+Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disimpan permanen di database MVP. **Tidak bisa di-publish ulang** setelah publish pertama.
+
+> **Atomik:** Operasi ini atomik — jika gagal di tengah jalan, tidak ada data yang tersimpan parsial. FE aman untuk retry.
 
 **Auth:** role `guru`
 
@@ -1343,54 +1664,61 @@ Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disi
   "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel dalam konteks nyata.",
   "konten_list": [
     {
+      "konten_id": "konten_mat_bacaan_low_1746342000",
       "tipe": "bacaan",
       "level": "Low",
-      "content": { "text": "# Persamaan Linear\n..." },
+      "content": { "text": "# Persamaan Linear\n...", "source": [{ "judul": "...", "penulis": "...", "tahun": "..." }] },
       "disetujui": true
     },
     {
+      "konten_id": "konten_mat_bacaan_mid_1746342000",
       "tipe": "bacaan",
       "level": "Mid",
-      "content": { "text": "# Persamaan Linear — Menengah\n..." },
+      "content": { "text": "# Persamaan Linear — Menengah\n...", "source": [] },
       "disetujui": true
     },
     {
+      "konten_id": "konten_mat_bacaan_high_1746342000",
       "tipe": "bacaan",
       "level": "High",
-      "content": { "text": "# Persamaan Linear — Lanjutan\n..." },
+      "content": { "text": "# Persamaan Linear — Lanjutan\n...", "source": [] },
       "disetujui": true
     },
     {
+      "konten_id": "konten_mat_quiz_pg_low_1746342000",
       "tipe": "quiz_pg",
       "level": "Low",
-      "content": { "soal": [ "..." ] },
+      "content": { "soal": [{ "id": "q1", "soal": "...", "pilihan": ["..."], "jawaban": 1, "penjelasan": "..." }] },
       "disetujui": true
     },
     {
+      "konten_id": "konten_mat_quiz_essay_low_1746342000",
       "tipe": "quiz_essay",
       "level": "Low",
-      "content": { "pertanyaan": [ "..." ] },
+      "content": { "pertanyaan": [{ "id": "e1", "soal": "...", "rubrik": "...", "placeholder": "..." }] },
       "disetujui": true
     },
     {
+      "konten_id": "konten_mat_flashcard_low_1746342000",
       "tipe": "flashcard",
       "level": "Low",
-      "content": { "cards": [ "..." ] },
+      "content": { "cards": [{ "depan": "...", "belakang": "..." }], "source": [{ "judul": "...", "penulis": "...", "tahun": "..." }] },
       "disetujui": true
     },
     {
+      "konten_id": "konten_mat_mindmap_1746342000",
       "tipe": "mindmap",
       "level": null,
-      "content": { "nodes": [ "..." ] },
+      "content": { "nodes": [{ "id": "n1", "label": "...", "parent_id": null, "penjelasan": "" }] },
       "disetujui": true
     },
     {
+      "game_id": "game_1746342000_low",
       "tipe": "game",
       "level": "Low",
       "content": {
-        "game_id": "game_1746342000_low",
         "status": "ready",
-        "html_url": "https://game.sekolahrakyat.id/play/game_1746342000_low"
+        "html_string": "<!DOCTYPE html><html>...</html>"
       },
       "disetujui": true
     }
@@ -1402,7 +1730,8 @@ Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disi
 > `bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1 + game×3`
 >
 > FE **hanya boleh publish jika semua 16 item `disetujui: true`**.  
-> `approved` di V2 → `disetujui` di V3 (konsisten Bahasa Indonesia).
+> Item `game` menggunakan `game_id` dari response `POST /game/generate` — tidak ada `konten_id` untuk item game.  
+> `html_string` untuk game dikirim penuh saat publish agar BE menyimpannya ke database tanpa perlu call ke Tim 4 lagi.
 
 **Response 201:**
 ```json
@@ -1418,16 +1747,16 @@ Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disi
 ```
 
 **Error 400:** "Semua konten harus disetujui sebelum publish."  
-**Error 409:** "Konten untuk elemen ini sudah pernah dipublish ke kelas ini. Gunakan endpoint update."
+**Error 409:** "Konten untuk elemen ini sudah pernah dipublish ke kelas ini."
 
 ---
 
-## 10. SESI — Tim 6 BE
+## 13. SESI — Tim 6 BE
 
 > Sesi belajar adalah unit terkecil dari aktivitas siswa. Dimulai saat siswa membuka chatbot, berakhir saat menutup atau timeout.
 
 ### POST /sesi
-Mulai sesi belajar baru. Dipanggil saat siswa membuka chatbot.
+Mulai sesi belajar baru. Dipanggil saat siswa membuka chatbot (setelah izin kamera diberikan).
 
 **Auth:** role `siswa`
 
@@ -1441,10 +1770,6 @@ Mulai sesi belajar baru. Dipanggil saat siswa membuka chatbot.
   "publish_id": "pub_mat_bil_aljabar_x1_20260501"
 }
 ```
-
-> **Catatan:** `POST /sesi` dipanggil saat siswa masuk chatbot (izin kamera diberikan),
-> bukan saat pesan pertama dikirim. Field `konteks_quiz` telah dihapus di V3.2 —
-> konteks quiz kini dikirim via `hasil_quiz_id` di body `POST /mentor/pesan`.
 
 **Response 201:**
 ```json
@@ -1492,7 +1817,7 @@ Update sesi (durasi, violations, emosi akhir). Dipanggil saat siswa menutup chat
 ---
 
 ### POST /sesi/:id/summary — Tim 3 RAG
-Generate summary AI untuk satu sesi belajar siswa. Dipanggil guru dari panel detail drawer monitoring. Menggantikan `POST /summary/siswa/:id`.
+Generate summary AI untuk satu sesi belajar siswa. Dipanggil guru dari panel detail drawer monitoring.
 
 **Auth:** role `guru`
 
@@ -1521,13 +1846,9 @@ Generate summary AI untuk satu sesi belajar siswa. Dipanggil guru dari panel det
 }
 ```
 
-> - `durasi_menit`: dalam menit (bukan detik)
 > - `hasil_quiz`: **seluruh** quiz dalam sesi, bukan hanya yang terakhir
 > - `last_quiz`: shortcut agregasi akhir untuk Tim 3
-> - `emosi_sesi`: tren emosi dari awal hingga akhir sesi
 > - `violations`: kosong `[]` jika tidak ada pelanggaran
-
-> **Catatan:** `sesi_key` di V2 dihapus — `sesi_id` dari path sudah cukup sebagai identifier.
 
 **Response 200:**
 ```json
@@ -1547,7 +1868,7 @@ Generate summary AI untuk satu sesi belajar siswa. Dipanggil guru dari panel det
 ---
 
 ### GET /sesi/:id/emosi
-Riwayat emosi sepanjang satu sesi (untuk log emosi di panel monitoring guru). Menggantikan `GET /emotion/history`.
+Riwayat emosi sepanjang satu sesi.
 
 **Auth:** role `siswa` (sesi sendiri) atau `guru`
 
@@ -1564,13 +1885,12 @@ Riwayat emosi sepanjang satu sesi (untuk log emosi di panel monitoring guru). Me
 }
 ```
 
-> Guru hanya melihat log saat terjadi **perubahan emosi** (bukan setiap deteksi).  
-> Ini dikembalikan dari data yang sudah disaring BE.
+> Guru hanya melihat log saat terjadi **perubahan emosi** — data sudah disaring BE.
 
 ---
 
 ### GET /sesi/:id/chat
-Riwayat percakapan satu sesi chatbot. Menggantikan `GET /mentor/chat/history`.
+Riwayat percakapan satu sesi chatbot.
 
 **Auth:** role `siswa` (sesi sendiri)
 
@@ -1596,13 +1916,14 @@ Riwayat percakapan satu sesi chatbot. Menggantikan `GET /mentor/chat/history`.
 
 ---
 
-## 11. PRETEST — Tim 3 RAG + Tim 6 BE
+## 14. PRETEST — Tim 3 RAG (generate) + Tim 6 BE (serve)
 
-> Pretest **berbeda** dari quiz MC & essay di chatbot. Hanya dipakai sekali untuk menentukan level awal konten siswa.  
-> `POST /pretest/soal` dan `POST /pretest/submit` → **Tim 3 RAG**  
-> `GET /siswa/:id/pretest/status` → **Tim 6 BE** (lihat Seksi 8)
+> Pretest **berbeda** dari quiz MC & essay di chatbot. Dipakai sekali untuk menentukan level awal konten siswa.  
+> **Tim 3 RAG** meng-generate soal pretest bersamaan dengan generate konten (internal, tanpa request FE).  
+> **Tim 6 BE** menyimpan dan melayani soal pretest ke siswa.  
+> `GET /siswa/:id/pretest/status` → **Tim 6 BE** (lihat Seksi 11)
 
-### POST /pretest/soal — Tim 3 RAG
+### POST /pretest/soal — Tim 6 BE
 Ambil 5 soal pretest untuk elemen/materi yang akan dipelajari.
 
 **Auth:** role `siswa`
@@ -1633,8 +1954,7 @@ Ambil 5 soal pretest untuk elemen/materi yang akan dipelajari.
           "Pernah mendengar tapi belum memahami konsepnya",
           "Sudah memahami sebagian konsep dasar",
           "Sudah memahami dan bisa menerapkan konsepnya"
-        ],
-        "jawaban": 2
+        ]
       }
     ]
   },
@@ -1643,9 +1963,11 @@ Ambil 5 soal pretest untuk elemen/materi yang akan dipelajari.
 }
 ```
 
+> **Catatan keamanan:** Field `jawaban` (kunci jawaban) **tidak dikembalikan** ke client. Penilaian dilakukan server-side saat `POST /pretest/submit`.
+
 ---
 
-### POST /pretest/submit — Tim 3 RAG
+### POST /pretest/submit — Tim 6 BE
 Submit jawaban pretest, dapatkan level awal siswa.
 
 **Auth:** role `siswa`
@@ -1691,22 +2013,23 @@ Submit jawaban pretest, dapatkan level awal siswa.
 
 ---
 
-## 12. QUIZ — Tim 6 BE
+## 15. QUIZ — Tim 6 BE
 
-> Endpoint quiz langsung berada di domain siswa (lihat Seksi 8):
+> Endpoint quiz langsung berada di domain siswa (lihat Seksi 11):
 > - `GET /siswa/:id/quiz` — riwayat quiz
-> - `POST /siswa/:id/quiz` — submit quiz
+> - `POST /siswa/:id/quiz/mc` — submit quiz MC
+> - `POST /siswa/:id/quiz/essay` — submit quiz Essay
 
 Tidak ada endpoint quiz yang berdiri sendiri di domain `/quiz`. Desain ini sengaja dipilih karena quiz adalah **milik siswa**, bukan resource independen.
 
 ---
 
-## 13. RAG — Tim 3
+## 16. RAG — Tim 3
 
 > Semua endpoint yang memerlukan komputasi AI dari Tim 3 RAG dikumpulkan di domain `/rag`.
 
 ### POST /rag/rekomendasi
-Rekomendasi elemen/materi berikutnya berdasarkan progress siswa. Menggantikan `POST /content/recommend`.
+Rekomendasi elemen/materi berikutnya berdasarkan progress siswa.
 
 **Auth:** role `siswa`
 
@@ -1748,10 +2071,7 @@ Rekomendasi elemen/materi berikutnya berdasarkan progress siswa. Menggantikan `P
 ---
 
 ### POST /rag/insight
-Generate teks insight personal untuk Hero Banner dashboard siswa. Menggantikan `POST /content/insight`.
-
-> **FE tidak menghitung KPI** — BE mengambil KPI dari database dan mengirim ke RAG.  
-> FE hanya mengirim `siswa_id` dan `nama`.
+Generate teks insight personal untuk Hero Banner dashboard siswa.
 
 **Auth:** role `siswa`
 
@@ -1766,6 +2086,8 @@ Generate teks insight personal untuk Hero Banner dashboard siswa. Menggantikan `
   "total_durasi": 195
 }
 ```
+
+> FE mengirim data KPI ini dari hasil `GET /siswa/:id/kpi`. BE meneruskan ke Tim 3 RAG untuk generate insight.
 
 **Response 200:**
 ```json
@@ -1782,13 +2104,21 @@ Generate teks insight personal untuk Hero Banner dashboard siswa. Menggantikan `
 
 ---
 
-## 14. GAME — Tim 4
+## 17. GAME — Tim 4
 
-> Tim 4 deliver game dalam format **HTML file**. FE me-render via:
+> Tim 4 deliver game dalam format **HTML string** (bukan URL). FE me-render via:
 > ```html
-> <iframe src={html_url} sandbox="allow-scripts allow-same-origin" />
+> <iframe srcDoc={gameData.html_string} sandbox="allow-scripts allow-same-origin allow-forms" />
 > ```
 > Game menghasilkan **3 level** (Low/Mid/High). Tracking hanya boolean selesai/tidak selesai.
+>
+> **Trigger selesai (V3.4):** Game HTML mengirim event ke parent FE via `window.parent.postMessage`:
+> ```javascript
+> window.parent.postMessage({ type: 'game:selesai' }, '*');
+> ```
+> FE listen via `window.addEventListener('message', ...)` dan memanggil `PATCH /game/:id/penyelesaian`.  
+> FE juga menerima format lama `'game:selesai'` (string) dan `{ event: 'game:selesai' }` untuk kompatibilitas.  
+> Tim 4 **tidak** memanggil endpoint ini langsung — tanggung jawab FE.
 
 ### POST /game/generate — Tim 4
 Guru generate game baru. Dipanggil **3×** (Low/Mid/High) paralel saat guru klik "Generate Konten".
@@ -1806,13 +2136,11 @@ Guru generate game baru. Dipanggil **3×** (Low/Mid/High) paralel saat guru klik
   "kelas_id": "x1",
   "jenjang": "X",
   "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel dalam konteks nyata.",
-  "level": "Low",
-  "instruksi_revisi": ""
+  "level": "Low"
 }
 ```
 
 > - `atp`: **wajib** — untuk menyesuaikan skenario game dengan tujuan pembelajaran
-> - `instruksi_revisi`: opsional — hanya diisi saat revisi; kosong saat generate pertama
 
 **Response 200:**
 ```json
@@ -1820,80 +2148,96 @@ Guru generate game baru. Dipanggil **3×** (Low/Mid/High) paralel saat guru klik
   "data": {
     "game_id": "game_1746342000_low",
     "nama": "Quest: Persamaan Linear",
-    "deskripsi": "Game edukasi interaktif tentang Persamaan Linear — level Low",
+    "deskripsi": "Game edukasi interaktif tentang Persamaan Linear — level low",
     "mapel_id": "mat",
     "elemen_id": "bil_aljabar",
     "materi_id": "mat__persamaan_linear",
-    "level": "Low",
+    "level": "low",
     "status": "ready",
-    "html_url": "https://game.sekolahrakyat.id/play/game_1746342000_low"
+    "html_string": "<!DOCTYPE html><html>...</html>"
   },
   "meta": null,
   "error": null
 }
 ```
 
-> Jika `status: "generating"` → `html_url: null` → FE **poll** `GET /game/:id` setiap 3 detik hingga `status: "ready"`.
+> Jika `status: "generating"` → `html_string: null` → FE **poll** `GET /game/:id` setiap 3 detik hingga `status: "ready"`.
 
 **Error 422:** "elemen_id tidak dikenal."
 
 ---
 
-### GET /game — Tim 4
-Daftar game tersedia. `html_url` tidak disertakan di list — ambil via `GET /game/:id`.
+### POST /game/regenerate — Tim 4
+Guru minta generate ulang game spesifik. Iterative refinement menggunakan konteks game sebelumnya.
 
-**Query Params:** `kelas_id`?, `mapel_id`?, `elemen_id`?, `materi_id`?
+**Auth:** role `guru`
+
+**Request:**
+```json
+{
+  "game_id": "game_1746342000_low",
+  "instruksi_revisi": "Tambahkan level kesulitan di pertanyaan terakhir dan buat feedback lebih informatif"
+}
+```
+
+> - `game_id`: **wajib**
+> - `instruksi_revisi`: **wajib**
 
 **Response 200:**
 ```json
 {
-  "data": [
-    {
-      "game_id": "game_1746342000_low",
-      "nama": "Quest: Persamaan Linear",
-      "deskripsi": "...",
-      "mapel_id": "mat",
-      "elemen_id": "bil_aljabar",
-      "elemen_label": "Bilangan dan Aljabar",
-      "materi": "Persamaan Linear",
-      "materi_id": "mat__persamaan_linear",
-      "level": "Low",
-      "status": "ready",
-      "jumlah_pemain": 24
-    }
-  ],
-  "meta": { "page": 1, "limit": 20, "total": 3, "total_pages": 1 },
+  "data": {
+    "game_id": "game_1746342000_low",
+    "nama": "Quest: Persamaan Linear",
+    "deskripsi": "Game edukasi interaktif tentang Persamaan Linear — level low (revised)",
+    "mapel_id": "mat",
+    "elemen_id": "bil_aljabar",
+    "materi_id": "mat__persamaan_linear",
+    "level": "low",
+    "status": "ready",
+    "html_string": "<!DOCTYPE html><html>...</html>"
+  },
+  "meta": null,
   "error": null
 }
 ```
 
+**Error 404:** "game_id tidak ditemukan."  
+**Error 422:** "instruksi_revisi wajib diisi untuk regenerate."
+
 ---
 
 ### GET /game/:id — Tim 4
-Detail satu game. Digunakan untuk polling saat status masih `"generating"`.
+Detail satu game. Digunakan untuk polling saat status masih `"generating"`, dan untuk mengambil `html_string` saat siswa klik "Main Game".
 
-**Response 200:** 
+**Auth:** role `siswa` (saat buka game) atau `guru` (saat polling setelah generate)
+
+**Response 200:**
 ```json
 {
-  "game_id": "game_1746342000_low",
-  "nama": "Quest: Persamaan Linear",
-  "deskripsi": "...",
-  "mapel_id": "mat",
-  "elemen_id": "bil_aljabar",
-  "materi_id": "mat__persamaan_linear",
-  "level": "Low",
-  "status": "ready",
-  "html_url": "https://game.sekolahrakyat.id/play/game_1746342000_low"
+  "data": {
+    "game_id": "game_1746342000_low",
+    "nama": "Quest: Persamaan Linear",
+    "deskripsi": "...",
+    "mapel_id": "mat",
+    "elemen_id": "bil_aljabar",
+    "materi_id": "mat__persamaan_linear",
+    "level": "low",
+    "status": "ready",
+    "html_string": "<!DOCTYPE html><html>...</html>"
+  },
+  "meta": null,
+  "error": null
 }
 ```
+
+> `GET /siswa/:id/konten` **tidak** menyertakan `html_string` di item game — FE fetch via `GET /game/:id` saat siswa klik "Main Game".  
+> Jika `status: "generating"` → `html_string: null` → FE poll setiap 3 detik hingga `status: "ready"`.
 
 ---
 
 ### PATCH /game/:id/penyelesaian — Tim 4
-Catat bahwa siswa **menyelesaikan** game. Menggantikan `POST /game/selesai`.
-
-> Hanya dipanggil jika siswa benar-benar menyelesaikan game (event dari iframe ke parent FE).  
-> Data ini muncul di `GET /guru/:id/konten` pada field `game_penyelesaian[].siswa_selesai`.
+Catat bahwa siswa **menyelesaikan** game.
 
 **Auth:** role `siswa`
 
@@ -1912,7 +2256,7 @@ Catat bahwa siswa **menyelesaikan** game. Menggantikan `POST /game/selesai`.
     "tercatat": true,
     "game_id": "game_1746342000_low",
     "siswa_id": "s1",
-    "level": "Low",
+    "level": "low",
     "selesai_at": "2026-05-01T10:00:00.000Z"
   },
   "meta": null,
@@ -1922,12 +2266,11 @@ Catat bahwa siswa **menyelesaikan** game. Menggantikan `POST /game/selesai`.
 
 ---
 
-## 15. EMOSI — Tim 1
+## 18. EMOSI — Tim 1
 
 > Dipanggil dari `useWebcamEmotion` hook setiap **5 detik** selama siswa aktif di chatbot.
 
 ### POST /emosi/deteksi — Tim 1
-Deteksi emosi dari satu frame webcam.
 
 **Auth:** role `siswa`
 
@@ -1940,8 +2283,7 @@ Deteksi emosi dari satu frame webcam.
 }
 ```
 
-> `frame_base64`: JPEG base64 **tanpa** prefix `"data:image/jpeg;base64,"`.  
-> `sesi_id`: untuk korelasi log di Tim 1 dan Tim 6 BE (disimpan ke riwayat emosi sesi).
+> `frame_base64`: JPEG base64 **tanpa** prefix `"data:image/jpeg;base64,"`.
 
 **Response 200:**
 ```json
@@ -1958,18 +2300,22 @@ Deteksi emosi dari satu frame webcam.
 
 > `emosi`: `"antusias"` | `"bosan"` | `"bingung"` | `"frustrasi"` | `"tidak_terdeteksi"`
 
-**Error 400:** `{ "data": null, "error": { "code": "VALIDATION_ERROR", "message": "Frame tidak valid.", "details": { "emosi": "tidak_terdeteksi" } } }`
+**Error 400:**
+```json
+{ "data": null, "meta": null, "error": { "code": "VALIDATION_ERROR", "message": "Frame tidak valid.", "details": { "emosi": "tidak_terdeteksi" } } }
+```
 
 ---
 
-## 16. MENTOR — Tim 5
+## 19. MENTOR — Tim 5
 
 > **Tanggung jawab Tim 5:**
 > - Interaksi chatbot selama sesi belajar
-> - Feedback evaluasi quiz via CTA badge "📊 Evaluasi Kuis"
+> - Feedback evaluasi quiz via CTA badge "📊 Evaluasi Kuis" (endpoint terpisah)
+> - CTA di panel quiz riwayat berlabel 'Tanya Kak Nusa' (trigger oleh siswa). Response AI masuk ke chat dengan badge '📊 Evaluasi Kuis' (tampilan di FE).
 
 ### POST /mentor/pesan
-Kirim pesan ke mentor, tunggu full response (non-streaming). Fallback jika SSE tidak tersedia.
+Kirim pesan ke mentor, tunggu full response. Fallback jika SSE tidak tersedia.
 
 **Auth:** role `siswa`
 
@@ -1986,10 +2332,8 @@ Kirim pesan ke mentor, tunggu full response (non-streaming). Fallback jika SSE t
   "atp": "Siswa mampu...",
   "level": "Mid",
   "pesan": "Aku bingung cara menyelesaikan 2x + 3 = 7",
-  "hasil_quiz_id": "hq_20260501_0001",
   "konteks": {
     "emosi": "bingung",
-    "progress": 40,
     "publish_id": "pub_mat_bil_aljabar_x1_20260501",
     "bacaan": "# Persamaan Linear\n\n## A. Pengertian... (maks 3000 karakter)"
   }
@@ -1997,12 +2341,10 @@ Kirim pesan ke mentor, tunggu full response (non-streaming). Fallback jika SSE t
 ```
 
 > - `atp`: **wajib** — mentor menyesuaikan penjelasan dengan tujuan pembelajaran
-> - `level`: level konten siswa saat ini, agar mentor menyesuaikan kedalaman jawaban
+> - `level`: level konten siswa saat ini
 > - `konteks.emosi`: dari Tim 1, `null` jika tidak ada
-> - `sesi_id`: untuk persistensi chat history di Tim 6 BE
-> - `hasil_quiz_id`: opsional — hanya saat CTA "Tanya Kak Nusa". BE Tim 6 inject konteks quiz ke Tim 5 secara internal. `null` di flow normal.
 > - `konteks.publish_id`: opsional — `null` jika konten belum dipublish
-> - `konteks.bacaan`: opsional — teks bacaan level aktif, maks 3000 karakter. `null` jika konten belum tersedia. Tim 5 gunakan sebagai referensi utama saat menjawab pertanyaan siswa
+> - `konteks.bacaan`: opsional — `null` jika konten belum tersedia. Maks 3000 karakter. Tim 5 gunakan sebagai referensi utama saat menjawab pertanyaan siswa
 
 **Response 200:**
 ```json
@@ -2019,7 +2361,7 @@ Kirim pesan ke mentor, tunggu full response (non-streaming). Fallback jika SSE t
 ---
 
 ### POST /mentor/pesan/stream
-Identik dengan `/mentor/pesan` tapi response via **SSE (Server-Sent Events)** untuk efek ketik streaming.
+Identik dengan `/mentor/pesan` tapi response via **SSE** untuk efek ketik streaming.
 
 **Request Body:** sama persis dengan `/mentor/pesan`.
 
@@ -2039,25 +2381,66 @@ data: [DONE]\n\n
 
 ---
 
-### Context Injection Hasil Quiz — Internal BE Logic (CTA "Tanya Kak Nusa")
+### POST /mentor/evaluasi — Tim 5
+Evaluasi hasil quiz siswa via CTA "Tanya Kak Nusa". Endpoint ini **terpisah** dari chat normal — Tim 5 menggunakan system prompt yang fokus pada analisis jawaban, bukan percakapan mentoring.
 
-> **Catatan:** Subseksi ini mendokumentasikan logic internal BE yang **transparan ke FE**. Request/response public `POST /mentor/pesan` dan `POST /mentor/pesan/stream` **tidak berubah**. SSE protocol **tidak berubah**.
+**Auth:** role `siswa`
 
-Context Injection Hasil Quiz — Internal BE Logic (V3.2)
-Saat BE menerima request POST /mentor/pesan dengan field hasil_quiz_id, BE:
+**Request:**
+```json
+{
+  "siswa_id": "s1",
+  "sesi_id": "sesi_s1_20260501_bil_aljabar",
+  "hasil_quiz_id": "hq_20260501_0001",
+  "mapel_id": "mat",
+  "elemen_id": "bil_aljabar",
+  "elemen_label": "Bilangan dan Aljabar",
+  "materi": "Persamaan Linear",
+  "materi_id": "mat__persamaan_linear",
+  "level": "Low",
+  "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel dalam konteks nyata."
+}
+```
 
-1. Validasi bahwa hasil_quiz_id adalah milik siswa_id pada JWT
-2. Fetch data hasil quiz dari DB
-3. Inject ke Tim 5 sebagai bagian dari system context
+> - `hasil_quiz_id`: **wajib** — dari response `POST /siswa/:id/quiz/mc` atau `/essay`. BE Tim 6 lookup dan inject seluruh data quiz ke Tim 5: soal, jawaban siswa, kunci jawaban (MC) / rubrik (essay), nilai per soal, nilai total
+> - `atp`: **wajib** — Tim 5 framing evaluasi berdasarkan tujuan pembelajaran
+> - Tidak ada field `pesan` — tidak ada input teks dari siswa di flow ini
 
-Jika hasil_quiz_id tidak ada di body, BE meneruskan ke Tim 5 seperti biasa.
-POST /sesi tidak lagi membawa konteks_quiz — sesi selalu di-reuse untuk elemen/materi yang sama dalam satu kunjungan.
+**Response 200:**
+```json
+{
+  "data": {
+    "balasan": "Kamu sudah mengerjakan quiz dengan baik! Skor kamu 80/100. Ada 2 soal yang perlu diperhatikan...",
+    "sesi_id": "sesi_s1_20260501_bil_aljabar"
+  },
+  "meta": null,
+  "error": null
+}
+```
 
 ---
 
-## 17. LEADERBOARD — Tim 6 BE
+### POST /mentor/evaluasi/stream — Tim 5
+Identik dengan `/mentor/evaluasi` tapi response via **SSE**. Sesuai flow aplikasi: feedback masuk ke chat sebagai streaming response dengan badge **"📊 Evaluasi Kuis"**.
 
-### GET /leaderboard?kelas_id=:id&mode=monthly
+**Request Body:** sama persis dengan `/mentor/evaluasi`.
+
+**Response:** `Content-Type: text/event-stream`
+
+**Format SSE:** identik dengan `/mentor/pesan/stream`.
+
+```
+data: Kamu \n\n
+data: sudah \n\n
+data: mengerjakan \n\n
+data: [DONE]\n\n
+```
+
+---
+
+## 20. LEADERBOARD — Tim 6 BE
+
+### GET /leaderboard
 Ranking siswa per kelas berdasarkan akumulasi nilai quiz.
 
 **Auth:** role `siswa`
@@ -2096,12 +2479,12 @@ Ranking siswa per kelas berdasarkan akumulasi nilai quiz.
 
 ---
 
-## 18. NOTIFIKASI — Tim 6 BE
+## 21. NOTIFIKASI — Tim 6 BE
 
-> Notifikasi satu arah dari guru ke siswa. Menggantikan domain `/guru/rekomendasi`.
+> Notifikasi satu arah dari guru ke siswa.
 
 ### POST /notifikasi
-Guru kirim pesan/rekomendasi ke siswa. Muncul sebagai notifikasi di dashboard siswa.
+Guru kirim pesan/rekomendasi ke siswa.
 
 **Auth:** role `guru`
 
@@ -2129,35 +2512,6 @@ Guru kirim pesan/rekomendasi ke siswa. Muncul sebagai notifikasi di dashboard si
 
 ---
 
-### GET /siswa/:id/notifikasi
-Siswa ambil semua notifikasi yang diterima dari guru. (Lihat juga Seksi 8 — sub-resource siswa)
-
-> Diletakkan di domain siswa agar konsisten dengan pola resource-centric.
-
-**Auth:** role `siswa` (hanya `id` sendiri)
-
-**Query Params:** `dibaca`? (`true`|`false`), `page`?, `limit`?
-
-**Response 200:**
-```json
-{
-  "data": [
-    {
-      "id": "notif_123",
-      "guru_nama": "Ibu Sari",
-      "guru_mapel": "📐 Matematika",
-      "pesan": "Coba ulangi materi persamaan linear.",
-      "dibaca": false,
-      "dibuat_at": "2026-05-01T09:00:00.000Z"
-    }
-  ],
-  "meta": { "page": 1, "limit": 20, "total": 3, "total_pages": 1 },
-  "error": null
-}
-```
-
----
-
 ### PATCH /notifikasi/:id/baca
 Tandai notifikasi sudah dibaca.
 
@@ -2170,9 +2524,11 @@ Tandai notifikasi sudah dibaca.
 
 ---
 
-## 19. WEBSOCKET SPEC — Tim 6 BE
+## 22. WEBSOCKET SPEC — Tim 6 BE
 
-### 18.1 Koneksi
+### 21.1 Koneksi
+
+**22.1.1 WebSocket Guru — Monitoring Real-Time**
 
 **URL:**
 ```
@@ -2187,6 +2543,33 @@ wss://api.sekolahrakyat.id/v1/ws/monitoring
 > `token` dikirim sebagai query param (bukan header) karena keterbatasan browser WebSocket API.  
 > `mapel_id` wajib jika guru mengampu lebih dari 1 mapel di kelas tersebut.
 
+**22.1.2 WebSocket Siswa — Notifikasi Async (essay dinilai & naik level)**
+
+**URL:**
+```
+wss://api.sekolahrakyat.id/v1/ws/siswa
+```
+
+**Query Params:**
+```
+?siswa_id={siswa_id}&sesi_id={sesi_id}&token={access_token}
+```
+
+> Digunakan siswa untuk menerima notifikasi async dari BE — khususnya event `essay_dinilai` setelah Tim 3 selesai menilai essay.  
+> FE siswa connect ke endpoint ini **setelah** `POST /sesi` berhasil dan chatbot terbuka.  
+> `sesi_id` wajib — server hanya push event yang relevan dengan sesi aktif siswa tersebut.
+
+Setelah koneksi berhasil, server mengirim event `connected`:
+```json
+{
+  "type": "connected",
+  "payload": { "siswa_id": "s1", "sesi_id": "sesi_s1_20260501_bil_aljabar" },
+  "timestamp": "2026-05-01T09:00:00.000Z"
+}
+```
+
+Reconnect & fallback siswa: sama dengan aturan 21.5 — exponential backoff, refresh token jika expired. Jika WS tidak tersedia, FE siswa **poll** `GET /siswa/:id/quiz?elemen_id=` setiap 10 detik untuk update status nilai essay.
+
 **Env:**
 ```
 VITE_WS_URL=wss://api.sekolahrakyat.id/v1/ws
@@ -2194,7 +2577,7 @@ VITE_WS_URL=wss://api.sekolahrakyat.id/v1/ws
 
 ---
 
-### 18.2 Handshake
+### 21.2 Handshake
 
 Setelah koneksi berhasil, server mengirim event `connected`:
 ```json
@@ -2211,15 +2594,15 @@ Setelah koneksi berhasil, server mengirim event `connected`:
 
 ---
 
-### 18.3 Event Types (Server → Client)
+### 21.3 Event Types (Server → Client)
 
-Semua event menggunakan envelope:
+Semua event menggunakan envelope dengan timestamp **ISO 8601 penuh**:
 ```json
 {
   "type": "<event_type>",
   "siswa": { "id": "s1", "nama": "Budi", "avatar": null },
   "payload": {},
-  "timestamp": "09:15:30"
+  "timestamp": "2026-05-01T09:15:30.000Z"
 }
 ```
 
@@ -2234,7 +2617,7 @@ Semua event menggunakan envelope:
     "materi_id": "mat__persamaan_linear",
     "sesi_id": "sesi_s1_20260501_bil_aljabar"
   },
-  "timestamp": "09:00:00"
+  "timestamp": "2026-05-01T09:00:00.000Z"
 }
 ```
 
@@ -2247,7 +2630,7 @@ Semua event menggunakan envelope:
     "sesi_id": "sesi_s1_20260501_bil_aljabar",
     "durasi_menit": 45
   },
-  "timestamp": "09:45:00"
+  "timestamp": "2026-05-01T09:45:00.000Z"
 }
 ```
 
@@ -2260,12 +2643,14 @@ Semua event menggunakan envelope:
     "mapel_id": "mat",
     "elemen_id": "bil_aljabar",
     "materi_id": "mat__persamaan_linear",
-    "level": "Mid",
+    "level": "mid",
     "progress_pct": 65
   },
-  "timestamp": "09:15:30"
+  "timestamp": "2026-05-01T09:15:30.000Z"
 }
 ```
+
+> **`progress_pct`** di sini adalah progress per mapel siswa tersebut: `round(selesai / total_elemen × 100)`.
 
 **`quiz_siswa`** — Siswa submit quiz:
 ```json
@@ -2278,10 +2663,10 @@ Semua event menggunakan envelope:
     "materi_id": "mat__persamaan_linear",
     "tipe": "mc",
     "nilai": 80,
-    "level": "Low",
+    "level": "low",
     "naik_level": false
   },
-  "timestamp": "09:15:30"
+  "timestamp": "2026-05-01T09:15:30.000Z"
 }
 ```
 
@@ -2295,7 +2680,7 @@ Semua event menggunakan envelope:
     "confidence": 0.84,
     "durasi_emosi_negatif_menit": 5
   },
-  "timestamp": "09:15:30"
+  "timestamp": "2026-05-01T09:15:30.000Z"
 }
 ```
 
@@ -2307,21 +2692,44 @@ Semua event menggunakan envelope:
   "payload": {
     "detail": "Berpindah Tab / Menyembunyikan Halaman"
   },
-  "timestamp": "09:15:30"
+  "timestamp": "2026-05-01T09:15:30.000Z"
 }
 ```
 
-**`smart_alert`** — Alert otomatis untuk guru (dikirim server saat kondisi terpenuhi):
+**`essay_dinilai`** — Tim 3 selesai menilai essay, agregasi sudah dihitung:
+```json
+{
+  "type": "essay_dinilai",
+  "siswa": { "id": "s1", "nama": "Budi", "avatar": null },
+  "payload": {
+    "elemen_id": "bil_aljabar",
+    "materi_id": "mat__persamaan_linear",
+    "level": "low",
+    "nilai_essay": 78,
+    "nilai_mc": 80,
+    "agregasi": 79.2,
+    "naik_level": true,
+    "kkm": 75
+  },
+  "timestamp": "2026-05-01T09:25:00.000Z"
+}
+```
+
+> Event ini dikirim ke **dua channel sekaligus:**
+> - `wss://.../ws/siswa` → FE siswa update UI naik level di chatbot tanpa polling.
+> - `wss://.../ws/monitoring` → FE guru update tabel aktivitas siswa di halaman monitoring.
+
+**`smart_alert`** — Alert otomatis untuk guru:
 ```json
 {
   "type": "smart_alert",
   "siswa": { "id": "s1", "nama": "Budi", "avatar": null },
   "payload": {
     "jenis": "emosi_negatif_berkepanjangan",
-    "detail": "Budi terdeteksi bingung/frustasi selama >15 menit berturut-turut.",
+    "detail": "Budi terdeteksi bingung/frustrasi selama >15 menit berturut-turut.",
     "durasi_menit": 17
   },
-  "timestamp": "09:30:00"
+  "timestamp": "2026-05-01T09:30:00.000Z"
 }
 ```
 
@@ -2331,7 +2739,7 @@ Semua event menggunakan envelope:
 
 ---
 
-### 18.4 Event Types (Client → Server)
+### 21.4 Event Types (Client → Server)
 
 **`ping`** — Keepalive dari FE:
 ```json
@@ -2340,12 +2748,12 @@ Semua event menggunakan envelope:
 
 Server merespons dengan `pong`:
 ```json
-{ "type": "pong", "timestamp": "09:15:30" }
+{ "type": "pong", "timestamp": "2026-05-01T09:15:30.000Z" }
 ```
 
 ---
 
-### 18.5 Reconnect & Fallback
+### 21.5 Reconnect & Fallback
 
 | Kondisi | Behavior |
 |---------|----------|
@@ -2367,7 +2775,7 @@ Server merespons dengan `pong`:
 
 ---
 
-## 20. HIRARKI KURIKULUM (ATURAN GLOBAL)
+## 23. HIRARKI KURIKULUM (ATURAN GLOBAL)
 
 ```
 Kurikulum Merdeka
@@ -2376,7 +2784,7 @@ Kurikulum Merdeka
               └── Materi  (Persamaan Linear) ← opsional, diisi guru/siswa
 ```
 
-### 19.1 Field Wajib di Semua Payload Content / Game / Mentor
+### 22.1 Field Wajib di Semua Payload Content / Game / Mentor
 
 | Field | Keterangan |
 |-------|-----------|
@@ -2384,7 +2792,7 @@ Kurikulum Merdeka
 | `elemen_id` | **Selalu wajib**, tidak boleh null atau omit |
 | `elemen_label` | Wajib di semua payload mutasi (POST/PUT) — untuk konteks LLM & display |
 
-### 19.2 Field Opsional
+### 22.2 Field Opsional
 
 | Field | Keterangan |
 |-------|-----------|
@@ -2392,7 +2800,7 @@ Kurikulum Merdeka
 | `materi_id` | Format: `"{mapel_id}__{snake_case}"` — contoh: `"mat__persamaan_linear"` |
 | `atp` | Alur Tujuan Pembelajaran — opsional tapi direkomendasikan untuk generate konten |
 
-### 19.3 Aturan Validasi (Wajib Semua Tim)
+### 22.3 Aturan Validasi (Wajib Semua Tim)
 
 - BE / Tim 3 / Tim 4 / Tim 5 **wajib menolak** payload yang punya `mapel_id` tapi **tidak punya `elemen_id`**
 - FE membangun `materi_id`: `` materi_id = `${mapel_id}__${materi.toLowerCase().replace(/\s+/g, '_')}` ``
@@ -2400,19 +2808,19 @@ Kurikulum Merdeka
 
 ---
 
-## 21. STANDARD RESPONSE & ERROR
+## 24. STANDARD RESPONSE & ERROR
 
-### 20.1 Response Envelope (Wajib Semua Endpoint)
+### 23.1 Response Envelope (Wajib Semua Endpoint)
 
 ```json
 {
-  "data": <object|array|null>,
-  "meta": <object|null>,
-  "error": <object|null>
+  "data": "<object|array|null>",
+  "meta": "<object|null>",
+  "error": "<object|null>"
 }
 ```
 
-### 20.2 Success Response
+### 23.2 Success Response
 
 **Single resource:**
 ```json
@@ -2455,7 +2863,7 @@ Kurikulum Merdeka
 }
 ```
 
-### 20.3 Error Response
+### 23.3 Error Response
 
 ```json
 {
@@ -2490,7 +2898,7 @@ Kurikulum Merdeka
 }
 ```
 
-### 20.4 HTTP Status Code Reference
+### 23.4 HTTP Status Code Reference
 
 | Code | Penggunaan |
 |------|-----------|
@@ -2505,12 +2913,12 @@ Kurikulum Merdeka
 | 429 | Too Many Requests — rate limit (khususnya endpoint LLM/RAG) |
 | 500 | Internal Server Error — kesalahan server tidak terduga |
 
-### 20.5 Caching Strategy (Rekomendasi)
+### 23.5 Caching Strategy (Rekomendasi)
 
 | Endpoint | Cache Strategy | TTL |
 |----------|---------------|-----|
 | `GET /admin/mapel` | Server-side cache | 1 jam |
-| `GET /admin/elemen` | Server-side cache | 1 jam |
+| `GET /admin/mapel/:mapel_id/elemen` | Server-side cache | 1 jam |
 | `GET /leaderboard?mode=daily` | Server-side cache | 5 menit |
 | `GET /leaderboard?mode=monthly` | Server-side cache | 15 menit |
 | `GET /siswa/:id/kpi` | No cache (real-time) | — |
@@ -2538,13 +2946,15 @@ Kurikulum Merdeka
 |--------|------|-----------|
 | GET/POST | `/admin/mapel` | List & buat mapel |
 | GET/PATCH/DELETE | `/admin/mapel/:id` | Detail, update, hapus |
-| GET/POST | `/admin/elemen` | List & buat elemen |
-| GET/PATCH/DELETE | `/admin/elemen/:id` | Detail, update, hapus |
+| GET/POST | `/admin/mapel/:mapel_id/elemen` | List & buat elemen |
+| GET/PATCH/DELETE | `/admin/mapel/:mapel_id/elemen/:id` | Detail, update, hapus |
 | GET/POST | `/admin/kelas` | List & buat kelas |
 | GET/PATCH/DELETE | `/admin/kelas/:id` | Detail, update, hapus |
 | GET | `/admin/kelas/:id/siswa` | Siswa dalam kelas |
-| POST/PATCH/DELETE | `/admin/kelas/:id/mapel/:mapel_id` | Kelola mapel kelas |
-| POST/DELETE | `/admin/kelas/:id/siswa/:siswa_id` | Kelola siswa kelas |
+| POST | `/admin/kelas/:id/mapel` | Tambah mapel ke kelas |
+| PATCH/DELETE | `/admin/kelas/:id/mapel/:mapel_id` | Update/hapus mapel dari kelas |
+| POST   | `/admin/kelas/:id/siswa`             | Tambah siswa ke kelas |
+| DELETE | `/admin/kelas/:id/siswa/:siswa_id`   | Lepas siswa dari kelas |
 | GET/POST | `/admin/guru` | List & buat guru |
 | GET/PATCH/DELETE | `/admin/guru/:id` | Detail, update, hapus |
 | POST | `/admin/guru/bulk` | Upload massal guru |
@@ -2566,8 +2976,10 @@ Kurikulum Merdeka
 | GET | `/siswa/:id/progress` | Progress belajar |
 | GET | `/siswa/:id/konten` | Konten tersedia |
 | GET | `/siswa/:id/pretest/status` | Status pretest |
-| GET/POST | `/siswa/:id/quiz` | Riwayat & submit quiz |
-| GET/PATCH | `/siswa/:id/notifikasi` | Notifikasi dari guru |
+| GET | `/siswa/:id/quiz` | Riwayat quiz |
+| POST | `/siswa/:id/quiz/mc` | Submit quiz MC |
+| POST | `/siswa/:id/quiz/essay` | Submit quiz Essay (async, Tim 3 nilai) |
+| GET | `/siswa/:id/notifikasi` | Notifikasi dari guru |
 
 ### Kelas (Guru Monitoring)
 | Method | Path | Keterangan |
@@ -2611,7 +3023,8 @@ Kurikulum Merdeka
 ### Konten (Guru)
 | Method | Path | Tim | Keterangan |
 |--------|------|-----|-----------|
-| POST | `/konten/generate` | Tim 3 RAG | Generate satu tipe konten |
+| POST | `/konten/generate` | Tim 3 RAG | Generate satu tipe konten (return `konten_id`) |
+| POST | `/konten/regenerate` | Tim 3 RAG | Regenerate per konten per level via `konten_id` |
 | POST | `/konten/publish` | Tim 6 BE | Publish paket konten |
 
 ### Sesi
@@ -2626,8 +3039,8 @@ Kurikulum Merdeka
 ### Pretest
 | Method | Path | Tim | Keterangan |
 |--------|------|-----|-----------|
-| POST | `/pretest/soal` | Tim 3 RAG | Ambil soal pretest |
-| POST | `/pretest/submit` | Tim 3 RAG | Submit jawaban pretest |
+| POST | `/pretest/soal` | Tim 6 BE | Ambil soal pretest (soal di-generate Tim 3 RAG saat publish konten) |
+| POST | `/pretest/submit` | Tim 6 BE | Submit jawaban pretest |
 
 ### RAG
 | Method | Path | Tim | Keterangan |
@@ -2639,7 +3052,7 @@ Kurikulum Merdeka
 | Method | Path | Tim | Keterangan |
 |--------|------|-----|-----------|
 | POST | `/game/generate` | Tim 4 | Generate game baru |
-| GET | `/game` | Tim 4 | List game |
+| POST | `/game/regenerate` | Tim 4 | Regenerate game via `game_id` |
 | GET | `/game/:id` | Tim 4 | Detail game + polling |
 | PATCH | `/game/:id/penyelesaian` | Tim 4 | Catat penyelesaian game |
 
@@ -2651,8 +3064,10 @@ Kurikulum Merdeka
 ### Mentor
 | Method | Path | Tim | Keterangan |
 |--------|------|-----|-----------|
-| POST | `/mentor/pesan` | Tim 5 | Chat (non-streaming) |
-| POST | `/mentor/pesan/stream` | Tim 5 | Chat (SSE streaming) |
+| POST | `/mentor/pesan` | Tim 5 | Chat mentor normal (non-streaming) |
+| POST | `/mentor/pesan/stream` | Tim 5 | Chat mentor normal (SSE streaming) |
+| POST | `/mentor/evaluasi` | Tim 5 | Evaluasi quiz CTA (non-streaming) |
+| POST | `/mentor/evaluasi/stream` | Tim 5 | Evaluasi quiz CTA (SSE streaming) |
 
 ### Leaderboard & Notifikasi
 | Method | Path | Keterangan |
@@ -2662,10 +3077,11 @@ Kurikulum Merdeka
 | PATCH | `/notifikasi/:id/baca` | Tandai notifikasi dibaca |
 
 ### WebSocket
-| URL | Keterangan |
-|-----|-----------|
-| `wss://.../v1/ws/monitoring?kelas_id=&mapel_id=&token=` | Real-time monitoring guru |
+| URL | Role | Keterangan |
+|-----|------|-----------|
+| `wss://api.sekolahrakyat.id/v1/ws/monitoring?kelas_id=&mapel_id=&token=` | guru | Real-time monitoring guru |
+| `wss://api.sekolahrakyat.id/v1/ws/siswa?siswa_id=&sesi_id=&token=` | siswa | Notifikasi async siswa (essay dinilai, naik level) |
 
 ---
 
-*— End of API Contract SR MVP V3.1 —*
+*— End of API Contract SR MVP V3.6 —*
