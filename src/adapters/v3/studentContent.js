@@ -63,6 +63,7 @@ export function mapQuizHistoryV3(data) {
     score: h.nilai ?? 0,
     locked: !!h.terkunci,
     ts: h.dikerjakan_at || new Date().toISOString(),
+    hasil_quiz_id: h.hasil_quiz_id ?? null, // CONTRACT V3.6 §11 V3.6 Changelog #1
   }));
   return {
     current_level: (data?.level_aktif || "low").toLowerCase(),
@@ -87,7 +88,6 @@ export function mapQuizSubmitV3(data) {
     kkm: data?.kkm ?? 75,
     pending_aggregation: !!data?.menunggu_agregasi,
     recorded_at: data?.dicatat_at ?? new Date().toISOString(),
-    // V3.1: opaque ID untuk CTA "Tanya Kak Nusa" — null jika BE belum support
     hasil_quiz_id: data?.hasil_quiz_id ?? null,
   };
 }
@@ -170,5 +170,83 @@ export function mapPretestSubmitLegacy(data) {
     score: data?.nilai ?? data?.score ?? 0,
     benar: data?.benar ?? 0,
     total: data?.total ?? 5,
+  };
+}
+
+// ── V3.3 Quiz Split Mappers ────────────────────────────────────────────
+
+/**
+ * Mapper untuk response MC submit V3.3 (synchronous)
+ * REFACTOR 1: Quiz Split — Integration Guide V3.3 §9.2
+ */
+export function mapQuizMCSubmitV3(data) {
+  const lvl = data?.level;
+  const levStr = typeof lvl === "string"
+    ? lvl.charAt(0).toUpperCase() + lvl.slice(1).toLowerCase()
+    : lvl;
+  return {
+    submitted: true,
+    score: data?.nilai ?? 0,
+    quiz_type: "mc",
+    elemen_id: data?.elemen_id,
+    level: levStr,
+    benar: data?.benar ?? 0,
+    total: data?.total ?? 10,
+    naik_level: !!data?.naik_level,
+    agregasi: data?.agregasi ?? null,
+    menunggu_essay: !!data?.menunggu_essay,
+    kkm: data?.kkm ?? 75,
+    pending_aggregation: !!data?.menunggu_essay,
+    hasil_quiz_id: data?.hasil_quiz_id ?? null,
+    recorded_at: data?.dicatat_at ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * Mapper untuk response Essay submit V3.3 (async — nilai null saat submit)
+ * Nilai akhir datang via WebSocket essay_dinilai.
+ * REFACTOR 1: Quiz Split — Integration Guide V3.3 §9.2
+ */
+export function mapQuizEssaySubmitV3(data) {
+  const lvl = data?.level;
+  const levStr = typeof lvl === "string"
+    ? lvl.charAt(0).toUpperCase() + lvl.slice(1).toLowerCase()
+    : lvl;
+  return {
+    submitted: true,
+    score: null,                          // null — belum dinilai
+    quiz_type: "essay",
+    elemen_id: data?.elemen_id,
+    level: levStr,
+    naik_level: null,                     // null — menunggu penilaian
+    agregasi: null,
+    menunggu_penilaian: !!data?.menunggu_penilaian,
+    kkm: data?.kkm ?? 75,
+    pending_aggregation: true,
+    hasil_quiz_id: data?.hasil_quiz_id ?? null,
+    recorded_at: data?.dicatat_at ?? new Date().toISOString(),
+    essay_state: "processing",            // idle | pending | processing | completed | failed
+  };
+}
+
+/**
+ * Mapper untuk WebSocket event essay_dinilai
+ * REFACTOR 5: WebSocket essay_dinilai — Integration Guide V3.3 §8 & §9.2
+ */
+export function mapEssayDinilaiWS(payload) {
+  const lvl = payload?.level;
+  const levStr = typeof lvl === "string"
+    ? lvl.charAt(0).toUpperCase() + lvl.slice(1).toLowerCase()
+    : lvl;
+  return {
+    elemen_id: payload?.elemen_id,
+    materi_id: payload?.materi_id ?? null,
+    level: levStr,
+    nilai_essay: payload?.nilai_essay ?? 0,
+    nilai_mc: payload?.nilai_mc ?? 0,
+    agregasi: payload?.agregasi ?? 0,
+    naik_level: !!payload?.naik_level,
+    kkm: payload?.kkm ?? 75,
+    essay_state: "completed",
   };
 }

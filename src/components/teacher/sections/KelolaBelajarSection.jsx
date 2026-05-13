@@ -24,8 +24,9 @@ import { C, FONTS, FS } from '../../../styles/tokens';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { useAuth } from '../../../context/AuthContext';
 // FIX P2: sambungkan publishKonten (POST /content/publish) + generateGame (POST /game/generate)
-import { publishKonten, generateContent } from '../../../api/content';
-import { generateGame } from '../../../api/game';
+// V3.3: tambah regenerateContent dan regenerateGame untuk per-card regenerate
+import { publishKonten, generateContent, regenerateContent } from '../../../api/content';
+import { generateGame, regenerateGame } from '../../../api/game';
 import { mapelApi, elemenApi } from '../../../api/admin';
 import {
   ADMIN_MAPEL_LIST,   // fallback statis jika API belum tersedia
@@ -523,7 +524,7 @@ const ManualEditForm = ({ typeId, data, onChange, onSave, onCancel }) => {
 /* ── KontenCard ──────────────────────────────────────────────────── */
 // kontenMap & setKontenMap di-lift ke parent (KelolaBelajarSection) agar
 // handlePublish bisa membaca isi konten saat guru klik Publish.
-const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setKontenMap }) => {
+const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setKontenMap, kontenIds, gameIds, setKontenIds, setGameIds }) => {
   const [open, setOpen] = useState(false);
   const [activeLevel, setActiveLevel] = useState('Low');
   const [editingKey, setEditingKey] = useState(null); // "type__level" — mode Ulangi (regenerate)
@@ -556,37 +557,73 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
     setRegenerating(key);
     try {
       if (type.id === 'game') {
-        // Game regenerasi → POST /game/generate dengan revisi_guru
-        const res = await generateGame({
-          mapel_id: config.mapelId,
-          elemen_id: config.elemenId,
-          elemen_label: config.elemenLabel,
-          materi: config.materi || null,
-          materi_id: config.materiId || null,
-          kelas_id: config.kelasId || '__semua__',
-          jenjang: config.jenjang,
-          atp: config.atp,
-          level: lv,
-          revisi_guru: editText.trim(),
-        });
-        setKontenMap(p => ({ ...p, [key]: res?.game_id ? res : generatePlaceholderKonten(type.id, lv, config) }));
+        // V3.3 REFACTOR 3: game regenerate via game_id
+        const gameId = gameIds?.[lv];
+        if (gameId) {
+          // Gunakan regenerateGame jika game_id sudah ada dari generate sebelumnya
+          const res = await regenerateGame({
+            game_id: gameId,
+            instruksi_revisi: editText.trim(),
+          });
+          setKontenMap(p => ({ ...p, [key]: res?.game_id ? res : generatePlaceholderKonten(type.id, lv, config) }));
+          if (res?.game_id) setGameIds(p => ({ ...p, [lv]: res.game_id }));
+        } else {
+          // Fallback: generate baru jika belum ada game_id
+          const res = await generateGame({
+            mapel_id: config.mapelId,
+            elemen_id: config.elemenId,
+            elemen_label: config.elemenLabel,
+            materi: config.materi || null,
+            materi_id: config.materiId || null,
+            kelas_id: config.kelasId || '__semua__',
+            jenjang: config.jenjang,
+            atp: config.atp,
+            level: lv,
+            revisi_guru: editText.trim(),
+          });
+          setKontenMap(p => ({ ...p, [key]: res?.game_id ? res : generatePlaceholderKonten(type.id, lv, config) }));
+          if (res?.game_id) setGameIds(p => ({ ...p, [lv]: res.game_id }));
+        }
       } else {
-        // Konten teks → POST /content/generate dengan revisi_guru
-        const res = await generateContent({
-          guru_id: config.guruId,
-          mapel_id: config.mapelId,
-          elemen_id: config.elemenId,
-          elemen_label: config.elemenLabel,
-          materi: config.materi || null,
-          materi_id: config.materiId || null,
-          jenjang: config.jenjang,
-          atp: config.atp,
-          tipe: type.id,
-          level: type.hasLevel ? lv : null,
-          revisi_guru: editText.trim(),
-        });
-        const newKonten = extractKontenResult(type.id, lv, res);
-        setKontenMap(p => ({ ...p, [key]: newKonten ?? generatePlaceholderKonten(type.id, lv, config) }));
+        // V3.3 REFACTOR 2: konten regenerate via konten_id
+        const kontenId = kontenIds?.[key];
+        if (kontenId) {
+          // Gunakan regenerateContent jika konten_id sudah ada
+          const res = await regenerateContent({
+            konten_id: kontenId,
+            mapel_id: config.mapelId,
+            elemen_id: config.elemenId,
+            elemen_label: config.elemenLabel,
+            materi: config.materi || null,
+            materi_id: config.materiId || null,
+            jenjang: config.jenjang,
+            atp: config.atp,
+            tipe: type.id,
+            level: type.hasLevel ? lv : null,
+            instruksi_revisi: editText.trim(),
+          });
+          const newKonten = extractKontenResult(type.id, lv, res);
+          setKontenMap(p => ({ ...p, [key]: newKonten ?? generatePlaceholderKonten(type.id, lv, config) }));
+          // konten_id tetap sama setelah regenerate
+        } else {
+          // Fallback: generate baru jika belum ada konten_id
+          const res = await generateContent({
+            guru_id: config.guruId,
+            mapel_id: config.mapelId,
+            elemen_id: config.elemenId,
+            elemen_label: config.elemenLabel,
+            materi: config.materi || null,
+            materi_id: config.materiId || null,
+            jenjang: config.jenjang,
+            atp: config.atp,
+            tipe: type.id,
+            level: type.hasLevel ? lv : null,
+            revisi_guru: editText.trim(),
+          });
+          const newKonten = extractKontenResult(type.id, lv, res);
+          setKontenMap(p => ({ ...p, [key]: newKonten ?? generatePlaceholderKonten(type.id, lv, config) }));
+          if (res?.konten_id) setKontenIds(p => ({ ...p, [key]: res.konten_id }));
+        }
       }
     } catch {
       // Fallback lokal jika API error
@@ -710,11 +747,11 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                           ? <span style={{ color: C.slate, fontSize: FS.md }}>Soal sedang disiapkan...</span>
                           : (kontenMap[key].soal).map((s, i) => (
                             <div key={i} style={{ marginBottom: 14 }}>
-                              <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.md, marginBottom: 6 }}>{i + 1}. {s.pertanyaan}</div>
+                              <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.md, marginBottom: 6 }}>{i + 1}. {s.soal}</div>
                               {(s.pilihan || []).map((p, j) => (
                                 <div key={j} style={{ paddingLeft: 12, marginBottom: 3 }}>
-                                  <span style={{ fontSize: FS.md, color: p === s.jawaban ? C.green : C.darkL, fontWeight: p === s.jawaban ? 700 : 400 }}>
-                                    {String.fromCharCode(97 + j)}) {p} {p === s.jawaban ? ' (jawaban)' : ''}
+                                  <span style={{ fontSize: FS.md, color: j === s.jawaban ? C.green : C.darkL, fontWeight: j === s.jawaban ? 700 : 400 }}>
+                                    {String.fromCharCode(97 + j)}) {p} {j === s.jawaban ? ' (jawaban)' : ''}
                                   </span>
                                 </div>
                               ))}
@@ -726,11 +763,20 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                       <div>
                         {!(kontenMap[key]?.pertanyaan?.length)
                           ? <span style={{ color: C.slate, fontSize: FS.md }}>Pertanyaan sedang disiapkan...</span>
-                          : (kontenMap[key].pertanyaan).map((p, i) => (
-                            <div key={i} style={{ marginBottom: 10 }}>
-                              <div style={{ fontSize: FS.md, color: C.darkL, lineHeight: 1.7 }}>{i + 1}. {p}</div>
-                            </div>
-                          ))
+                          : (kontenMap[key].pertanyaan).map((p, i) => {
+                            const soalText = typeof p === 'string' ? p : (p.soal ?? '');
+                            const rubrikText = typeof p === 'string' ? '' : (p.rubrik ?? '');
+                            return (
+                              <div key={i} style={{ marginBottom: 10 }}>
+                                <div style={{ fontSize: FS.md, color: C.darkL, lineHeight: 1.7 }}>{i + 1}. {soalText}</div>
+                                {rubrikText ? (
+                                  <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 3, paddingLeft: 16, fontStyle: 'italic' }}>
+                                    📋 {rubrikText}
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })
                         }
                       </div>
                     ) : type.id === 'flashcard' ? (
@@ -750,6 +796,22 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                             </div>
                           ))
                         }
+                      </div>
+                    ) : type.id === 'mindmap' ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {(() => {
+                          const raw = kontenMap[key];
+                          const nodes = Array.isArray(raw) ? raw : (raw?.nodes ?? []);
+                          if (nodes.length === 0) {
+                            const text = typeof raw === 'string' ? raw : (raw?.text ?? '');
+                            return <pre style={{ fontFamily: 'inherit', fontSize: FS.md, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>{text || '(konten kosong)'}</pre>;
+                          }
+                          return nodes.map((n, i) => (
+                            <div key={n.id || i} style={{ paddingLeft: n.parent_id ? 20 : 0, fontSize: FS.md, color: n.parent_id ? C.darkL : C.dark, fontWeight: n.parent_id ? 400 : 700 }}>
+                              {n.parent_id ? '• ' : '⬡ '}{n.label}
+                            </div>
+                          ));
+                        })()}
                       </div>
                     ) : (
                       <pre style={{ fontFamily: 'inherit', fontSize: FS.md, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
@@ -979,6 +1041,9 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   const [publishing, setPublishing] = useState(false);
   // kontenMap di-lift ke parent agar handlePublish bisa membaca isi konten saat guru Publish.
   const [kontenMap, setKontenMap] = useState({});
+  // V3.3 REFACTOR 2 & 3: simpan konten_id dan game_id per card untuk regenerate
+  const [kontenIds, setKontenIds] = useState({}); // key: "bacaan__Low", value: konten_id
+  const [gameIds, setGameIds] = useState({});       // key: "Low", value: game_id
   // publishToast: tampilkan banner sukses singkat setelah publish berhasil
   const [publishToast, setPublishToast] = useState(null); // null | { mapelLabel, elemenLabel, publishedAt }
 
@@ -1048,6 +1113,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
         }
 
         list.push({
+          konten_id: kontenIds[key] ?? null, // V3.3 REFACTOR 2: wajib untuk publish
           tipe: type.id,
           level: lv || null,
           content,
@@ -1087,7 +1153,11 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     const promises = [];
 
     // POST /content/generate untuk bacaan — per level (Low/Mid/High)
-    // response: { tipe, level, content: { text }, generated_at }
+    // response: { konten_id, tipe, level, content: { text }, generated_at }
+    // V3.3 REFACTOR 2: simpan konten_id untuk regenerate per card
+    const newKontenIds = {};
+    const newGameIds = {};
+
     LEVELS.forEach(level => {
       promises.push(
         generateContent({ ...basePayload, tipe: 'bacaan', level })
@@ -1095,6 +1165,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
             resultMap[`bacaan__${level}`] = res?.content?.text
               ? res.content.text
               : generatePlaceholderKonten('bacaan', level, config);
+            if (res?.konten_id) newKontenIds[`bacaan__${level}`] = res.konten_id;
           })
           .catch(() => {
             resultMap[`bacaan__${level}`] = generatePlaceholderKonten('bacaan', level, config);
@@ -1110,6 +1181,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
           resultMap['mindmap__'] = res?.content?.nodes?.length
             ? res.content.nodes
             : generatePlaceholderKonten('mindmap', '', config);
+          if (res?.konten_id) newKontenIds['mindmap__'] = res.konten_id;
         })
         .catch(() => {
           resultMap['mindmap__'] = generatePlaceholderKonten('mindmap', '', config);
@@ -1129,6 +1201,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
               resultMap[`${tipe}__${level}`] = res?.content
                 ? res.content
                 : generatePlaceholderKonten(tipe, level, config);
+              if (res?.konten_id) newKontenIds[`${tipe}__${level}`] = res.konten_id;
             })
             .catch(() => {
               resultMap[`${tipe}__${level}`] = generatePlaceholderKonten(tipe, level, config);
@@ -1141,6 +1214,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     // Payload wajib: mapel_id, elemen_id, elemen_label, kelas_id, jenjang, level, atp
     // atp WAJIB sesuai contract Tim 4 — untuk konteks skenario game
     // revisi_guru: "" saat generate pertama; diisi saat guru edit di panel review
+    // V3.3 REFACTOR 3: simpan game_id untuk regenerate per level
     LEVELS.forEach(level => {
       promises.push(
         generateGame({
@@ -1159,6 +1233,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
             resultMap[`game__${level}`] = res?.game_id
               ? res
               : generatePlaceholderKonten('game', level, config);
+            if (res?.game_id) newGameIds[level] = res.game_id;
           })
           .catch(() => {
             resultMap[`game__${level}`] = generatePlaceholderKonten('game', level, config);
@@ -1172,6 +1247,9 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     await Promise.allSettled(promises);
 
     setKontenMap(resultMap);
+    // V3.3 REFACTOR 2 & 3: simpan konten_id dan game_id ke state untuk regenerate
+    if (Object.keys(newKontenIds).length > 0) setKontenIds(prev => ({ ...prev, ...newKontenIds }));
+    if (Object.keys(newGameIds).length > 0) setGameIds(prev => ({ ...prev, ...newGameIds }));
     setPhase('result');
   };
 
@@ -1180,6 +1258,8 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     setApprovedMap({});
     setPublishing(false);
     setKontenMap({});
+    setKontenIds({});
+    setGameIds({});
     setAtpPoin(['']);
   };
 
@@ -1187,6 +1267,8 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     setPhase('form');
     setApprovedMap({});
     setKontenMap({});
+    setKontenIds({});
+    setGameIds({});
     setAtpPoin(['']);
   };
 
@@ -1400,7 +1482,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
 
             {/* List konten */}
             {KONTEN_TYPES.map(type => (
-              <KontenCard key={type.id} type={type} config={config} approvedMap={approvedMap} setApprovedMap={setApprovedMap} kontenMap={kontenMap} setKontenMap={setKontenMap} />
+              <KontenCard key={type.id} type={type} config={config} approvedMap={approvedMap} setApprovedMap={setApprovedMap} kontenMap={kontenMap} setKontenMap={setKontenMap} kontenIds={kontenIds} gameIds={gameIds} setKontenIds={setKontenIds} setGameIds={setGameIds} />
             ))}
 
             {/* Status approve summary */}

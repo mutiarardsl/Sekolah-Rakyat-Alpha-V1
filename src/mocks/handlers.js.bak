@@ -1,64 +1,107 @@
 /**
- * SR MVP — MSW Mock Handlers (V3.6 FINAL)
+ * SR MVP — MSW Mock Handlers
  * Tim 6 | src/mocks/handlers.js
  *
  * Mock Service Worker — intercept semua request API di browser (development).
  * Setiap handler di sini berpasangan 1-1 dengan fungsi di src/api/*.js.
- * Shape request & response sudah final — swap ke real backend tanpa ubah UI.
- * Semua response menggunakan envelope { data, meta, error } sesuai CONTRACT §1.3.
+ * Shape request & response sudah final — swap ke real backend Fase 3 tanpa ubah UI.
  *
  * ── Store ─────────────────────────────────────────────────────────────
  * In-memory store di-seed dari masterData. Semua mutasi (POST/PUT/DELETE)
  * langsung menulis ke store sehingga GET berikutnya selalu mengembalikan
  * state terkini — sinkron dengan AdminContext di UI.
  *
- * ── Handler Index (V3 — aktif) ────────────────────────────────────────
- *  AUTH — CONTRACT §8
+ * ── Handler Index ────────────────────────────────────────────────────
+ *  AUTH (5 endpoint — tidak ada register, akun dibuat admin)
  *    POST /auth/login, /auth/logout, /auth/refresh
- *    POST /auth/lupa-password [PUBLIC], /auth/aktivasi
- *    POST /auth/forgot-password (alias backward-compat → /auth/lupa-password)
- *    PATCH /auth/password
+ *    POST /auth/forgot-password, /auth/aktivasi
  *    GET  /auth/me
- *    PUT  /auth/avatar
  *
- *  V3 BRIDGE (proxy ke V2 store, akan dihapus setelah integrasi BE Tim 6)
- *    GET  /siswa/:id/kpi           → /content/progress/siswa (bridge)
- *    GET  /siswa/:id/progress      → /content/progress/siswa (bridge)
- *    GET  /siswa/:id/konten        → /content/siswa (bridge)
- *    GET  /siswa/:id/quiz          → /content/quiz/history (bridge)
- *    GET  /siswa/:id/pretest/status → /content/pretest/status (bridge)
- *    GET  /kelas/:id/progress      → /content/progress/guru (bridge)
- *    GET  /guru/:id/konten         → /content/riwayat (bridge)
- *    GET  /game (list)             → /game/list (bridge)
+ *  MENTOR — Tim 5 (4 endpoint)
+ *    POST   /mentor/chat
+ *    POST   /mentor/chat/stream   (SSE — di-skip MSW, ditangani openStream)
+ *    GET    /mentor/chat/history
+ *    DELETE /mentor/chat/session
  *
- *  V3 NATIVE (tidak ada bridge ke V2)
- *    POST /siswa/:id/quiz/mc, /siswa/:id/quiz/essay
- *    POST /rag/rekomendasi, /rag/insight
- *    POST /pretest/soal, /pretest/submit
- *    POST /konten/generate, /konten/regenerate, /konten/publish
- *    POST /game/generate, /game/regenerate
- *    PATCH /game/:id/penyelesaian
- *    POST /emosi/deteksi
- *    POST /mentor/pesan, /mentor/pesan/stream
- *    POST /mentor/evaluasi, /mentor/evaluasi/stream
- *    GET  /sesi/:id/chat
- *    POST /sesi, PATCH /sesi/:id, POST /sesi/:id/summary
- *    POST /notifikasi, GET /siswa/:id/notifikasi, PATCH /notifikasi/:id/baca
+ *  CONTENT — Tim 3 (6 endpoint — curriculum tidak diupload dari FE)
+ *    POST /content/generate
+ *    POST /content/publish
+ *    GET  /content/siswa
+ *    GET  /content/progress/siswa
+ *    GET  /content/progress/guru
+ *    POST /content/quiz/submit
+ *    GET  /content/recommend  (fallback GET, POST adalah primary)
+ *
+ *  RAG — Tim 3 (5 endpoint)
+ *    POST /content/recommend     (primary — Tim 3 komputasi RAG)
+ *    POST /content/pretest/soal
+ *    POST /content/pretest/submit  (body: siswa_id, mapel_id, elemen_id, materi_id?, sesi_pretest_id, answers — tanpa quiz_type)
+ *    POST /content/insight           (Hero dashboard siswa)
+ *    GET  /content/pretest/status  (status pretest per elemen/materi — hidrasi store lokal dari BE)
+ *    GET  /content/quiz/history    (riwayat quiz per level + current_level + locked flag)
+ *
+ *  SUMMARY (1 endpoint — guru MonitoringSection)
+ *    POST /summary/siswa/:id    (Tim 3 RAG)
+ *
+ *  EMOTION — Tim 1 (2 endpoint)
+ *    POST /emotion/detect
+ *    GET  /emotion/history
+ *
+ *  GAME — Tim 4 (4 endpoint — hirarki mapel→elemen→materi, deliver HTML)
+ *    POST /game/generate
+ *    GET  /game/list
+ *    GET  /game/:game_id
+ *    POST /game/selesai          (tracking penyelesaian game siswa)
+ *
+ *  ADMIN — Kelas (6 endpoint)
+ *    GET    /admin/kelas
+ *    GET    /admin/kelas/:id
+ *    GET    /admin/kelas/:id/siswa
+ *    POST   /admin/kelas
+ *    PUT    /admin/kelas/:id
+ *    DELETE /admin/kelas/:id
+ *
+ *  ADMIN — Elemen (4 endpoint)
+ *    GET    /admin/elemen?mapel_id=:id
+ *    POST   /admin/elemen
+ *    PUT    /admin/elemen/:id
+ *    DELETE /admin/elemen/:id
+ *
+ *  ADMIN — Kelas Detail (5 endpoint)
+ *    POST   /admin/kelas/:id/mapel
+ *    DELETE /admin/kelas/:id/mapel/:mapel_id
+ *    PUT    /admin/kelas/:id/mapel/:mapel_id/guru
+ *    POST   /admin/kelas/:id/siswa
+ *    DELETE /admin/kelas/:id/siswa/:siswa_id
+ *
+ *  ADMIN — Guru (6 endpoint)
+ *    GET    /admin/guru
+ *    GET    /admin/guru/:id
+ *    POST   /admin/guru
+ *    PUT    /admin/guru/:id
+ *    DELETE /admin/guru/:id
+ *    POST   /admin/guru/bulk
+ *
+ *  ADMIN — Siswa (6 endpoint)
+ *    GET    /admin/siswa
+ *    GET    /admin/siswa/:id
+ *    POST   /admin/siswa
+ *    PUT    /admin/siswa/:id
+ *    DELETE /admin/siswa/:id
+ *    POST   /admin/siswa/bulk
+ *
+ *  ADMIN — Mapel (4 endpoint)
+ *    GET    /admin/mapel
+ *    POST   /admin/mapel
+ *    PUT    /admin/mapel/:id
+ *    DELETE /admin/mapel/:id
+ *
+ *  GURU — Rekomendasi (2 endpoint — fitur guru)
+ *    POST /guru/rekomendasi
+ *    GET  /guru/rekomendasi
+ *
+ *  LEADERBOARD (1 endpoint)
  *    GET  /leaderboard
- *    GET  /guru/:id, GET /game/:id
- *    ADMIN: semua endpoint /admin/*
- *
- *  V2 DEAD CODE (masih ada tapi tidak dipanggil FE V3 — akan dihapus)
- *    POST /content/generate, POST /content/publish, GET /content/siswa
- *    GET  /content/progress/siswa, GET /content/progress/guru
- *    POST /content/quiz/submit, GET /content/quiz/history
- *    GET  /content/pretest/status, POST /content/pretest/soal, POST /content/pretest/submit
- *    POST /content/recommend, GET /content/recommend, POST /content/insight
- *    GET  /content/riwayat, POST /summary/siswa/:id
- *    POST /emotion/detect, GET /emotion/history
- *    POST /game/selesai, GET /game/list
- *    POST /mentor/chat, POST /mentor/chat/stream, GET /mentor/chat/history
- *    POST /guru/rekomendasi, GET /guru/rekomendasi, PATCH /guru/rekomendasi/:id/baca
  */
 
 import { http, HttpResponse, delay } from 'msw';
@@ -85,7 +128,7 @@ const store = {
   rekomendasi: [],   // { id, guru_id, guru_nama, guru_mapel, siswa_id, pesan, dibaca, created_at }
   publishedKonten: [], // RiwayatKontenItem[] — diisi saat POST /content/publish
 };
-const loginDates = {};
+
 const d = (ms = 300) => delay(ms);
 const nowISO = () => new Date().toISOString();
 
@@ -218,21 +261,7 @@ export const handlers = [
         );
         return envelope({
           siswa_id: params.siswaId,
-          streak_hari: (() => {
-            const sid = params.siswaId;
-            const dates = loginDates[sid];
-            if (!dates || dates.size === 0) return 0;
-            const sorted = Array.from(dates)
-              .map(s => new Date(s))
-              .sort((a, b) => b - a);
-            let streak = 1;
-            for (let i = 1; i < sorted.length; i++) {
-              const diff = Math.round((sorted[i - 1] - sorted[i]) / 86400000);
-              if (diff === 1) streak++;
-              else break;
-            }
-            return streak;
-          })(),
+          streak_hari: j.streak_hari ?? 0,
           total_topik: j.total_topik ?? 0,
           total_poin_quiz: j.total_poin_quiz ?? 0,
           total_durasi_menit: j.total_durasi_menit ?? j.total_waktu_menit ?? 0,
@@ -556,6 +585,7 @@ export const handlers = [
                 id: `e${i + 1}`,
                 soal: `[${levelLc}] Jelaskan konsep ke-${i + 1} dari ${topik}`,
                 rubrik: 'Menyebutkan minimal 3 poin dengan benar',
+                placeholder: 'Tuliskan jawabanmu di sini...',
               })),
             };
             break;
@@ -671,6 +701,7 @@ export const handlers = [
                 id: `e${i + 1}`,
                 soal: `[${levelLc}] Pertanyaan Essay Baru ${i + 1} tentang ${topik}`,
                 rubrik: 'Skor penuh: jawaban komprehensif dan akurat',
+                placeholder: 'Tuliskan jawabanmu di sini...',
               })),
             };
             break;
@@ -906,19 +937,14 @@ export const handlers = [
       }),
 
       // CONTRACT V3.6 §19 POST /mentor/evaluasi — evaluasi quiz CTA (tidak bridge ke /mentor/chat)
-      // Mock: bedakan MC vs essay dari pola hasil_quiz_id (hq_essay_* / hq_mc_*). Tanpa template "Kamu bertanya:" milik /mentor/pesan.
+      // system prompt Tim 5 terpisah dari chat normal
       http.post(url('/mentor/evaluasi'), async ({ request }) => {
         await d(300);
         const body = await request.json();
         const sid = body.sesi_id || 'sesi_unknown';
         const iso = () => new Date().toISOString();
-        const materi = body.materi || body.elemen_label || 'materi';
-        const levelLc = String(body.level || 'low').toLowerCase();
-        const hq = body.hasil_quiz_id || '';
-        const isEssay = /essay|hq_essay/i.test(hq);
-        const balasan = isEssay
-          ? `📋 **Kak Nusa siap membahas jawaban essaymu — ${materi}**\n\nKamu sudah mengerjakan **beberapa soal essay** dengan serius. Bagus! Mari kita pilih fokus supaya diskusinya mantap.\n\n✍️ **Soal mana yang ingin kamu bahas dulu?**\n1. *Analisis situasi: Bagaimana kamu menerapkan ${materi} dalam konteks nyata…*\n2. *Buatlah ringkasan singkat tentang ${materi} yang bisa kamu jelaskan ke teman…*\n3. *Bagaimana ${materi} berkaitan dengan pembelajaran di level ${levelLc}? Uraikan hubungannya…*\n4. *Jelaskan pengertian ${materi} dengan kata-katamu sendiri!*\n\nTulis nomor soal atau tanya hal spesifik yang membingungkanmu — Kak Nusa akan memberikan feedback mendalam pada jawabanmu! 😊`
-          : `💬 **Kak Nusa siap membahas quiz ${materi}** — Skor kamu **80/100** (**8**/10 soal benar).\n\nAda **2 soal** yang jawabannya kurang tepat:\n• *[${levelLc}] Manakah contoh penerapan ${materi} yang paling relevan?*\n• *[${levelLc}] Dalam konteks pembelajaran, ${materi} digunakan untuk?*\n\n📌 **Soal nomor berapa yang ingin kamu bahas dulu?** Tulis nomornya atau langsung tanyakan bagian yang membingungkan — Kak Nusa akan membantu menjelaskan! 🚀`;
+        const topik = body.elemen_label || body.materi || 'materi';
+        const balasan = `📊 Evaluasi hasil quiz kamu sudah siap!\n\nBerdasarkan jawaban quiz ${topik} (${body.level || 'low'}), kamu sudah memahami konsep dasar dengan baik. Ada beberapa poin yang perlu diperdalam:\n\n① Pastikan kamu memahami konsep fundamental\n② Coba latihan soal tambahan untuk memperkuat pemahaman\n③ Review materi yang masih terasa belum jelas\n\nTerus semangat! 💪`;
         if (!chatSessions[sid]) chatSessions[sid] = [];
         chatSessions[sid].push({ role: 'ai', teks: balasan, dikirim_at: iso() });
         return envelope({ balasan, sesi_id: sid });
@@ -929,22 +955,17 @@ export const handlers = [
         await d(200);
         const body = await request.json();
         const sid = body.sesi_id || 'sesi_unknown';
-        const materi = body.materi || body.elemen_label || 'materi';
-        const levelLc = String(body.level || 'low').toLowerCase();
-        const hq = body.hasil_quiz_id || '';
-        const isEssay = /essay|hq_essay/i.test(hq);
-        const balasan = isEssay
-          ? `📋 **Kak Nusa siap membahas jawaban essaymu — ${materi}**\n\nKamu sudah mengerjakan **beberapa soal essay** dengan serius. Bagus! Mari kita pilih fokus supaya diskusinya mantap.\n\n✍️ **Soal mana yang ingin kamu bahas dulu?**\n1. *Analisis situasi: Bagaimana kamu menerapkan ${materi} dalam konteks nyata…*\n2. *Buatlah ringkasan singkat tentang ${materi} yang bisa kamu jelaskan ke teman…*\n3. *Bagaimana ${materi} berkaitan dengan pembelajaran di level ${levelLc}? Uraikan hubungannya…*\n4. *Jelaskan pengertian ${materi} dengan kata-katamu sendiri!*\n\nTulis nomor soal atau tanya hal spesifik yang membingungkanmu — Kak Nusa akan memberikan feedback mendalam pada jawabanmu! 😊`
-          : `💬 **Kak Nusa siap membahas quiz ${materi}** — Skor kamu **80/100** (**8**/10 soal benar).\n\nAda **2 soal** yang jawabannya kurang tepat:\n• *[${levelLc}] Manakah contoh penerapan ${materi} yang paling relevan?*\n• *[${levelLc}] Dalam konteks pembelajaran, ${materi} digunakan untuk?*\n\n📌 **Soal nomor berapa yang ingin kamu bahas dulu?** Tulis nomornya atau langsung tanyakan bagian yang membingungkan — Kak Nusa akan membantu menjelaskan! 🚀`;
+        const topik = body.elemen_label || body.materi || 'materi';
+        const balasan = `📊 Evaluasi hasil quiz ${topik} sudah siap! Berdasarkan jawabanmu, kamu sudah memahami konsep dasar. Terus semangat! 💪`;
         if (!chatSessions[sid]) chatSessions[sid] = [];
         chatSessions[sid].push({ role: 'ai', teks: balasan, dikirim_at: new Date().toISOString() });
-        const tokens = balasan.split(/(\s+)/).filter(Boolean);
+        const tokens = balasan.split(' ');
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
           async start(controller) {
             for (const token of tokens) {
-              controller.enqueue(encoder.encode(`data: ${token}\n\n`));
-              await new Promise(r => setTimeout(r, 18));
+              controller.enqueue(encoder.encode(`data: ${token} \n\n`));
+              await new Promise(r => setTimeout(r, 30));
             }
             controller.enqueue(encoder.encode('data: [DONE]\n\n'));
             controller.close();
@@ -991,20 +1012,20 @@ export const handlers = [
         );
       }),
 
-      // CONTRACT V3.6 §21 — GET /siswa/:id/notifikasi: native mock (tidak lagi bridge ke /guru/rekomendasi deprecated)
-      http.get(url('/siswa/:siswaId/notifikasi'), async ({ request, params }) => { // CONTRACT V3.6 §21
+      http.get(url('/siswa/:siswaId/notifikasi'), async ({ request, params }) => {
         await d(140);
-        const qp = new URL(request.url).searchParams;
-        const filterDibaca = qp.get('dibaca'); // 'true' | 'false' | null
-        let notifs = store.rekomendasi.filter(n => n.siswa_id === params.siswaId);
-        if (filterDibaca !== null) {
-          const wantDibaca = filterDibaca === 'true';
-          notifs = notifs.filter(n => !!n.dibaca === wantDibaca);
-        }
-        return envelope(notifs, {
+        const search = new URL(request.url).searchParams;
+        const qs = new URLSearchParams({
+          siswa_id: params.siswaId,
+          dibaca: search.get('dibaca') || '',
+          page: search.get('page') || '',
+          limit: search.get('limit') || '',
+        });
+        const rows = await legacyJson(`/guru/rekomendasi?${qs}`);
+        return envelope(Array.isArray(rows) ? rows : [], {
           page: 1,
           limit: 20,
-          total: notifs.length,
+          total: Array.isArray(rows) ? rows.length : 0,
           total_pages: 1,
         });
       }),
@@ -1030,51 +1051,41 @@ export const handlers = [
     ];
   })(),
 
-  // POST /auth/login — CONTRACT V3.6 §8 (envelope {data, meta, error})
+  // POST /auth/login
   http.post(url('/auth/login'), async ({ request }) => {
     const { email, password } = await request.json();
     await d(400);
     const account = DUMMY_ACCOUNTS.find(
       a => (a.email === email || a.nis === email) && a.password === password
     );
-    const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
-    if (!loginDates[account.id]) loginDates[account.id] = new Set();
-    loginDates[account.id].add(today);
     if (!account) {
-      return HttpResponse.json(
-        { data: null, meta: null, error: { code: 'UNAUTHORIZED', message: 'Email atau password salah.' } },
-        { status: 401 },
-      );
+      return HttpResponse.json({ message: 'Email/NIS atau password salah.' }, { status: 401 });
     }
     // Token menyertakan userId agar GET /auth/me bisa resolve user tanpa DB
     return HttpResponse.json({
-      data: {
-        access_token: `mock_jwt_${Date.now()}_${account.id}`,
-        refresh_token: `mock_refresh_${account.id}`,
-        user: {
-          id: account.id,
-          nama: account.nama,
-          email: account.email,
-          nis: account.nis ?? null,
-          nip: account.nip ?? null,
-          role: account.role,
-          avatar: account.avatar ?? null,
-          is_first_login: account.is_first_login ?? false,
-          kelas_id: account.kelas_id ?? null,
-        },
+      access_token: `mock_jwt_${Date.now()}_${account.id}`,
+      refresh_token: `mock_refresh_${account.id}`,
+      user: {
+        id: account.id,
+        nama: account.nama,
+        email: account.email,
+        nis: account.nis ?? null,
+        nip: account.nip ?? null,
+        role: account.role,
+        avatar: account.avatar ?? null,
+        is_first_login: account.is_first_login ?? false,
+        kelas_id: account.kelas_id ?? null,
       },
-      meta: null,
-      error: null,
     });
   }),
 
-  // POST /auth/logout — CONTRACT V3.6 §8 (envelope)
+  // POST /auth/logout
   http.post(url('/auth/logout'), async () => {
     await d(200);
-    return HttpResponse.json({ data: { logged_out: true }, meta: null, error: null });
+    return HttpResponse.json({ message: 'Berhasil logout.' });
   }),
 
-  // POST /auth/refresh — CONTRACT V3.6 §8 (envelope)
+  // POST /auth/refresh
   // Body: { refresh_token }
   // Mock decode userId dari refresh_token → kembalikan access_token baru yang encode userId.
   // Penting: access_token baru harus encode userId agar GET /auth/me tetap resolve setelah refresh.
@@ -1085,73 +1096,40 @@ export const handlers = [
     const userId = refresh_token?.replace('mock_refresh_', '') || null;
     const account = userId ? DUMMY_ACCOUNTS.find(a => a.id === userId) : null;
     if (!account) {
-      return HttpResponse.json(
-        { data: null, meta: null, error: { code: 'UNAUTHORIZED', message: 'Refresh token tidak valid atau sudah expired.' } },
-        { status: 401 },
-      );
+      return HttpResponse.json({ message: 'Refresh token tidak valid atau sudah expired.' }, { status: 401 });
     }
     return HttpResponse.json({
-      data: {
-        access_token: `mock_jwt_${Date.now()}_${userId}`,
-        refresh_token: `mock_refresh_${userId}`,
-      },
-      meta: null,
-      error: null,
+      access_token: `mock_jwt_${Date.now()}_${userId}`,
+      refresh_token: `mock_refresh_${userId}`,
     });
   }),
 
-  // POST /auth/lupa-password — CONTRACT V3.6 §8 [PUBLIC] (envelope)
-  // Selalu 200 — tidak ekspos apakah email terdaftar (security by design)
-  http.post(url('/auth/lupa-password'), async ({ request }) => {
-    const { email } = await request.json();
-    await d(600);
-    return HttpResponse.json({ data: { sent: true }, meta: null, error: null });
-  }),
-
-  // POST /auth/forgot-password — alias backward compat (V2 path)
-  // Di deprecated.handlers sudah ada 410, tapi handler ini tetap aktif agar
-  // komponen lama yang belum migrasi tidak 410. Akan dihapus setelah semua
-  // komponen migrasi ke /auth/lupa-password.
+  // POST /auth/forgot-password
   http.post(url('/auth/forgot-password'), async ({ request }) => {
     const { email } = await request.json();
     await d(600);
-    return HttpResponse.json({ data: { sent: true }, meta: null, error: null });
+    // Selalu 200 — tidak ekspos apakah email terdaftar (security)
+    return HttpResponse.json({
+      message: DUMMY_ACCOUNTS.some(a => a.email === email)
+        ? 'Link reset password telah dikirim ke email Anda.'
+        : 'Jika email terdaftar, link reset akan dikirimkan.',
+    });
   }),
 
-  // POST /auth/aktivasi — CONTRACT V3.6 §8 (envelope)
-  // Body: { password_baru, mapel_ids } — user_id diambil dari JWT token
+  // POST /auth/aktivasi
+  // Body: { password_baru, mapel_ids } — CONTRACT V3.6 §8; user_id diambil dari JWT token
   http.post(url('/auth/aktivasi'), async ({ request }) => {
-    const { password_baru, mapel_ids } = await request.json();
+    const { password_baru, user_id, mapel_ids } = await request.json(); // CONTRACT V3.6 §8
     await d(800);
-
-    // Decode user_id dari Authorization header (CONTRACT V3.6 §8 — tidak di body)
-    const authHeader = request.headers.get('Authorization') || '';
-    const token = authHeader.replace('Bearer ', '');
-    const parts = token.split('_');
-    let user_id = null;
-    if (parts.length >= 4 && parts[0] === 'mock' && parts[1] === 'jwt') {
-      const afterTs = parts.slice(3).join('_');
-      user_id = afterTs.startsWith('aktivasi_') ? afterTs.slice(9) : afterTs;
-    }
-
     const siswa = store.siswa.find(s => s.id === user_id);
     if (!siswa) {
-      return HttpResponse.json(
-        { data: null, meta: null, error: { code: 'NOT_FOUND', message: 'Siswa tidak ditemukan.' } },
-        { status: 404 },
-      );
+      return HttpResponse.json({ message: 'Siswa tidak ditemukan.' }, { status: 404 });
     }
     if (!Array.isArray(mapel_ids) || mapel_ids.length !== 3) {
-      return HttpResponse.json(
-        { data: null, meta: null, error: { code: 'VALIDATION_ERROR', message: 'Harus memilih tepat 3 mata pelajaran.' } },
-        { status: 400 },
-      );
+      return HttpResponse.json({ message: 'Harus memilih tepat 3 mata pelajaran.' }, { status: 400 });
     }
     if (!password_baru || password_baru.length < 8) {
-      return HttpResponse.json(
-        { data: null, meta: null, error: { code: 'VALIDATION_ERROR', message: 'Password minimal 8 karakter dan harus mengandung huruf dan angka.' } },
-        { status: 400 },
-      );
+      return HttpResponse.json({ message: 'Password minimal 8 karakter.' }, { status: 400 });
     }
     siswa.status = 'Aktif';
     siswa.is_first_login = false;
@@ -1159,25 +1137,19 @@ export const handlers = [
     const acc = DUMMY_ACCOUNTS.find(a => a.id === user_id);
     if (acc) { acc.password = password_baru; acc.is_first_login = false; }
     return HttpResponse.json({
-      data: {
-        access_token: `mock_jwt_${Date.now()}_aktivasi_${user_id}`,
-        refresh_token: `mock_refresh_${user_id}`,
-        user: {
-          id: siswa.id,
-          nama: siswa.nama,
-          email: siswa.email,
-          nis: siswa.nis,
-          nip: null,
-          role: 'siswa',
-          avatar: null,
-          kelas_id: siswa.kelas_id || null,
-          is_first_login: false,
-          status: 'Aktif',
-        },
-        mapel_terpilih: mapel_ids,
+      access_token: `mock_jwt_${Date.now()}_aktivasi_${user_id}`,
+      refresh_token: `mock_refresh_${user_id}`,
+      user: {
+        id: siswa.id,
+        nama: siswa.nama,
+        email: siswa.email,
+        nis: siswa.nis,
+        role: 'siswa',
+        kelas_id: siswa.kelas_id || null,
+        is_first_login: false,
+        status: 'Aktif',
       },
-      meta: null,
-      error: null,
+      mapel_terpilih: mapel_ids,
     });
   }),
 
@@ -1213,7 +1185,7 @@ export const handlers = [
       acc.password = password_baru;
       acc.is_first_login = false;
     }
-    return HttpResponse.json({ data: { updated: true }, meta: null, error: null });
+    return envelope({ updated: true });
   }),
 
   // GET /auth/me
@@ -1243,30 +1215,23 @@ export const handlers = [
 
     if (!account) {
       // Fallback: kembalikan 401 agar interceptor client.js bisa coba refresh
-      return HttpResponse.json(
-        { data: null, meta: null, error: { code: 'UNAUTHORIZED', message: 'Token tidak valid.' } },
-        { status: 401 },
-      );
+      return HttpResponse.json({ message: 'Token tidak valid.' }, { status: 401 });
     }
 
     // Lookup data siswa/guru dari store untuk field tambahan (kelas_id, dll.)
     const siswaData = store.siswa.find(s => s.id === account.id);
-    // guruData reserved untuk field tambahan guru jika diperlukan
+    const guruData = store.guru.find(g => g.id === account.id);
 
     return HttpResponse.json({
-      data: {
-        id: account.id,
-        nama: account.nama,
-        email: account.email,
-        nis: account.nis ?? null,
-        nip: account.nip ?? null,
-        role: account.role,
-        avatar: account.avatar ?? null,
-        is_first_login: account.is_first_login ?? false,
-        kelas_id: siswaData?.kelas_id ?? account.kelas_id ?? null,
-      },
-      meta: null,
-      error: null,
+      id: account.id,
+      nama: account.nama,
+      email: account.email,
+      nis: account.nis ?? null,
+      nip: account.nip ?? null,
+      role: account.role,
+      avatar: account.avatar ?? null,
+      is_first_login: account.is_first_login ?? false,
+      kelas_id: siswaData?.kelas_id ?? account.kelas_id ?? null,
     });
   }),
 
@@ -1281,7 +1246,7 @@ export const handlers = [
     try {
       const formData = await request.formData();
       const file = formData.get('file');
-      if (!file) return HttpResponse.json({ data: null, meta: null, error: { code: 'VALIDATION_ERROR', message: 'Format file tidak didukung atau ukuran melebihi 2 MB.' } }, { status: 400 });
+      if (!file) return HttpResponse.json({ message: 'File tidak ditemukan.' }, { status: 400 });
 
       // Chunk-safe base64 conversion — aman untuk file besar (tidak stack overflow)
       const arrayBuffer = await file.arrayBuffer();
@@ -1293,19 +1258,15 @@ export const handlers = [
       }
       const base64 = btoa(binary);
       const dataUrl = `data:${file.type || 'image/jpeg'};base64,${base64}`;
-      return HttpResponse.json({ data: { avatar: dataUrl }, meta: null, error: null });
+      return HttpResponse.json({ avatar: dataUrl });
     } catch (err) {
       console.error('[MSW] PUT /auth/avatar error:', err);
-      return HttpResponse.json(
-        { data: null, meta: null, error: { code: 'VALIDATION_ERROR', message: 'Gagal memproses file.' } },
-        { status: 400 },
-      );
+      return HttpResponse.json({ message: 'Gagal memproses file.' }, { status: 400 });
     }
   }),
 
   // PATCH /guru/rekomendasi/:id/baca
   // Tandai notifikasi sudah dibaca — update store mock.
-  // [V2 DEAD CODE] — Diganti PATCH /notifikasi/:id/baca (§21). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   // Tolerant: jika id tidak ada di store (misal dummy seed ng1/ng2), tetap return 200 OK.
   // Di produksi BE akan validasi ownership, tapi FE tidak perlu rollback jika 404.
   http.patch(url('/guru/rekomendasi/:id/baca'), async ({ params }) => {
@@ -1319,7 +1280,6 @@ export const handlers = [
 
 
   // POST /mentor/chat
-  // [V2 DEAD CODE] — Diganti /mentor/pesan (§19). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   // Body: { siswa_id, mapel_id, materi, materi_id, message, context? }
   // FIX B5: baca body.context.emosi untuk mensimulasikan adaptasi gaya mentor
   http.post(url('/mentor/chat'), async ({ request }) => {
@@ -1448,7 +1408,6 @@ export const handlers = [
   // dipanggil 13× paralel dari KelolaBelajarSection saat guru klik "Generate Konten":
   //   bacaan×3 + quiz_pg×3 + quiz_essay×3 + flashcard×3 + mindmap×1
   // game TIDAK lewat sini — via POST /game/generate Tim 4
-  // [V2 DEAD CODE] — Diganti /konten/generate (§12). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   http.post(url('/content/generate'), async ({ request }) => {
     const { tipe, level, elemen_label, materi } = await request.json();
     await d(1500 + Math.random() * 1000);
@@ -1570,7 +1529,6 @@ export const handlers = [
   //                        kelas_id, jenjang, guru_id, atp, konten_list: KontenItem[] }
   // KontenItem: { tipe, level, content, approved }  (field "tipe" bukan "type")
   // Menyimpan ke store.publishedKonten agar GET /content/riwayat bisa membacanya kembali.
-  // [V2 DEAD CODE] — Diganti /konten/publish (§12). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   http.post(url('/content/publish'), async ({ request }) => {
     const body = await request.json();
     await d(1200);
@@ -1632,7 +1590,6 @@ export const handlers = [
   //   Frontend (ChatSection) merender via renderMarkdown() yang sudah ada.
   //   Struktur per level:
   //     Low  → paragraf pengantar + 3 poin utama + 1 contoh sederhana
-  // [V2 DEAD CODE] — Diganti /siswa/:id/konten (§11). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   //     Mid  → pembahasan mendalam + analogi + 2 contoh kontekstual + ringkasan
   //     High → analisis kritis + perbandingan + implikasi + evaluasi
   http.get(url('/content/siswa'), async ({ request }) => {
@@ -1837,29 +1794,34 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
     });
 
     // ── Helper: mock quiz_essay per level — 5 soal, shape object ───
-    // Shape: { pertanyaan: Array<{ soal, rubrik }> }
+    // Shape: { pertanyaan: Array<{ soal, rubrik, placeholder }> }
     // QuizModal normalisasi: s.pertanyaan → soal (untuk essay), key 'soal' dipakai render
     const makeQuizEssay = (lv, topik) => ({
       pertanyaan: [
         {
           soal: `[${lv}] Jelaskan pengertian ${topik} dengan kata-katamu sendiri! Berikan minimal satu contoh konkret dari kehidupan sehari-hari.`,
           rubrik: `Skor penuh: mendefinisikan dengan benar dan memberikan contoh relevan. Skor sebagian: definisi benar tapi contoh kurang tepat.`,
+          placeholder: `Tulis definisimu dan contoh konkretnya di sini...`,
         },
         {
           soal: `[${lv}] Bagaimana ${topik} berkaitan dengan ${elemenLabel}? Uraikan hubungannya secara sistematis minimal 3 poin.`,
           rubrik: `Skor penuh: minimal 3 keterkaitan jelas dan logis. Skor sebagian: 1-2 keterkaitan dengan penjelasan terbatas.`,
+          placeholder: `Jelaskan hubungan antar konsep secara terstruktur...`,
         },
         {
           soal: `[${lv}] Analisis situasi: Bagaimana kamu menerapkan ${topik} dalam memecahkan masalah nyata? Sebutkan langkah-langkahnya.`,
           rubrik: `Skor penuh: langkah-langkah sistematis dan aplikatif. Skor sebagian: langkah ada tapi kurang rinci atau logis.`,
+          placeholder: `Tuliskan analisis dan langkah-langkah penerapannya...`,
         },
         {
           soal: `[${lv}] Apa tantangan terbesar dalam mempelajari ${topik} di level ${lv}? Bagaimana cara mengatasinya?`,
           rubrik: `Skor penuh: identifikasi tantangan spesifik dan solusi praktis. Skor sebagian: tantangan disebutkan tanpa solusi yang jelas.`,
+          placeholder: `Ceritakan tantanganmu dan strategi untuk mengatasinya...`,
         },
         {
           soal: `[${lv}] Buatlah ringkasan singkat tentang ${topik} yang bisa kamu jelaskan kepada teman yang baru belajar materi ini!`,
           rubrik: `Skor penuh: ringkasan mencakup inti konsep, mudah dipahami, dan akurat. Skor sebagian: mencakup sebagian inti tapi kurang jelas.`,
+          placeholder: `Tulis ringkasanmu seperti sedang menjelaskan kepada teman...`,
         },
       ],
     });
@@ -1921,7 +1883,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // GET /content/progress/siswa
   // Params: { siswa_id }
   // Sesuai contract: endpoint terpisah untuk siswa vs guru
-  // [V2 DEAD CODE] — Diganti /siswa/:id/progress (§11). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.get(url('/content/progress/siswa'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const siswaId = p.get('siswa_id') || 'unknown';
@@ -1953,7 +1914,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // GET /content/progress/guru
   // Params: { kelas_id, mapel_id? }
   // Mengembalikan progress semua siswa di kelas untuk monitoring guru
-  // [V2 DEAD CODE] — Diganti /kelas/:id/progress (§10). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.get(url('/content/progress/guru'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const kelasId = p.get('kelas_id') || 'x1';
@@ -2001,7 +1961,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   //                         Backend kembalikan essay_score (0–100) saat RAG selesai
   //   • Naik level jika rata-rata(mc_score, essay_score) >= KKM_BARU (75)
   //   • Logika agregasi final ada di backend; mock mensimulasikan response RAG essay
-  // [V2 DEAD CODE] — Diganti /siswa/:id/quiz/mc dan /essay (§11). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   http.post(url('/content/quiz/submit'), async ({ request }) => {
     const body = await request.json();
     const { score, quiz_type, elemen_id, siswa_id, level } = body;
@@ -2045,7 +2004,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // Response: RiwayatKontenItem[] (urut published_at DESC)
   // Dipakai RiwayatKontenSection. Jika store kosong, kembalikan seed dummy
   // dengan shape IDENTIK agar UI konsisten saat mock dimatikan nanti.
-  // [V2 DEAD CODE] — Diganti /guru/:id/konten (§10). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.get(url('/content/riwayat'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const guruId = p.get('guru_id');
@@ -2137,7 +2095,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // Response: Array<{ mapel_id, elemen_id, elemen_label, materi, materi_id, alasan }> maks 3
   // Sesuai flow .md: rekomendasi dari Tim 3 RAG berdasarkan progress siswa.
   // Saat RAG Tim 3 live, handler ini diganti dengan proxy ke endpoint RAG.
-  // [V2 DEAD CODE] — Diganti /rag/rekomendasi (§16). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.post(url('/content/recommend'), async ({ request }) => {
     await d(600);
     const body = await request.json().catch(() => ({}));
@@ -2218,7 +2175,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
 
   // GET /content/recommend  (fallback GET — redirect ke POST di FE sudah diperbaiki)
   // Tetap ada agar tidak 404 jika ada code lama yang masih pakai GET.
-  // [V2 DEAD CODE] — Diganti /rag/rekomendasi (§16). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   http.get(url('/content/recommend'), async () => {
     await d(300);
     return HttpResponse.json([]);
@@ -2231,7 +2187,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // Dipakai ProgressSection & PretestPage untuk menghidrasi store lokal
   // (pretestDoneElemen, pretestDoneMateri, studentLevels) dari data BE.
   // ════════════════════════════════════════════════════════════════════
-  // [V2 DEAD CODE] — Diganti /siswa/:id/pretest/status (§11). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.get(url('/content/pretest/status'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const siswaId = p.get('siswa_id') || 'usr_001';
@@ -2264,7 +2219,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // dan current_level (levelMap) dari BE.
   // locked: true = level sudah dilewati (siswa naik level), read-only.
   // ════════════════════════════════════════════════════════════════════
-  // [V2 DEAD CODE] — Diganti /siswa/:id/quiz (§11). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.get(url('/content/quiz/history'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const siswaId = p.get('siswa_id') || 'usr_001';
@@ -2297,7 +2251,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // POST /content/pretest/submit → kirim jawaban, Tim 3 kembalikan level
   // ════════════════════════════════════════════════════════════════════
 
-  // [V2 DEAD CODE] — Diganti /pretest/soal (§14). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.post(url('/content/pretest/soal'), async ({ request }) => {
     await d(800);
     const { elemen_id = 'umum', mapel_id = 'mat' } = await request.json().catch(() => ({}));
@@ -2332,7 +2285,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
     });
   }),
 
-  // [V2 DEAD CODE] — Diganti /pretest/submit (§14). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.post(url('/content/pretest/submit'), async ({ request }) => {
     await d(600);
     const { answers = {} } = await request.json().catch(() => ({}));
@@ -2354,7 +2306,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // Response: { text: string }
   // ════════════════════════════════════════════════════════════════════
 
-  // [V2 DEAD CODE] — Diganti /rag/insight (§16). Masih dipakai bridge V3. Hapus setelah integrasi BE.
   http.post(url('/content/insight'), async ({ request }) => {
     await d(500);
     const { nama = 'Siswa', streak = 0, total_topik = 0, total_poin_kuiz = 0 } =
@@ -2381,7 +2332,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
 
   // POST /emotion/detect
   // Body: { siswa_id, frame_base64, session_id? }
-  // [V2 DEAD CODE] — Diganti /emosi/deteksi (§18). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   // 5 label emosi: antusias | bosan | bingung | frustrasi | tidak_terdeteksi
   // Distribusi probabilitas dibuat realistis: tidak_terdeteksi ~15%, lainnya merata
   http.post(url('/emotion/detect'), async () => {
@@ -2406,7 +2356,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // Params: { siswa_id, session_id }
   // Return array EmotionResult terurut dari terlama ke terbaru
   // Mensimulasikan tren emosi yang berubah selama sesi belajar
-  // [V2 DEAD CODE] — Diganti /sesi/:id/emosi (§13). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   http.get(url('/emotion/history'), async () => {
     const now = Date.now();
     await d(300);
@@ -2435,20 +2384,18 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
     const game_id = 'game_' + Date.now();
     const levelLc = (level || 'low').toLowerCase(); // CONTRACT V3.5 §2: lowercase
     const html_string = `<!DOCTYPE html><html><head><title>Game Mock: ${game_id}</title></head><body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f0fdf4"><div style="text-align:center"><div style="font-size:48px">🎮</div><h2 style="color:#0d9488">Game Mock</h2><p style="color:#374151">Topik: ${topik}</p><p style="color:#6b7280;font-size:14px">Level: ${levelLc}</p><button onclick="window.parent.postMessage({type:'game:selesai'},'*')" style="background:#0d9488;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:16px">Selesai Game (Mock)</button></div></body></html>`; // CONTRACT V3.4 §1
-    return HttpResponse.json({
-      data: {
-        game_id,
-        nama: `Quest: ${topik}`,
-        deskripsi: `Game edukasi interaktif tentang ${topik} — level ${levelLc}`,
-        mapel_id: mapel_id || '',
-        elemen_id: elemen_id || '',
-        elemen_label: elemen_label || '',
-        materi: materi || null,
-        materi_id: materi_id || null,
-        level: levelLc,
-        status: 'ready',
-        html_string,
-      }, meta: null, error: null
+    return envelope({ // CONTRACT V3.6 §1.3: wajib envelope
+      game_id,
+      nama: `Quest: ${topik}`,
+      deskripsi: `Game edukasi interaktif tentang ${topik} — level ${levelLc}`,
+      mapel_id: mapel_id || '',
+      elemen_id: elemen_id || '',
+      elemen_label: elemen_label || '',
+      materi: materi || null,
+      materi_id: materi_id || null,
+      level: levelLc, // CONTRACT V3.5 §2
+      status: 'ready',
+      html_string,
     });
   }),
 
@@ -2465,20 +2412,17 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
     }
     const levelLc = (body.level || 'low').toLowerCase(); // CONTRACT V3.5 §2
     const html_string = `<!DOCTYPE html><html><head><title>Game Mock (Revised)</title></head><body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f0fdf4"><div style="text-align:center"><div style="font-size:48px">🎮</div><h2 style="color:#0d9488">Game Mock (Revised)</h2><p style="color:#374151">${instruksi_revisi || 'Versi baru'}</p><button onclick="window.parent.postMessage({type:'game:selesai'},'*')" style="background:#0d9488;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:16px">Selesai Game (Mock)</button></div></body></html>`; // CONTRACT V3.4 §1
-    return HttpResponse.json({
-      data: {
-        game_id,
-        nama: `Quest (Revised)`,
-        deskripsi: `Game edukasi interaktif — diperbarui: ${instruksi_revisi}`,
-        level: levelLc,
-        status: 'ready',
-        html_string,
-      }, meta: null, error: null
+    return envelope({ // CONTRACT V3.6 §1.3
+      game_id,
+      nama: `Quest (Revised)`,
+      deskripsi: `Game edukasi interaktif — diperbarui: ${instruksi_revisi}`,
+      level: levelLc, // CONTRACT V3.5 §2
+      status: 'ready',
+      html_string,
     });
   }),
 
   // GET /game/list
-  // [V2 DEAD CODE] — Diganti /game/:id (§17). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   // Params: { kelas_id?, mapel_id?, elemen_id?, materi_id? }
   // html_url tidak disertakan di list — fetch GET /:id untuk dapat html_url
   http.get(url('/game/list'), async ({ request }) => {
@@ -2538,7 +2482,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // POST /game/selesai
   // Body: { siswa_id, game_id, level }
   // Catat bahwa siswa menyelesaikan game di level tertentu.
-  // [V2 DEAD CODE] — Diganti PATCH /game/:id/penyelesaian (§17). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   // Data ini akan di-embed di konten_list[tipe=game].content.siswa_selesai
   // saat guru GET /content/riwayat — format: { siswa_id, selesai_at }
   http.post(url('/game/selesai'), async ({ request }) => {
@@ -3115,7 +3058,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // BE nanti: kirim ke LLM → kembalikan { text, generated_at, expires_at }.
   // ════════════════════════════════════════════════════════════════════
 
-  // [V2 DEAD CODE] — Diganti /sesi/:id/summary (§13). Tidak dipanggil FE V3. Hapus setelah integrasi BE.
   http.post(url('/summary/siswa/:id'), async ({ request, params }) => {
     await d(1400); // simulasi LLM latency
     const body = await request.json();
@@ -3174,7 +3116,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // POST /guru/rekomendasi
   // Body: { guru_id, siswa_id, mapel_id, pesan }
   // Role: guru
-  // [V2 DEAD CODE] — Diganti POST /notifikasi (§21). GET /siswa/:id/notifikasi sudah native V3. Hapus setelah integrasi BE.
   http.post(url('/guru/rekomendasi'), async ({ request }) => {
     const body = await request.json();
     await d(400);
@@ -3197,7 +3138,6 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
   // GET /guru/rekomendasi
   // Params: { siswa_id }
   // Role: siswa — dipanggil DashboardSection untuk notifikasi bell
-  // [V2 DEAD CODE] — Diganti GET /siswa/:id/notifikasi (§21) yang sudah native V3. Hapus setelah integrasi BE.
   http.get(url('/guru/rekomendasi'), async ({ request }) => {
     const p = new URL(request.url).searchParams;
     const siswaId = p.get('siswa_id');

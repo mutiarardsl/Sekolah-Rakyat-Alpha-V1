@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { Btn } from './UI';
-import { changePassword } from '../../api/auth'; // FIX: sambungkan ke PUT /auth/change-password
+import { changePassword } from '../../api/auth'; // CONTRACT V3.6 §8 PATCH /auth/password
 
 const calcStr = (p) => {
     let s = 0;
@@ -74,7 +74,7 @@ export default function ForceChangePasswordModal({ userName = '', role = 'guru',
         if (Object.keys(e).length) { setErrors(e); return; }
         setLoading(true);
         try {
-            // FIX: guru first-login tidak punya old_password field di modal ini.
+            // CONTRACT V3.6 §8: first-login — old_password kosong (diizinkan oleh BE).
             // Backend menerima empty string sebagai sinyal first-login change.
             await changePassword({ old_password: '', new_password: newPass });
             setDone(true);

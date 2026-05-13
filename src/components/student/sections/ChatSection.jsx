@@ -22,7 +22,8 @@ import { useStudentStore } from '../../../stores/studentStore';
 import QuizModal, { getQuizV2 } from './QuizModal';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 // FIX P0: sambungkan ke API Mentor (Tim 5) dan Content (Tim 3)
-import { sendMessage, streamMessage, getChatHistory } from '../../../api/mentor';
+import { sendMessage, streamMessage, streamEvaluasi, sendEvaluasi, getChatHistory, createSesi } from '../../../api/mentor';
+import { sessionTelemetry } from '../../../telemetry/sessionTelemetry';
 import { getKontenSiswa, getQuizHistory } from '../../../api/content'; // bank konten guru + riwayat quiz dari BE
 // FIX 4: getKontenSiswa → prefetch bank konten guru saat topik dibuka
 import ReactMarkdown from 'react-markdown';
@@ -253,13 +254,55 @@ const getConfContent = (materiId, mapelLabel) => ({
 });
 
 /* ═══════════════ MIND MAP SVG ════════════════════════════════════ */
-const NODE_W = 130, NODE_H = 36, NODE_R = 10;
-const LEVEL_GAP_X = 160, LEVEL_GAP_Y = 52;
+const NODE_R = 10;
+const NODE_FONT_SIZE = 11;         // px, font node biasa
+const NODE_ROOT_FONT_SIZE = 12;    // px, font node root
+const NODE_PADDING_X = 16;        // padding kiri-kanan dalam node
+const NODE_PADDING_Y = 10;        // padding atas-bawah dalam node
+const NODE_MAX_W = 200;           // batas maksimal lebar node (px)
+const NODE_MIN_W = 80;            // batas minimal lebar node (px)
+const CHARS_PER_LINE = 22;        // estimasi karakter per baris pada NODE_MAX_W
+const LINE_H = NODE_FONT_SIZE + 4; // tinggi per baris teks
+const LEVEL_GAP_X = 220;          // jarak horizontal antar level (harus > NODE_MAX_W)
+const LEVEL_GAP_Y = 14;           // jarak vertikal antar node (spacing murni, bukan tinggi node)
 
+
+// Helper: hitung dimensi node dari label
+const getNodeSize = (label, isRoot = false) => {
+    const safeLabel = (label || '').trim() || '—';
+    const fs = isRoot ? NODE_ROOT_FONT_SIZE : NODE_FONT_SIZE;
+    const charsPerLine = Math.floor((NODE_MAX_W - NODE_PADDING_X * 2) / (fs * 0.6));
+    const words = safeLabel.split(' ');   // ← safeLabel
+    const lines = [];
+    let current = '';
+    words.forEach(word => {
+        const test = current ? `${current} ${word}` : word;
+        if (test.length > charsPerLine && current) {
+            lines.push(current);
+            current = word;
+        } else {
+            current = test;
+        }
+    });
+    if (current) lines.push(current);
+
+
+    const longestLine = lines.reduce((max, l) => Math.max(max, l.length), 0);
+    const rawW = longestLine * fs * 0.6 + NODE_PADDING_X * 2;
+    const w = Math.min(NODE_MAX_W, Math.max(NODE_MIN_W, rawW));
+    const h = lines.length * (fs + 4) + NODE_PADDING_Y * 2;
+    return { w, h, lines, fs };
+};
+
+
+// ✅ SESUDAH — layoutTree dengan ukuran node dinamis
 function layoutTree(node, depth = 0, startY = 0) {
+    const isRoot = depth === 0;
+    const { h } = getNodeSize(node.label || '', isRoot);
     const children = node.children || [];
     if (children.length === 0) {
-        return { ...node, depth, y: startY, height: NODE_H + 14, subtreeH: NODE_H + 14, layoutChildren: [] };
+        const slotH = h + LEVEL_GAP_Y;
+        return { ...node, depth, y: startY, nodeH: h, subtreeH: slotH, layoutChildren: [] };
     }
     let curY = startY;
     const laid = children.map(c => {
@@ -268,9 +311,10 @@ function layoutTree(node, depth = 0, startY = 0) {
         return n;
     });
     const totalH = laid.reduce((s, n) => s + n.subtreeH, 0);
-    const selfY = startY + (totalH - NODE_H) / 2;
-    return { ...node, depth, y: selfY, height: NODE_H + 14, subtreeH: totalH, layoutChildren: laid };
+    const selfY = startY + (totalH - h) / 2;
+    return { ...node, depth, y: selfY, nodeH: h, subtreeH: totalH, layoutChildren: laid };
 }
+
 
 function collectNodes(node, nodes = [], edges = []) {
     nodes.push(node);
@@ -281,6 +325,7 @@ function collectNodes(node, nodes = [], edges = []) {
     return { nodes, edges };
 }
 
+
 const MindMapView = ({ tree, color, bgLight, materiId }) => {
     const [scale, setScale] = useState(0.75); // mulai sedikit zoom out agar muat
     const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -288,24 +333,30 @@ const MindMapView = ({ tree, color, bgLight, materiId }) => {
     const dragStart = useRef(null);
     const containerRef = useRef(null);
 
+
     if (!tree) return <div style={{ padding: 24, color: '#718096' }}>Data mind map tidak tersedia.</div>;
+
 
     const laid = layoutTree(tree, 0, 0);
     const { nodes, edges } = collectNodes(laid);
 
+
     const padding = 24;
     const maxDepth = Math.max(...nodes.map(n => n.depth));
-    const svgW = padding * 2 + (maxDepth + 1) * LEVEL_GAP_X + NODE_W;
+    const svgW = padding * 2 + (maxDepth + 1) * LEVEL_GAP_X + NODE_MAX_W;
     const minY = Math.min(...nodes.map(n => n.y));
-    const maxY = Math.max(...nodes.map(n => n.y + NODE_H));
+    const maxY = Math.max(...nodes.map(n => n.y + n.nodeH));
     const svgH = maxY - minY + padding * 2 + 20;
+
 
     const nodeX = (depth) => padding + depth * LEVEL_GAP_X;
     const nodeY = (n) => n.y - minY + padding;
-    const nodeCY = (n) => nodeY(n) + NODE_H / 2;
+    const nodeCY = (n) => nodeY(n) + n.nodeH / 2;
+
 
     const depthColors = ['#2D3E50', '#0D5C63', '#4A5568', '#DD6B20', '#C53030'];
     const getColor = (depth) => depthColors[depth % depthColors.length];
+
 
     // ── Zoom via scroll wheel ──
     const handleWheel = (e) => {
@@ -313,6 +364,7 @@ const MindMapView = ({ tree, color, bgLight, materiId }) => {
         const delta = e.deltaY > 0 ? -0.08 : 0.08;
         setScale(s => Math.min(2, Math.max(0.3, s + delta)));
     };
+
 
     // ── Pan via drag ──
     const handleMouseDown = (e) => {
@@ -325,8 +377,10 @@ const MindMapView = ({ tree, color, bgLight, materiId }) => {
     };
     const handleMouseUp = () => { setDragging(false); dragStart.current = null; };
 
+
     // ── Reset view ──
     const handleReset = () => { setScale(0.75); setOffset({ x: 0, y: 0 }); };
+
 
     return (
         <div>
@@ -345,6 +399,7 @@ const MindMapView = ({ tree, color, bgLight, materiId }) => {
                         style={{ height: 26, padding: '0 8px', borderRadius: 6, border: '1.5px solid #D4F0F3', background: '#fff', cursor: 'pointer', fontSize: FS.xs, color: '#0D5C63', fontWeight: 600, fontFamily: 'inherit' }}>Reset</button>
                 </div>
             </div>
+
 
             {/* Canvas area — fixed height, overflow hidden, draggable */}
             <div
@@ -372,7 +427,8 @@ const MindMapView = ({ tree, color, bgLight, materiId }) => {
                 }}>
                     <svg width={svgW} height={svgH} style={{ display: 'block' }}>
                         {edges.map((e, i) => {
-                            const x1 = nodeX(e.from.depth) + NODE_W;
+                            const fromSize = getNodeSize(e.from.label || '', e.from.depth === 0);
+                            const x1 = nodeX(e.from.depth) + fromSize.w;
                             const y1 = nodeCY(e.from);
                             const x2 = nodeX(e.to.depth);
                             const y2 = nodeCY(e.to);
@@ -394,27 +450,44 @@ const MindMapView = ({ tree, color, bgLight, materiId }) => {
                             const isRoot = n.depth === 0;
                             return (
                                 <g key={i}>
-                                    <rect x={x} y={y} width={NODE_W} height={NODE_H} rx={NODE_R} ry={NODE_R}
-                                        fill={isRoot ? c : `${c}18`} stroke={c} strokeWidth={isRoot ? 0 : 1.5} />
-                                    <text
-                                        x={x + NODE_W / 2} y={y + NODE_H / 2 + 1}
-                                        textAnchor="middle" dominantBaseline="middle"
-                                        fill={isRoot ? '#fff' : c}
-                                        fontSize={isRoot ? 12 : 11} fontWeight={isRoot ? 700 : 600}
-                                        fontFamily="system-ui,sans-serif" style={{ userSelect: 'none' }}>
-                                        {n.label && n.label.length > 18 ? n.label.slice(0, 17) + '…' : n.label}
-                                    </text>
+                                    {(() => {
+                                        const { w, h, lines, fs } = getNodeSize(n.label || '', isRoot);
+                                        const totalTextH = lines.length * (fs + 4);
+                                        const textStartY = y + (h - totalTextH) / 2 + fs;
+                                        return (
+                                            <>
+                                                <rect x={x} y={y} width={w} height={h}
+                                                    rx={NODE_R} ry={NODE_R}
+                                                    fill={isRoot ? c : `${c}18`}
+                                                    stroke={c} strokeWidth={isRoot ? 0 : 1.5} />
+                                                <text
+                                                    textAnchor="middle"
+                                                    fill={isRoot ? '#fff' : c}
+                                                    fontSize={fs} fontWeight={isRoot ? 700 : 600}
+                                                    fontFamily="system-ui,sans-serif"
+                                                    style={{ userSelect: 'none' }}>
+                                                    {lines.map((line, li) => (
+                                                        <tspan key={li} x={x + w / 2} y={textStartY + li * (fs + 4)}>
+                                                            {line}
+                                                        </tspan>
+                                                    ))}
+                                                </text>
+                                            </>
+                                        );
+                                    })()}
                                 </g>
                             );
                         })}
                     </svg>
                 </div>
 
+
                 {/* Hint overlay di pojok bawah */}
                 <div style={{ position: 'absolute', bottom: 8, right: 8, fontSize: FS.xs, color: '#718096', background: 'rgba(255,255,255,.75)', borderRadius: 6, padding: '3px 7px', pointerEvents: 'none' }}>
                     scroll zoom · drag pan
                 </div>
             </div>
+
 
             {/* Legend */}
             <div style={{ marginTop: 8, fontSize: FS.xs, color: '#718096', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -430,6 +503,17 @@ const MindMapView = ({ tree, color, bgLight, materiId }) => {
 };
 
 /* ═══════════════ FLASHCARD 3D FLIP ══════════════════════════════ */
+// ─── Flashcard adaptive font helper ───────────────────────────────────────
+// Menentukan ukuran font berdasarkan panjang teks agar tidak overflow.
+// Min 50 char → font besar; mendekati 150 char → font mengecil otomatis.
+const flashcardFontSize = (text = '') => {
+    const len = text.length;
+    if (len <= 60) return FS.xl;   // 16px — pendek, besar
+    if (len <= 90) return FS.lg;   // 14px — sedang
+    if (len <= 120) return FS.base; // 13px — agak panjang
+    return FS.sm;                   // 11px — mendekati 150 char
+};
+
 const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx, flashFlipped, setFlashFlipped }) => {
     const total = cards.length;
     const card = cards[flashIdx] || cards[0];
@@ -456,11 +540,15 @@ const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx,
                 <div style={{
                     position: 'relative',
                     width: '100%',
-                    height: 220,
+                    minHeight: 200,
+                    height: flashFlipped
+                        ? Math.max(200, Math.ceil((card.belakang?.length || 0) / 1.8) + 120)
+                        : Math.max(200, Math.ceil((card.depan?.length || 0) / 1.8) + 120),
                     transformStyle: 'preserve-3d',
                     transform: flashFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
                     transition: 'transform 0.55s cubic-bezier(.4,0,.2,1)',
                 }}>
+
                     {/* Front face */}
                     <div style={{
                         position: 'absolute', inset: 0,
@@ -476,7 +564,9 @@ const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx,
                         boxShadow: '0 8px 32px rgba(0,0,0,.1)',
                     }}>
                         <div style={{ fontSize: 28, marginBottom: 14 }}>❓</div>
-                        <div style={{ fontSize: FS.xl, fontWeight: 700, color: C.dark, lineHeight: 1.6 }}>{card.depan}</div>
+                        <div style={{ fontSize: flashcardFontSize(card.depan), fontWeight: 700, color: C.dark, lineHeight: 1.6 }}>
+                            {card.depan}
+                        </div>
                         <div style={{ position: 'absolute', bottom: 14, fontSize: FS.sm, color: color, fontWeight: 600, opacity: 0.7 }}>
                             Klik untuk melihat jawaban →
                         </div>
@@ -498,7 +588,9 @@ const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx,
                         boxShadow: '0 8px 32px rgba(0,0,0,.15)',
                     }}>
                         <div style={{ fontSize: 28, marginBottom: 14 }}>💡</div>
-                        <div style={{ fontSize: FS.lg, color: '#fff', lineHeight: 1.7, fontWeight: 500 }}>{card.belakang}</div>
+                        <div style={{ fontSize: flashcardFontSize(card.belakang), color: '#fff', lineHeight: 1.7, fontWeight: 500 }}>
+                            {card.belakang}
+                        </div>
                         <div style={{ position: 'absolute', bottom: 14, fontSize: FS.sm, color: 'rgba(255,255,255,.65)', fontWeight: 600 }}>
                             ← Klik untuk balik lagi
                         </div>
@@ -795,8 +887,16 @@ const ChatSection = ({
         setTimeout(() => { isWebcamPreviewOpen.current = false; }, 150);
     }, []);
 
-    // WebSocket untuk kirim event ke dashboard guru
-    const { liveStudents: _ls, ...wsHook } = useWebSocket({ kelasId: 'kelas1', guruId: 'g1', enabled: false });
+    // V3.3: ref sebagai bridge — useWebSocket dipanggil sebelum handleEssayDinilaiPayload
+    // dideklarasikan (karena activeKey belum ada). Ref memungkinkan callback terdaftar
+    // sekarang tapi eksekusinya menunggu sampai fungsi asli siap.
+    const essayDinilaiRef = useRef(null);
+    const { liveStudents: _ls, ...wsHook } = useWebSocket({
+        kelasId: 'kelas1',
+        guruId: 'g1',
+        enabled: false,
+        onEssayDinilai: (payload) => essayDinilaiRef.current?.(payload),
+    });
 
     const sendViolationToTeacher = useCallback((detail) => {
         window.dispatchEvent(new CustomEvent('sr_student_violation', {
@@ -816,6 +916,7 @@ const ChatSection = ({
         violationCount.current += 1;
         setViolationModal({ detail, count: violationCount.current });
         sendViolationToTeacher(detail);
+        sessionTelemetry.reportViolation(detail); // catat ke telemetry → PATCH /sesi/:id
     }, [sendViolationToTeacher]);
 
     // reEnterFullscreen tidak lagi diperlukan — diganti noOp untuk kompatibilitas referensi file dialog
@@ -826,6 +927,8 @@ const ChatSection = ({
         isExitingSession.current = true;
         // Matikan kamera sesi — SATU-SATUNYA tempat stream dimatikan
         stopSessionCamera?.();
+        // Kirim durasi + violations final ke BE sebelum keluar
+        sessionTelemetry.end(useStudentStore.getState().currentEmosi || null);
         // Kirim status inactive ke teacher
         window.dispatchEvent(new CustomEvent('sr_student_violation', {
             detail: {
@@ -997,6 +1100,20 @@ const ChatSection = ({
     /* ── State setelah kamera diizinkan ── */
     useEffect(() => {
         if (!camGranted || !chatMateri) return;
+
+        // Masalah 3: buat sesi segera saat siswa masuk chatbot
+        // sesi_id harus ada dari awal agar durasi belajar akurat dan Tim 5 bisa
+        // menyimpan konteks percakapan sejak pertama kali siswa membuka chatbot
+        (async () => {
+            const sesiId = await createSesi({
+                siswa_id: chatMateri.siswaId || useStudentStore.getState().user?.id || 'usr_001',
+                mapel_id: chatMateri.mapelId || '',
+                elemen_id: chatMateri.elemenId || chatMateri.materiId || '',
+                materi_id: chatMateri.materiId || null,
+            });
+            // Mulai tracking durasi — wajib agar PATCH /sesi/:id akurat
+            sessionTelemetry.start(sesiId);
+        })();
 
         // Siswa selalu masuk dengan topik yang sudah dipilih dari luar (rekomendasi / progress / search)
         if (chatMateri.materiId) {
@@ -1200,6 +1317,122 @@ const ChatSection = ({
     const kConf = confContent[activeKey] || {};
     const hasConf = CONF_TYPES.some(ct => kConf[ct.type]?.generated);
 
+    /* ── V3.3: essay_dinilai handler — diletakkan setelah activeKey ── */
+    // activeKey, chatMateri, materiId sudah tersedia di titik ini
+    const handleEssayDinilaiPayload = useCallback((payload) => {
+        const { level, nilai_essay, nilai_mc, agregasi, naik_level, kkm } = payload || {};
+        const KKM_WS = kkm ?? KKM_AGREGASI;
+        const LEVEL_ORDER_WS = ['low', 'mid', 'high'];
+        const LEVEL_LABELS_WS = { low: 'Low', mid: 'Mid', high: 'High' };
+
+        // Step 1: Update score essay di quizHistory
+        setQuizHistory(p => ({
+            ...p,
+            [activeKey]: (p[activeKey] || []).map(r =>
+                r.type === 'essay' && (r.level || 'low') === level
+                    ? { ...r, score: nilai_essay }
+                    : r
+            ),
+        }));
+
+        // Step 2: Hapus pesan sistem "sedang dinilai"
+        setMsgsByKey(p => ({
+            ...p,
+            [activeKey]: (p[activeKey] || []).filter(m => !m.isSystem || !m.text?.includes('sedang dinilai')),
+        }));
+
+        // FIX #2: Jangan hanya percaya flag naik_level dari WS payload.
+        // Re-kalkulasi dari quizHistory aktual sebagai source of truth.
+        //
+        // Masalah sebelumnya: mock WS bisa mengirim naik_level: false
+        // (karena essayNilai random 60–95 bisa menghasilkan agregasi < 75),
+        // sehingga level tidak naik meskipun agregasi yang tampil di UI >= KKM.
+        //
+        // Solusi: Ambil nilai MC dari quizHistory yang sudah tersimpan saat MC submit,
+        // gabungkan dengan nilai_essay dari WS event, lalu hitung agregasi ulang.
+        // Ini juga memastikan konsistensi antara display UI dan logika naik level.
+        const currentHistory = (useStudentStore.getState().quizHistory || {})[activeKey] || [];
+
+        // Bangun riwayat terbaru — gabungkan record yang sudah ada dengan essay yang baru dinilai
+        const updatedHistory = currentHistory.map(r =>
+            r.type === 'essay' && (r.level || 'low') === level
+                ? { ...r, score: nilai_essay }
+                : r
+        );
+
+        // Cari nilai MC dari quizHistory (lebih akurat dari nilai_mc WS yang bisa hardcode)
+        const mcRec = updatedHistory.find(r =>
+            (r.type === 'mc' || !r.type) && (r.level || 'low') === level
+        );
+        const essayRec = updatedHistory.find(r =>
+            r.type === 'essay' && (r.level || 'low') === level
+        );
+
+        // Gunakan nilai dari quizHistory jika ada, fallback ke nilai dari WS payload
+        const finalMcScore = mcRec?.score ?? nilai_mc ?? null;
+        const finalEssayScore = essayRec?.score ?? nilai_essay ?? null;
+
+        // Hitung agregasi dari nilai aktual (bukan dari WS payload yang bisa tidak akurat di mock)
+        let finalAgregasi = agregasi; // default: gunakan dari WS jika tidak bisa dihitung ulang
+        let shouldNaikLevel = false;
+
+        if (finalMcScore != null && finalEssayScore != null) {
+            // Kedua nilai tersedia → hitung agregasi yang akurat
+            finalAgregasi = Math.round(finalMcScore * MC_WEIGHT + finalEssayScore * ESSAY_WEIGHT);
+            shouldNaikLevel = finalAgregasi >= KKM_WS;
+        } else if (agregasi != null) {
+            // Fallback ke agregasi dari WS (untuk BE real yang sudah menghitung di server)
+            finalAgregasi = agregasi;
+            shouldNaikLevel = naik_level === true && agregasi >= KKM_WS;
+        }
+
+        if (shouldNaikLevel) {
+            const curLvlIdx = LEVEL_ORDER_WS.indexOf(level);
+            const nxtLvl = LEVEL_ORDER_WS[Math.min(curLvlIdx + 1, LEVEL_ORDER_WS.length - 1)];
+            const isAtMax = level === 'high';
+            if (!isAtMax) {
+                setLevelMap(p => ({ ...p, [activeKey]: nxtLvl }));
+                const store = useStudentStore.getState();
+                const elId = chatMateri?.elemenId;
+                if (elId) {
+                    const materiPerElemen = (MATERI_PER_ELEMEN[chatMateri.mapelId] || {})[elId] || [];
+                    if (materiPerElemen.length > 0 && materiId) {
+                        store.setMateriLevel(chatMateri.mapelId, elId, materiId, nxtLvl);
+                    } else {
+                        store.setElemenLevel(chatMateri.mapelId, elId, nxtLvl);
+                    }
+                }
+                // Tandai semua record di level lama sebagai locked
+                setQuizHistory(p => ({
+                    ...p,
+                    [activeKey]: (p[activeKey] || []).map(r =>
+                        (r.level || 'low') === level ? { ...r, locked: true } : r
+                    ),
+                }));
+                const levelUpMsg = {
+                    id: Date.now() + 5, role: 'ai', isLevelUp: true,
+                    fromLevel: level, toLevel: nxtLvl,
+                    text: `🎉 Selamat! Kamu berhasil naik ke **Level ${LEVEL_LABELS_WS[nxtLvl]}**!\n\n📊 **Rekap Nilai:**\n- Pilihan Ganda: ${finalMcScore}/100\n- Essay: ${finalEssayScore}/100\n- **Nilai Agregasi (MC×60%+Essay×40%): ${finalAgregasi}/100** ✅\n\nSemua konten materi **${materiId || chatMateri?.elemenLabel || ''}** sekarang naik ke Level ${LEVEL_LABELS_WS[nxtLvl]}. Riwayat Level ${LEVEL_LABELS_WS[level]} masih bisa kamu lihat di panel kanan. Terus semangat! 💪`,
+                    time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                };
+                setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), levelUpMsg] }));
+            }
+        }
+    }, [activeKey, chatMateri, materiId, setLevelMap, setQuizHistory, setMsgsByKey]);
+
+    // Assign ref setelah fungsi siap — bridge untuk useWebSocket yang dipanggil lebih awal
+    essayDinilaiRef.current = handleEssayDinilaiPayload;
+
+    // V3.3: listen mock_ws_essay_dinilai (MSW dev mode)
+    // Di production: event datang dari WebSocket real via useWebSocket onEssayDinilai
+    useEffect(() => {
+        const handler = (e) => {
+            if (e.detail?.payload) handleEssayDinilaiPayload(e.detail.payload);
+        };
+        window.addEventListener('mock_ws_essay_dinilai', handler);
+        return () => window.removeEventListener('mock_ws_essay_dinilai', handler);
+    }, [handleEssayDinilaiPayload]);
+
     // Inject konten bacaan ke pesan chat setelah prefetch selesai (mengganti placeholder "Memuat...")
     useEffect(() => {
         const bacaanByLevel = kConf.bacaan?.byLevel;
@@ -1235,22 +1468,26 @@ const ChatSection = ({
     const mcLatestRecord = mcHistory.length > 0 ? mcHistory[mcHistory.length - 1] : null;
     const mcLatestScore = mcLatestRecord?.score ?? null;
 
-    /* ── Selesai Membaca → unlock chat + inject pertanyaan opening ── */
+    /* ── Selesai Membaca → unlock chat + minta Tim 5 generate pertanyaan pembuka ── */
     const handleSelesaiBaca = () => {
+        // Unlock input chat
         setReadDone(p => {
             const updated = { ...p, [activeKey]: true };
             try { localStorage.setItem('sr_read_done', JSON.stringify(updated)); } catch { }
             return updated;
         });
-        const ctq = `Bagus sekali! Sekarang kita berdiskusi — **menurutmu, di mana kamu pernah menjumpai konsep ${materiId} dalam kehidupan sehari-hari?** Ceritakan pengalamanmu! 🤔`;
+
+        // hardcode dari FE, tidak panggil Tim 5
+        const currentLevel = levelMap[activeKey] || 'low';
+        const LEVEL_LABELS = { low: 'Low', mid: 'Mid', high: 'High' };
         const openingMsg = {
-            id: Date.now(), role: 'ai',
-            text: ctq,
-            isOpening: true,
+            id: Date.now() + 1,
+            role: 'ai',
+            text: `Bagus! Kamu sudah selesai membaca materi **${materiId}** level **${LEVEL_LABELS[currentLevel]}**. 🎉\n\nSekarang saatnya memantapkan pemahamanmu:\n- 🃏 **Flashcard** — latihan hafalan aktif\n- 📝 **Quiz MC** — uji pemahaman konsep\n- ✍️ **Essay** — dalami dengan analisismu sendiri\n\nMulai dari mana dulu? Atau ada bagian dari bacaan tadi yang ingin kamu tanyakan? 😊`,
             time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            team: 'Tim 5',
         };
         setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), openingMsg] }));
+
     };
 
     /* ── Send message — FIX P0: pakai api/mentor sendMessage/streamMessage ── */
@@ -1263,7 +1500,8 @@ const ChatSection = ({
      *
      * @param {string} text        — teks pesan yang akan dikirim
      * @param {object} [opts]
-     * @param {string|null} [opts.hasil_quiz_id]  — V3.1: inject konteks_quiz ke POST /sesi
+     * @param {string|null} [opts.hasil_quiz_id]  — V3.2: dikirim di body POST /mentor/pesan
+     *                                              BE Tim 6 inject konteks quiz ke Tim 5
      * @param {boolean} [opts.suppressUserBubble] — true → jangan render user bubble (CTA opener)
      */
     const dispatchMentorMessage = async (text, opts = {}) => {
@@ -1302,7 +1540,10 @@ const ChatSection = ({
         const activeLevelForMentor = activeLevelRaw.charAt(0).toUpperCase() + activeLevelRaw.slice(1).toLowerCase();
         const atpForMentor = confContent[activeKey]?._atp || confContent[makeKey(chatMateri?.mapelId, chatMateri?.materiId)]?._atp || '';
 
-        // V3.1: hasil_quiz_id dari parameter (CTA flow) — clear store jika masih ada
+        // Bacaan level aktif — dikirim flat di konteks, Tim 5 gunakan sebagai referensi materi.
+        const kNow = confContent[activeKey] || confContent[makeKey(chatMateri?.mapelId, chatMateri?.materiId)] || {};
+        const lvl = (levelMap[activeKey] || chatMateri?.level || 'low').toLowerCase();
+        const bacaanKonteks = kNow.bacaan?.byLevel?.[lvl]?.slice(0, 3000) || '';
         const storeHasilQuizId = useStudentStore.getState().ctaHasilQuizId ?? null;
         if (storeHasilQuizId) useStudentStore.getState().clearCtaHasilQuizId();
         const effectiveHasilQuizId = hasil_quiz_id || storeHasilQuizId || null;
@@ -1320,9 +1561,11 @@ const ChatSection = ({
             context: {
                 emosi: currentEmosi,
                 progress: null,
+                publish_id: kNow._publishId || null,
+                bacaan: bacaanKonteks,
             },
-            // V3.1: inject hasil_quiz_id hanya jika CTA flow — ensureSesiForMentor akan
-            // membungkusnya menjadi konteks_quiz saat POST /sesi
+            // V3.2: hasil_quiz_id dikirim di body POST /mentor/pesan — bukan di POST /sesi
+            // BE Tim 6 akan lookup dan inject konteks quiz ke Tim 5 secara internal
             ...(effectiveHasilQuizId ? { hasil_quiz_id: effectiveHasilQuizId } : {}),
         };
 
@@ -1348,40 +1591,95 @@ const ChatSection = ({
                     }],
                 }));
                 setTyping(false);
-                cancelStreamRef.current = streamMessage(
-                    payload,
-                    (chunk) => {
-                        accumulated += chunk;
-                        setMsgsByKey(p => {
-                            const msgs = p[activeKey] || [];
-                            return {
-                                ...p,
-                                [activeKey]: msgs.map(m => m.id === streamingMsgId ? { ...m, text: accumulated } : m),
-                            };
-                        });
-                    },
-                    () => {
-                        // onDone
-                        cancelStreamRef.current = null;
-                        setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 80);
-                    },
-                    () => {
-                        // onError — tampilkan pesan fallback
-                        cancelStreamRef.current = null;
-                        setMsgsByKey(p => {
-                            const msgs = p[activeKey] || [];
-                            return {
-                                ...p,
-                                [activeKey]: msgs.map(m => m.id === streamingMsgId
-                                    ? { ...m, text: accumulated || '⚠️ Koneksi terputus. Coba kirim ulang pesanmu.' }
-                                    : m),
-                            };
-                        });
-                    },
-                );
+                cancelStreamRef.current = effectiveHasilQuizId
+                    // V3.3 REFACTOR 4: evaluasi quiz → endpoint terpisah POST /mentor/evaluasi/stream
+                    ? streamEvaluasi(
+                        {
+                            siswa_id: payload.siswa_id,
+                            mapel_id: payload.mapel_id,
+                            elemen_id: payload.elemen_id,
+                            elemen_label: payload.elemen_label,
+                            materi: payload.materi,
+                            materi_id: payload.materi_id,
+                            level: payload.level,
+                            atp: payload.atp,
+                            hasil_quiz_id: effectiveHasilQuizId,
+                        },
+                        (chunk) => {
+                            accumulated += chunk;
+                            setMsgsByKey(p => {
+                                const msgs = p[activeKey] || [];
+                                return {
+                                    ...p,
+                                    [activeKey]: msgs.map(m => m.id === streamingMsgId ? { ...m, text: accumulated } : m),
+                                };
+                            });
+                        },
+                        () => {
+                            // onDone
+                            cancelStreamRef.current = null;
+                            setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+                        },
+                        () => {
+                            // onError — tampilkan pesan fallback
+                            cancelStreamRef.current = null;
+                            setMsgsByKey(p => {
+                                const msgs = p[activeKey] || [];
+                                return {
+                                    ...p,
+                                    [activeKey]: msgs.map(m => m.id === streamingMsgId
+                                        ? { ...m, text: accumulated || '⚠️ Koneksi terputus. Coba kirim ulang pesanmu.' }
+                                        : m),
+                                };
+                            });
+                        },
+                    )
+                    // Chat normal → POST /mentor/pesan (tanpa hasil_quiz_id di V3.3)
+                    : streamMessage(
+                        payload,
+                        (chunk) => {
+                            accumulated += chunk;
+                            setMsgsByKey(p => {
+                                const msgs = p[activeKey] || [];
+                                return {
+                                    ...p,
+                                    [activeKey]: msgs.map(m => m.id === streamingMsgId ? { ...m, text: accumulated } : m),
+                                };
+                            });
+                        },
+                        () => {
+                            cancelStreamRef.current = null;
+                            setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 80);
+                        },
+                        () => {
+                            cancelStreamRef.current = null;
+                            setMsgsByKey(p => {
+                                const msgs = p[activeKey] || [];
+                                return {
+                                    ...p,
+                                    [activeKey]: msgs.map(m => m.id === streamingMsgId
+                                        ? { ...m, text: accumulated || '⚠️ Koneksi terputus. Coba kirim ulang pesanmu.' }
+                                        : m),
+                                };
+                            });
+                        },
+                    );
             } else {
                 // Non-streaming — tunggu full response (atau MSW mock response)
-                const res = await sendMessage(payload);
+                // V3.3 REFACTOR 4: route ke sendEvaluasi jika ada hasil_quiz_id
+                const res = effectiveHasilQuizId
+                    ? await sendEvaluasi({
+                        siswa_id: payload.siswa_id,
+                        mapel_id: payload.mapel_id,
+                        elemen_id: payload.elemen_id,
+                        elemen_label: payload.elemen_label,
+                        materi: payload.materi,
+                        materi_id: payload.materi_id,
+                        level: payload.level,
+                        atp: payload.atp,
+                        hasil_quiz_id: effectiveHasilQuizId,
+                    })
+                    : await sendMessage(payload);
                 const aiReply = {
                     id: Date.now() + 1,
                     role: 'ai',
@@ -1426,8 +1724,9 @@ const ChatSection = ({
      * Flow:
      *   1. Bangun opener message dari data quiz
      *   2. Render user-visible trigger bubble (badge "📊 Evaluasi Kuis")
-     *   3. Call dispatchMentorMessage() → POST /sesi (+ konteks_quiz jika ada hasil_quiz_id)
-     *      → POST /mentor/pesan atau SSE stream
+     *   3. Call dispatchMentorMessage() → reuse sesi_id yang sudah ada
+     *      → POST /mentor/pesan dengan hasil_quiz_id di body
+     *      → BE Tim 6 inject konteks quiz ke Tim 5 secara internal
      *   4. AI mentor merespons dengan analisis quiz kontekstual
      *
      * Race-condition guard: analysisProcessedRef mencegah double-fire.
@@ -1545,7 +1844,6 @@ const ChatSection = ({
         const { type, score, correct, total, wrongItems, answers, essayAnswers, soalSnapshot, kkm, hasil_quiz_id } = result;
         const KKM_BARU = kkm ?? KKM_AGREGASI;
 
-        // V3.1: simpan hasil_quiz_id ke store untuk CTA "Tanya Kak Nusa"
         if (hasil_quiz_id) {
             useStudentStore.getState().setCtaHasilQuizId(hasil_quiz_id);
         }
@@ -1563,6 +1861,8 @@ const ChatSection = ({
             wrongItems,
             essayAnswers,
             kkm: KKM_BARU,
+            // Wajib untuk CTA "Tanya Kak Nusa" dari modal riwayat — jangan hanya andalkan store global
+            hasil_quiz_id: hasil_quiz_id ?? null,
         };
 
         setQuizHistory(p => {
@@ -1651,7 +1951,6 @@ const ChatSection = ({
                     fromLevel: currentLevelForRecord, toLevel: nxtLvl,
                     text: `🎉 Selamat! Kamu berhasil naik ke **Level ${LEVEL_LABELS_LOCAL[nxtLvl]}**!\n\n📊 **Rekap Nilai:**\n- Pilihan Ganda: ${mcS}/100\n- Essay: ${essayS}/100\n- **Nilai Agregasi (MC×60%+Essay×40%): ${aggregatedScore}/100** ✅\n\nSemua konten materi **${materiId}** sekarang naik ke Level ${LEVEL_LABELS_LOCAL[nxtLvl]}. Riwayat Level ${LEVEL_LABELS_LOCAL[currentLevelForRecord]} masih bisa kamu lihat di panel kanan. Terus semangat! 💪`,
                     time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-                    team: 'Tim 5',
                 };
                 setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), levelUpMsg] }));
             }
@@ -2536,8 +2835,10 @@ const ChatSection = ({
                                         <span>💬 {isMcResult ? 'Bahas soal yang salah' : 'Minta feedback'} dengan <strong>Kak Nusa</strong></span>
                                         <button
                                             onClick={() => {
-                                                // V3.1: ambil hasil_quiz_id dari store untuk CTA flow
-                                                const hasilQuizId = useStudentStore.getState().ctaHasilQuizId ?? null;
+                                                // Prioritas: ID pada baris riwayat (benar per MC/Essay). Fallback: store (baru submit).
+                                                const hasilQuizId = result.hasil_quiz_id
+                                                    ?? useStudentStore.getState().ctaHasilQuizId
+                                                    ?? null;
                                                 useStudentStore.getState().setQuizAnalysisNeeded({
                                                     quizType: result.type || 'mc',
                                                     score: result.score,

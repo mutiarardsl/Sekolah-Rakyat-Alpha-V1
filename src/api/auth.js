@@ -42,10 +42,10 @@ export async function forgotPassword(email) {
   return v3.post("/auth/lupa-password", { email });
 }
 
-export async function aktivasiAkun({ password, user_id, mapel_ids }) {
+// CONTRACT V3.6 §8 POST /auth/aktivasi
+export async function aktivasiAkun({ password_baru, mapel_ids }) {
   const data = await v3.post("/auth/aktivasi", {
-    password,
-    user_id,
+    password_baru,
     mapel_ids,
   });
   _saveSession(data);

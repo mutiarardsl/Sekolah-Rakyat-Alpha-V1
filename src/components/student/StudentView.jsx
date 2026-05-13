@@ -16,7 +16,7 @@ import { Btn } from '../shared/UI';
 import ChangePasswordModal from '../shared/ChangePasswordModal';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { CONF_CONTENT_INIT } from '../../data/masterData';
+import { CONF_CONTENT_INIT, ADMIN_KELAS_INIT } from '../../data/masterData';
 import { getGame, recordGameSelesai } from '../../api/game';
 import { useWebcamEmotion } from '../../hooks/useWebcamEmotion';
 import DashboardSection from './sections/DashboardSection';
@@ -573,7 +573,9 @@ const StudentView = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: C.white, fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.nama || 'Siswa'}</div>
                   <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.xs, marginTop: 1 }}>SR Kota Malang</div>
-                  <div style={{ color: 'rgba(255,255,255,.35)', fontSize: 10 }}>Kelas {user?.kelas_id || 'X-1'}</div>
+                  <div style={{ color: 'rgba(255,255,255,.35)', fontSize: 10 }}>
+                    Kelas {ADMIN_KELAS_INIT.find(k => k.id === user?.kelas_id)?.nama || 'X-1'}
+                  </div>
                 </div>
                 <span style={{ color: 'rgba(255,255,255,.3)', fontSize: 30 }}>›</span>
               </div>

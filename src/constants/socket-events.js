@@ -37,6 +37,15 @@ export const SOCKET_EVENTS = Object.freeze({
 
     // Alerts
     SMART_ALERT: 'smart_alert',
+
+    // V3.3 & V3.6 §22.1.2 — Essay async grading (dikirim ke WS guru & WS siswa)
+    ESSAY_DINILAI: 'essay_dinilai',
+});
+
+// ── WebSocket channels (CONTRACT V3.6 §22.1) ──────────────────────────
+export const WS_CHANNELS = Object.freeze({
+    MONITORING: 'monitoring', // wss://.../ws/monitoring (guru)
+    SISWA: 'siswa',           // wss://.../ws/siswa (siswa)
 });
 
 // ── Client → Server ────────────────────────────────────────────────────

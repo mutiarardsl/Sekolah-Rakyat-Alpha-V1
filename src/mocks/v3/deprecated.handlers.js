@@ -103,6 +103,13 @@ const authDeprecations = [
     ['/auth/forgot-password', '/auth/lupa-password'],
 ];
 
+
+// ── admin elemen legacy ─────────────────────────────────────────────────
+// CONTRACT V3.5 §9: /admin/elemen (flat) → /admin/mapel/:mapel_id/elemen (nested)
+const adminDeprecations = [
+    ['/admin/elemen', '/admin/mapel/:mapel_id/elemen'],
+];
+
 function buildHandlers(deprecations) {
     return deprecations.flatMap(([legacy, v3]) => [
         http.get(url(legacy), () => deprecatedResponse(legacy, v3)),
@@ -121,4 +128,5 @@ export const deprecatedHandlers = [
     ...buildHandlers(summaryDeprecations),
     ...buildHandlers(guruDeprecations),
     ...buildHandlers(authDeprecations),
+    ...buildHandlers(adminDeprecations), // CONTRACT V3.5 §9
 ];

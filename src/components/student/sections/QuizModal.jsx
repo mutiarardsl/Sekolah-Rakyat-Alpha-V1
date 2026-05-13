@@ -23,7 +23,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Btn } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
-import { submitQuiz } from '../../../api/content'; // FIX P1: simpan hasil quiz ke backend
+import { submitQuiz, submitQuizMC, submitQuizEssay } from '../../../api/content'; // FIX P1: simpan hasil quiz ke backend | V3.3: split MC/Essay
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -345,6 +345,7 @@ const QuizModal = ({
   // Di produksi: bisa datang via webhook atau polling setelah beberapa detik
   const [essayScore, setEssayScore] = useState(null); // 0–100 dari RAG
   const [essayScoreLoading, setEssayScoreLoading] = useState(false);
+  const [essayState, setEssayState] = useState('idle'); // V3.3: idle | pending | processing | completed | failed
 
   // Reset semua state setiap kali modal dibuka — ini fix untuk bug soal tidak reset
   useEffect(() => {
@@ -354,6 +355,7 @@ const QuizModal = ({
     setSubmitted(false);
     setEssayScore(null);
     setEssayScoreLoading(false);
+    setEssayState('idle'); // V3.3
     if (bodyRef.current) bodyRef.current.scrollTop = 0;
 
     // Soal baru: acak urutan. Soal lama (ulangi): pakai snapshot persis
@@ -362,7 +364,7 @@ const QuizModal = ({
     } else if (Array.isArray(apiSoal) && apiSoal.length > 0) {
       // FIX T2: API soal tersedia → normalisasi ke shape internal QuizModal lalu acak
       // API quiz_pg shape:    { soal, pilihan: string[], jawaban: number(index) }  — 10 soal
-      // API quiz_essay shape: { soal, rubrik, placeholder }                         — 5 soal
+      // API quiz_essay shape: { soal, rubrik }                         — 5 soal
       // Fallback s.pertanyaan dipertahankan untuk kompatibilitas backward (BE mungkin beda key)
       const normalized = apiSoal.map((s, idx) => {
         if (quizType === 'essay') {
@@ -370,7 +372,6 @@ const QuizModal = ({
           return {
             id: s.id ?? idx + 1,
             soal: s.soal || s.pertanyaan || '',
-            placeholder: s.placeholder || 'Tulis jawabanmu di sini...',
             rubrik: s.rubrik || null,
           };
         }
@@ -429,17 +430,17 @@ const QuizModal = ({
 
       setSubmitted(true);
 
-      // FIX P1: kirim skor MC ke backend via POST /content/quiz/submit
+      // FIX P1: kirim skor MC ke backend via POST /siswa/:id/quiz/mc (V3.3)
       // Fire-and-forget — tidak block UI jika API gagal
       const siswaId = chatMateri?.siswaId || 'usr_001';
       const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
-      // V3.1: capture hasil_quiz_id dari response untuk CTA "Tanya Kak Nusa"
-      submitQuiz({
+      // V3.3 REFACTOR 1: gunakan submitQuizMC (sync, nilai langsung tersedia)
+      submitQuizMC({
         siswa_id: siswaId,
-        publish_id: chatMateri?.publishId || '',      // ID paket konten asal (dari PaketKonten)
+        publish_id: chatMateri?.publishId || '',
         mapel_id: chatMateri?.mapelId || '',
-        elemen_id: chatMateri?.elemenId || '',       // WAJIB — selalu ada
-        elemen_label: chatMateri?.elemenLabel || chatMateri?.mapelLabel || '',  // FIX: pakai elemenLabel bukan mapelLabel
+        elemen_id: chatMateri?.elemenId || '',
+        elemen_label: chatMateri?.elemenLabel || chatMateri?.mapelLabel || '',
         materi: chatMateri?.materiLabel || null,
         materi_id: materiId || null,
         quiz_type: 'mc',
@@ -482,58 +483,78 @@ const QuizModal = ({
         });
       });
     } else {
-      // ── REVISI FASE 3: Essay submit + terima skor RAG ──────────────
+      // ── V3.3 REFACTOR 1: Essay submit — async via POST /siswa/:id/quiz/essay ──────────────
       // 1. Tampilkan submitted segera (UX: tidak blokir user)
       setSubmitted(true);
       setEssayScoreLoading(true);
+      setEssayState('pending'); // V3.3
 
       const siswaId = chatMateri?.siswaId || 'usr_001';
       const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
 
       try {
-        // 2. POST ke backend — mock langsung kembalikan essay_score dari RAG
-        // Di produksi: backend antre ke RAG pipeline, essay_score datang async
-        const response = await submitQuiz({
+        // 2. POST ke backend — V3.3: essay async, nilai datang via WebSocket essay_dinilai
+        const response = await submitQuizEssay({
           siswa_id: siswaId,
           publish_id: chatMateri?.publishId || '',
           mapel_id: chatMateri?.mapelId || '',
           elemen_id: chatMateri?.elemenId || '',
-          elemen_label: chatMateri?.elemenLabel || chatMateri?.mapelLabel || '',  // FIX: pakai elemenLabel bukan mapelLabel
+          elemen_label: chatMateri?.elemenLabel || chatMateri?.mapelLabel || '',
           materi: chatMateri?.materiLabel || null,
           materi_id: materiId || null,
           quiz_type: 'essay',
           level: levelCapitalized,
           answers: { ...essayAnswers },
-          score: 0, // skor awal 0, dinilai RAG secara async
+          score: 0,
         });
 
-        // 3. Ambil essay_score dan hasil_quiz_id dari response
-        const ragEssayScore = response?.essay_score ?? null;
-        // V3.1: opaque ID untuk CTA "Tanya Kak Nusa"
+        // 3. V3.3: response menunggu_penilaian: true — nilai datang via WS essay_dinilai
         const hasilQuizId = response?.hasil_quiz_id ?? null;
-        setEssayScore(ragEssayScore);
-        setEssayScoreLoading(false);
 
-        onSubmit?.({
-          type: 'essay',
-          // essay_score: skor dari RAG (0–100). Null = masih pending (produksi)
-          score: ragEssayScore,
-          materiId: materiId || chatMateri?.mapelLabel,
-          mapelLabel: chatMateri?.mapelLabel,
-          essayAnswers: { ...essayAnswers },
-          soalSnapshot: essaySoal,
-          // REVISI FASE 3: flag agar ChatSection tahu ini essay dan perlu agregasi
-          isEssay: true,
-          kkm: KKM,
-          // Naik level dari essay ditentukan ChatSection setelah agregasi dengan MC
-          passed: ragEssayScore != null ? ragEssayScore >= KKM : false,
-          // V3.1: opaque ID untuk CTA "Tanya Kak Nusa"
-          hasil_quiz_id: hasilQuizId,
-        });
+        if (response?.menunggu_penilaian) {
+          // V3.3 Async path — tampilkan "Sedang dinilai..." dan tunggu WS essay_dinilai
+          setEssayState('processing');
+          setEssayScoreLoading(true);
+          // Tetap panggil onSubmit agar ChatSection tahu submit berhasil
+          onSubmit?.({
+            type: 'essay',
+            score: null,              // null — menunggu penilaian Tim 3
+            quizType: 'essay',
+            materiId: materiId || chatMateri?.mapelLabel,
+            mapelLabel: chatMateri?.mapelLabel,
+            essayAnswers: { ...essayAnswers },
+            soalSnapshot: essaySoal,
+            isEssay: true,
+            kkm: KKM,
+            passed: false,           // false sampai WS essay_dinilai datang
+            hasil_quiz_id: hasilQuizId,
+            menunggu_penilaian: true, // V3.3: flag untuk ChatSection
+          });
+        } else {
+          // Sync fallback (jika BE langsung kembalikan nilai)
+          const ragEssayScore = response?.score ?? null;
+          setEssayScore(ragEssayScore);
+          setEssayScoreLoading(false);
+          setEssayState('completed'); // V3.3
+          onSubmit?.({
+            type: 'essay',
+            score: ragEssayScore,
+            quizType: 'essay',
+            materiId: materiId || chatMateri?.mapelLabel,
+            mapelLabel: chatMateri?.mapelLabel,
+            essayAnswers: { ...essayAnswers },
+            soalSnapshot: essaySoal,
+            isEssay: true,
+            kkm: KKM,
+            passed: ragEssayScore != null ? ragEssayScore >= KKM : false,
+            hasil_quiz_id: hasilQuizId,
+          });
+        }
       } catch {
         // Fallback jika API gagal — essay tetap tersimpan lokal
         setEssayScoreLoading(false);
         setEssayScore(null);
+        setEssayState('failed'); // V3.3
         onSubmit?.({
           type: 'essay',
           score: null,
@@ -544,7 +565,6 @@ const QuizModal = ({
           isEssay: true,
           kkm: KKM,
           passed: false,
-          // V3.1: null jika API gagal
           hasil_quiz_id: null,
         });
       }
@@ -786,7 +806,7 @@ const QuizModal = ({
                       <textarea
                         value={val}
                         onChange={e => setEssayAnswers(prev => ({ ...prev, [s.id]: e.target.value }))}
-                        placeholder={s.placeholder || 'Tulis jawabanmu di sini...'}
+                        placeholder="Tulis jawabanmu di sini..."
                         style={{
                           width: '100%', padding: '12px 14px',
                           border: `1.5px solid ${val.length > 0 ? (isGood ? C.green : C.tealXL) : C.tealXL}`,
@@ -932,8 +952,11 @@ const QuizModal = ({
                 Jawaban Essay Terkirim
               </div>
               {/* Nilai quiz essay — tampilkan skor tanpa /100 */}
-              {essayScoreLoading ? (
-                <div style={{ fontSize: FS.sm, color: C.teal, marginBottom: 14 }}>⏳ Sedang dinilai...</div>
+              {/* V3.3: gunakan essayState untuk state yang lebih granular */}
+              {(essayScoreLoading || essayState === 'processing') ? (
+                <div style={{ fontSize: FS.sm, color: C.teal, marginBottom: 14 }}>⏳ Sedang dinilai oleh sistem...</div>
+              ) : essayState === 'failed' ? (
+                <div style={{ fontSize: FS.sm, color: C.amber, marginBottom: 14 }}>⚠️ Gagal mengirim, coba lagi.</div>
               ) : essayScore != null ? (
                 <div style={{ fontWeight: 800, fontSize: 40, color: essayScore >= KKM ? C.green : C.amber, marginBottom: 14 }}>
                   {essayScore}

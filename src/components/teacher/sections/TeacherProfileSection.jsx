@@ -135,7 +135,8 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
   })).filter(m => m.kelasList.length > 0);
 
   const { updateUser } = useAuth();
-  const [avatarSrc, setAvatarSrc] = useState(guru?.avatar || null);
+  const isAvatarUrl = (a) => typeof a === 'string' && (a.startsWith('http') || a.startsWith('data:') || a.startsWith('/'));
+  const [avatarSrc, setAvatarSrc] = useState(isAvatarUrl(guru?.avatar) ? guru.avatar : null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState(null);
   const [showChangePwd, setShowChangePwd] = useState(false);
@@ -189,7 +190,7 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
       }
     } catch {
       setAvatarError('Gagal mengupload foto. Coba lagi.');
-      setAvatarSrc(guru?.avatar || null);
+      setAvatarSrc(isAvatarUrl(guru?.avatar) ? guru.avatar : null);
     } finally {
       setAvatarUploading(false);
     }
@@ -221,7 +222,21 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ position: 'relative', flexShrink: 0 }}>
               {avatarSrc ? (
-                <img src={avatarSrc} alt="Foto profil" style={{ width: 80, height: 80, borderRadius: '50%', objectFit: 'cover', border: '3px solid rgba(255,255,255,.3)', boxShadow: '0 4px 16px rgba(0,0,0,.3)', opacity: avatarUploading ? 0.6 : 1 }} />
+                <img
+                  src={avatarSrc}
+                  alt="Foto profil"
+                  style={{
+                    display: 'block',
+                    flexShrink: 0,
+                    width: 80,
+                    height: 80,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    border: '3px solid rgba(255,255,255,.3)',
+                    boxShadow: '0 4px 16px rgba(0,0,0,.3)',
+                    opacity: avatarUploading ? 0.6 : 1
+                  }}
+                />
               ) : (
                 <div style={{
                   width: 80, height: 80, borderRadius: '50%',

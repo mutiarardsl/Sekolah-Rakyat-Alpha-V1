@@ -103,47 +103,6 @@ const fmtDurasi = (jamFloat) => {
   return `${num.toFixed(1)} jam`;
 };
 
-/* ── Helper: hitung streak dari riwayat ──────────────────────────────────
- * Streak = hari belajar berturut-turut mundur dari tanggal terakhir belajar.
- * Field riwayat[].tanggal format: "Senin, 16 Mar 2026"
- */
-const hitungStreak = (riwayat) => {
-  if (!riwayat || riwayat.length === 0) return 0;
-
-  // Parse semua tanggal unik dari riwayat
-  const bulanMap = {
-    Jan: 0, Feb: 1, Mar: 2, Apr: 3, Mei: 4, Jun: 5,
-    Jul: 6, Agu: 7, Sep: 8, Okt: 9, Nov: 10, Des: 11,
-  };
-
-  const uniqueDays = new Set();
-  riwayat.forEach(r => {
-    // Format: "Senin, 16 Mar 2026" → ambil bagian setelah koma
-    const parts = (r.tanggal || '').split(', ');
-    if (parts.length < 2) return;
-    const [tgl, bln, thn] = parts[1].split(' ');
-    if (!tgl || !bln || !thn) return;
-    const dateKey = `${thn}-${bulanMap[bln]}-${parseInt(tgl, 10)}`;
-    uniqueDays.add(dateKey);
-  });
-
-  // Urutkan descending
-  const sorted = Array.from(uniqueDays)
-    .map(k => { const [y, m, d] = k.split('-'); return new Date(+y, +m, +d); })
-    .sort((a, b) => b - a);
-
-  if (sorted.length === 0) return 0;
-
-  let streak = 1;
-  for (let i = 1; i < sorted.length; i++) {
-    const diffMs = sorted[i - 1] - sorted[i];
-    const diffHari = Math.round(diffMs / 86400000);
-    if (diffHari === 1) streak++;
-    else break;
-  }
-  return streak;
-};
-
 const getGreeting = () => {
   const h = new Date().getHours();
   if (h < 11) return { text: 'Selamat Pagi', emoji: '🌤️' };
@@ -182,7 +141,7 @@ const BellIcon = ({ size = 20, color = 'currentColor' }) => (
 
 /* ── NotifikasiBell — icon bell + dropdown panel ──────────────────────── */
 const NotifikasiBell = ({ siswaId }) => {
-  // FIX P1: load rekomendasi dari GET /guru/rekomendasi — bukan dummy hardcoded
+  // CONTRACT V3.6 §11: load notifikasi dari GET /siswa/:id/notifikasi
   const [notifs, setNotifs] = useState(NOTIFIKASI_GURU_INIT); // seed dengan dummy sambil API load
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
@@ -223,7 +182,7 @@ const NotifikasiBell = ({ siswaId }) => {
     return diffHari === 1 ? 'Kemarin' : `${diffHari} hari lalu`;
   };
 
-  // PATCH /guru/rekomendasi/:id/baca — fire-and-forget, state lokal tetap update meski API gagal
+  // CONTRACT V3.6 §21: PATCH /notifikasi/:id/baca — fire-and-forget, state lokal tetap update meski API gagal
   const markRead = (id) => {
     setNotifs(p => p.map(n => n.id === id ? { ...n, dibaca: true } : n));
     markRekomendasiBaca(id).catch(() => {
@@ -713,7 +672,7 @@ const DashboardSection = ({ progressData, setActivePage, openChatWithWebcam, pre
     }, 0);
   })();
   const totalScore = (progressData?.total_poin_quiz ?? localQuizScore) || apiProgress?.total_poin_quiz || 0;
-  const streakDays = hitungStreak(riwayat) || apiProgress?.streak_hari || 0;
+  const streakDays = apiProgress?.streak_hari ?? 0
   const localSesiHours = riwayat.reduce((s, r) => s + (r.durasi || 0), 0).toFixed(1);
   const totalSesiHours = localSesiHours || (apiProgress ? (apiProgress.total_waktu_menit / 60).toFixed(1) : '0.0');
   // REVISI FASE 3: localAvgQuiz = rata-rata agregasi (MC 70% + Essay 30%) per materi+level

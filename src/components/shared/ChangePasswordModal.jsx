@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { Btn } from './UI';
-import { changePassword } from '../../api/auth'; // FIX: sambungkan ke PUT /auth/change-password
+import { changePassword } from '../../api/auth'; // CONTRACT V3.6 §8 PATCH /auth/password
 
 /* ── Field diangkat ke level modul agar tidak di-recreate tiap render ── */
 const Field = ({ k, label, placeholder, value, showPwd, error, onChange, onToggleShow }) => (
@@ -71,7 +71,7 @@ const ChangePasswordModal = ({ role = "siswa", userName = "", onClose, onSuccess
     const e = validate(); if (Object.keys(e).length) { setErrors(e); return; }
     setLoading(true);
     try {
-      // FIX: panggil PUT /auth/change-password — bukan setTimeout dummy
+      // CONTRACT V3.6 §8: PATCH /auth/password { password_lama, password_baru }
       await changePassword({ old_password: form.current, new_password: form.next });
       setSuccess(true);
       setTimeout(() => { onSuccess?.(); onClose(); }, 1500);

@@ -9,7 +9,7 @@
  *   Step 1: Ganti password (min 8 karakter) — disimpan sementara di state
  *   Step 2: Pilih 3 mata pelajaran
  *     → Klik "Mulai Belajar" → 1 request atomik POST /auth/aktivasi
- *        { user_id, password, mapel_ids }
+ *        { password_baru, mapel_ids } — CONTRACT V3.6 §8
  *     → is_first_login: false → masuk dashboard siswa
  *
  * PENTING: Aktivasi bersifat atomik. Password + mapel_ids dikirim
@@ -70,8 +70,8 @@ export default function ActivasiPage() {
     });
 
     /* ── Step 1: Validasi Password (simpan di state, belum kirim ke API) ── */
-    // Sesuai contract: aktivasi bersifat atomik — password + mapel_ids dikirim
-    // sekaligus di Step 2 via POST /auth/aktivasi { user_id, password, mapel_ids }.
+    // CONTRACT V3.6 §8: aktivasi atomik — password_baru + mapel_ids dikirim
+    // sekaligus di Step 2 via POST /auth/aktivasi { password_baru, mapel_ids }.
     const handleSetPassword = () => {
         const e = {};
         if (pass.length < 8) e.pass = 'Password minimal 8 karakter';
@@ -88,10 +88,9 @@ export default function ActivasiPage() {
 
         setLoading(true); setError('');
         try {
-            // 1 request atomik: password + mapel_ids bersamaan (sesuai contract)
+            // 1 request atomik: password_baru + mapel_ids bersamaan (CONTRACT V3.6 §8)
             const result = await aktivasiAkun({
-                user_id: user?.id,
-                password: pass,
+                password_baru: pass,
                 mapel_ids: selectedMapelsDraft,
             });
             // Simpan 3 mapel pilihan ke store lokal untuk rekomendasi awal di FE

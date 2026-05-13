@@ -719,7 +719,7 @@ const MonitoringSection = ({
   downloadModal, setDownloadModal,
   saveRec, barTooltip, setBarTooltip, selectedStudent, setSelectedStudent,
 }) => {
-  const { liveStudents } = useWebSocket({ kelasId: activeClass, guruId: teacher?.id || 'g1', enabled: true });
+  const { liveStudents } = useWebSocket({ kelasId: activeClass, mapelId: teacherMapel?.id || null, guruId: teacher?.id || 'g1', enabled: true });
   const { isMobile, isTablet } = useBreakpoint();
   const isCompact = isMobile || isTablet;
   const [smartInfoOpen, setSmartInfoOpen] = useState(false);

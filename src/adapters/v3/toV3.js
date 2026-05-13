@@ -9,12 +9,14 @@ export function toKontenGeneratePayload(raw) {
   };
 }
 
+// V3.3: include konten_id di setiap item konten_list (REFACTOR 2)
 export function toKontenPublishPayload(payload) {
   const konten_list = (payload.konten_list || []).map((c) => {
     const { approved, disetujui, ...item } = c;
     void approved;
     return {
       ...item,
+      konten_id: c.konten_id ?? c.id ?? null,  // V3.3: wajib disertakan
       disetujui:
         typeof disetujui === "boolean"
           ? disetujui

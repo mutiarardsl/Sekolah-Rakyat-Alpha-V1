@@ -16,7 +16,7 @@ import {
 function fallbackProgress(sid) {
   return {
     siswa_id: sid,
-    streak_hari: 3,
+    streak_hari: 0,
     total_topik: 6,
     total_poin_quiz: 260,
     total_durasi_menit: 180,
@@ -146,17 +146,17 @@ export async function submitQuiz(payload) {
     () =>
       v3.post(`/siswa/${encodeURIComponent(sid)}/quiz`, apiBody),
     () =>
-      ({
-        disimpan: true,
-        tipe: payload.quiz_type === "essay" ? "essay" : "mc",
-        nilai: payload.score ?? 0,
-        nilai_essay: null,
-        elemen_id: payload.elemen_id,
-        level: String(payload.level || "low").toLowerCase(),
-        menunggu_agregasi: payload.quiz_type === "essay",
-        kkm: 75,
-        dicatat_at: new Date().toISOString(),
-      }),
+    ({
+      disimpan: true,
+      tipe: payload.quiz_type === "essay" ? "essay" : "mc",
+      nilai: payload.score ?? 0,
+      nilai_essay: null,
+      elemen_id: payload.elemen_id,
+      level: String(payload.level || "low").toLowerCase(),
+      menunggu_agregasi: payload.quiz_type === "essay",
+      kkm: 75,
+      dicatat_at: new Date().toISOString(),
+    }),
   );
   return LEG.mapQuizSubmitV3(raw);
 }
@@ -196,10 +196,10 @@ export async function getPretestSoal(body) {
   const raw = await runHybrid(
     () => v3.post("/pretest/soal", body),
     () =>
-      ({
-        sesi_pretest_id: body.sesi_pretest_id || `pretest_fallback_${Date.now()}`,
-        soal: FIXTURE_PRETEST_SOAL,
-      }),
+    ({
+      sesi_pretest_id: body.sesi_pretest_id || `pretest_fallback_${Date.now()}`,
+      soal: FIXTURE_PRETEST_SOAL,
+    }),
   );
   return LEG.mapPretestSoalV3(raw);
 }
@@ -216,12 +216,12 @@ export async function submitPretestJawaban(body) {
   const data = await runHybrid(
     () => v3.post("/pretest/submit", clean),
     () =>
-      ({
-        level: "low",
-        nilai: 50,
-        benar: 2,
-        total: 5,
-      }),
+    ({
+      level: "low",
+      nilai: 50,
+      benar: 2,
+      total: 5,
+    }),
   );
   return LEG.mapPretestSubmitLegacy(data);
 }
@@ -231,21 +231,61 @@ export async function generateContent(payload) {
   const data = await runHybrid(
     () => v3.post("/konten/generate", TO.toKontenGeneratePayload(payload)),
     () =>
-      ({
-        tipe: payload.tipe,
-        level: payload.level,
-        content: payload.tipe === "mindmap"
-          ? { nodes: [{ id: "n1", label: "Mindmap mock", parent_id: null }] }
-          : payload.tipe?.includes?.("quiz") ? { soal: [] }
+    ({
+      konten_id: `konten_mock_${payload.tipe}_${payload.level || "none"}_${Date.now()}`,
+      tipe: payload.tipe,
+      level: payload.level,
+      content: payload.tipe === "mindmap"
+        ? { nodes: [{ id: "n1", label: "Mindmap mock", parent_id: null }] }
+        : payload.tipe?.includes?.("quiz") ? { soal: [] }
           : { text: "# Konten Mock\nPlaceholder." },
-        dibuat_at: new Date().toISOString(),
-      }),
+      dibuat_at: new Date().toISOString(),
+    }),
   );
   return {
+    konten_id: data.konten_id ?? null,   // V3.3: wajib disimpan di state guru untuk regenerate
     tipe: data.tipe,
     level: data.level,
     content: data.content,
     generated_at: data.dibuat_at ?? data.generated_at ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * Regenerate satu konten spesifik via konten_id.
+ * Dipanggil saat guru klik "Ulangi" di panel review.
+ * POST /konten/regenerate
+ * REFACTOR 2: Konten Regenerate — Integration Guide V3.3 §5 & §10.2
+ */
+export async function regenerateContent(payload) {
+  const data = await runHybrid(
+    () => v3.post("/konten/regenerate", {
+      konten_id: payload.konten_id,
+      mapel_id: payload.mapel_id,
+      elemen_id: payload.elemen_id,
+      elemen_label: payload.elemen_label,
+      materi: payload.materi ?? null,
+      materi_id: payload.materi_id ?? null,
+      jenjang: payload.jenjang,
+      atp: payload.atp ?? "",
+      tipe: payload.tipe,
+      level: payload.level ?? null,
+      instruksi_revisi: payload.instruksi_revisi ?? "",
+    }),
+    () => ({
+      konten_id: payload.konten_id,     // tetap sama
+      tipe: payload.tipe,
+      level: payload.level,
+      content: { text: `# Konten Mock (Regenerated)\nPlaceholder diperbarui.` },
+      dibuat_at: new Date().toISOString(),
+    }),
+  );
+  return {
+    konten_id: data.konten_id,          // tetap sama — hanya content yang berubah
+    tipe: data.tipe,
+    level: data.level,
+    content: data.content,              // INI yang berubah
+    generated_at: data.dibuat_at ?? new Date().toISOString(),
   };
 }
 
@@ -254,11 +294,11 @@ export async function publishKonten(payload) {
     () =>
       v3.post("/konten/publish", TO.toKontenPublishPayload(payload)),
     async () =>
-      ({
-        publish_id: `pub_local_${Date.now()}`,
-        kelas_ids: payload.kelas_id ? [payload.kelas_id].flat() : ["x1"],
-        dipublish_at: new Date().toISOString(),
-      }),
+    ({
+      publish_id: `pub_local_${Date.now()}`,
+      kelas_ids: payload.kelas_id ? [payload.kelas_id].flat() : ["x1"],
+      dipublish_at: new Date().toISOString(),
+    }),
   );
   const kel = data.kelas_ids ?? (payload.kelas_id ? [payload.kelas_id] : []);
   return {
@@ -294,11 +334,11 @@ export async function generateSummary(payload) {
   const data = await runHybrid(
     () => v3.post(`/sesi/${sesiId}/summary`, mapped),
     () =>
-      ({
-        teks: `Ringkasan mock untuk ${payload.siswa_id}.`,
-        dibuat_at: new Date().toISOString(),
-        berlaku_hingga: new Date(Date.now() + 86400000).toISOString(),
-      }),
+    ({
+      teks: `Ringkasan mock untuk ${payload.siswa_id}.`,
+      dibuat_at: new Date().toISOString(),
+      berlaku_hingga: new Date(Date.now() + 86400000).toISOString(),
+    }),
   );
   return LEG.mapSummaryV3(data);
 }

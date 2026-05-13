@@ -107,7 +107,7 @@ const randomDummyEvent = () => {
   return { type, siswa, payload: payloads[type], timestamp: tsNow() };
 };
 
-export function useWebSocket({ kelasId, guruId, enabled = true }) {
+export function useWebSocket({ kelasId, mapelId, guruId, enabled = true, onEssayDinilai }) {
   const [connected, setConnected] = useState(false);
   const [wsStatus, setWsStatus] = useState('idle');
   const [events, setEvents] = useState([]);
@@ -124,6 +124,11 @@ export function useWebSocket({ kelasId, guruId, enabled = true }) {
     if (!event?.type || !event?.siswa?.id) return;
 
     setEvents(prev => [event, ...prev].slice(0, 60));
+
+    // V3.3: essay_dinilai callback — invoke sebelum setLiveStudents
+    if (event.type === SOCKET_EVENTS.ESSAY_DINILAI) {
+      onEssayDinilai?.(event.payload, event.siswa);
+    }
 
     setLiveStudents(prev => {
       const cur = prev[event.siswa.id] || { ...event.siswa };
@@ -174,6 +179,12 @@ export function useWebSocket({ kelasId, guruId, enabled = true }) {
 
         case SOCKET_EVENTS.SMART_ALERT:
           // Diteruskan ke events list — UI MonitoringSection yang render
+          break;
+
+        case SOCKET_EVENTS.ESSAY_DINILAI:
+          // V3.3: Push notifikasi nilai essay selesai — callback ke komponen yang subscribe
+          // onEssayDinilai dipanggil di level hook, komponen handle update UI
+          // (REFACTOR 5: WebSocket essay_dinilai)
           break;
 
         default:
@@ -232,8 +243,10 @@ export function useWebSocket({ kelasId, guruId, enabled = true }) {
   const connectWS = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
+    // CONTRACT V3.6 §22.1.1: wss://.../ws/monitoring?kelas_id=&mapel_id=&token=
     const token = localStorage.getItem('sr_access_token');
-    const wsUrl = `${WS_BASE}/monitoring?kelas_id=${kelasId}&mapel_id=&token=${token || ''}`;
+    const mapelParam = mapelId ? `&mapel_id=${encodeURIComponent(mapelId)}` : '';
+    const wsUrl = `${WS_BASE}/monitoring?kelas_id=${kelasId}${mapelParam}&token=${token || ''}`;
     setWsStatus('connecting');
 
     const ws = new WebSocket(wsUrl);
@@ -284,7 +297,7 @@ export function useWebSocket({ kelasId, guruId, enabled = true }) {
       }
       retryRef.current = setTimeout(connectWS, backoff);
     };
-  }, [kelasId]);
+  }, [kelasId, mapelId]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -321,4 +334,98 @@ export function useWebSocket({ kelasId, guruId, enabled = true }) {
   }, {});
 
   return { connected, wsStatus, events, liveStudents, clearEvents, disconnect, activeCount, emotionSummary, isDummy: !USE_WS };
+}
+
+/**
+ * CONTRACT V3.6 §22.1.2 — WebSocket Siswa
+ * URL: wss://.../ws/siswa?siswa_id=&sesi_id=&token=
+ *
+ * Digunakan siswa untuk menerima notifikasi async dari BE:
+ *   - essay_dinilai: setelah Tim 3 selesai menilai essay → FE update UI naik level
+ *
+ * Connect setelah POST /sesi berhasil dan chatbot terbuka.
+ * Di mock mode (USE_WS=false), hook tidak aktif — essay_dinilai ditangani via
+ * custom event 'mock_ws_essay_dinilai' dari handler quiz/essay.
+ *
+ * @param {{ siswaId: string, sesiId: string, enabled?: boolean, onEssayDinilai?: Function }} params
+ */
+export function useWebSocketSiswa({ siswaId, sesiId, enabled = true, onEssayDinilai }) {
+  const [connected, setConnected] = useState(false);
+  const [wsStatus, setWsStatus] = useState('idle');
+
+  const wsRef = useRef(null);
+  const retryRef = useRef(null);
+  const keepaliveRef = useRef(null);
+  const retryCount = useRef(0);
+  const callbackRef = useRef(onEssayDinilai);
+
+  useEffect(() => { callbackRef.current = onEssayDinilai; }, [onEssayDinilai]);
+
+  const connectWS = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    const token = localStorage.getItem('sr_access_token');
+    // CONTRACT V3.6 §22.1.2: wss://.../ws/siswa?siswa_id=&sesi_id=&token=
+    const wsUrl = `${WS_BASE}/siswa?siswa_id=${siswaId}&sesi_id=${encodeURIComponent(sesiId || '')}&token=${token || ''}`;
+    setWsStatus('connecting');
+
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setConnected(true);
+      setWsStatus('connected');
+      retryCount.current = 0;
+      clearTimeout(retryRef.current);
+
+      clearInterval(keepaliveRef.current);
+      keepaliveRef.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: SOCKET_CLIENT_EVENTS.PING }));
+        }
+      }, KEEPALIVE_MS);
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        if (event.type === SOCKET_EVENTS.CONNECTED || event.type === SOCKET_EVENTS.PONG) return;
+        if (event.type === SOCKET_EVENTS.ESSAY_DINILAI) {
+          callbackRef.current?.(event.payload, event.siswa);
+        }
+      } catch { /* malformed JSON */ }
+    };
+
+    ws.onerror = () => setWsStatus('error');
+
+    ws.onclose = (e) => {
+      setConnected(false);
+      setWsStatus('disconnected');
+      clearInterval(keepaliveRef.current);
+      const backoff = Math.min(RECONNECT_BASE_MS * 2 ** retryCount.current, RECONNECT_MAX_MS);
+      retryCount.current += 1;
+      retryRef.current = setTimeout(connectWS, backoff);
+    };
+  }, [siswaId, sesiId]);
+
+  useEffect(() => {
+    // Di mock mode: essay_dinilai ditangani via custom DOM event — tidak perlu WS
+    if (!enabled || !USE_WS) return;
+    connectWS();
+    return () => {
+      wsRef.current?.close();
+      clearTimeout(retryRef.current);
+      clearInterval(keepaliveRef.current);
+    };
+  }, [enabled, connectWS]);
+
+  const disconnect = useCallback(() => {
+    clearTimeout(retryRef.current);
+    clearInterval(keepaliveRef.current);
+    wsRef.current?.close();
+    setConnected(false);
+    setWsStatus('disconnected');
+  }, []);
+
+  return { connected, wsStatus, disconnect, isDummy: !USE_WS };
 }

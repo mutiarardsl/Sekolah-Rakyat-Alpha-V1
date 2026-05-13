@@ -88,7 +88,7 @@ const TeacherView = () => {
     setRecPipeline('saving');
 
     try {
-      // FIX P2: kirim ke POST /guru/rekomendasi — muncul di bell notif siswa
+      // CONTRACT V3.6 §21: kirim ke POST /notifikasi — muncul di bell notif siswa
       await kirimRekomendasi({
         guru_id: teacher?.id || 'g1',
         siswa_id: studentId,

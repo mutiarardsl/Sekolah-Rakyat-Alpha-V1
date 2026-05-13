@@ -44,14 +44,18 @@
  *            POST   /admin/kelas/:id/siswa             → tambah siswa ke kelas (single)
  *            DELETE /admin/kelas/:id/siswa/:siswa_id   → lepas siswa dari kelas
  *
- *  Rekomendasi Guru → Siswa:
- *            POST   /guru/rekomendasi   → guru kirim catatan/rekomendasi ke siswa
- *            GET    /guru/rekomendasi   → siswa ambil rekomendasi yang diterima
+ *  Notifikasi Guru → Siswa (CONTRACT V3.6 §21):
+ *            POST   /notifikasi              → guru kirim notifikasi ke siswa
+ *            GET    /siswa/:id/notifikasi    → siswa ambil notifikasi yang diterima
+ *            PATCH  /notifikasi/:id/baca     → tandai notifikasi dibaca
+ *
+ *  Guru Profile (CONTRACT V3.6 §10):
+ *            GET    /guru/:id               → profil guru (kelas & mapel aktif)
  * ── Auth Requirement ────────────────────────────────────────────────
  *  Semua endpoint butuh Bearer token.
  *  role: admin       → semua endpoint /admin/*
- *  role: guru        → /guru/rekomendasi (POST)
- *  role: siswa       → /guru/rekomendasi (GET), tidak ada akses ke /admin/*
+ *  role: guru        → /notifikasi (POST), /guru/:id (GET)
+ *  role: siswa       → /siswa/:id/notifikasi (GET), tidak ada akses ke /admin/*
  *
  * ── Field Conventions ────────────────────────────────────────────────
  *  - NIP guru: string 18 digit (bukan number — hindari overflow JS)
@@ -259,7 +263,7 @@ export const kelasDetailApi = {
 // ════════════════════════════════════════════════════════════════════
 
 /**
- * POST /guru/rekomendasi
+ * POST /notifikasi — CONTRACT V3.6 §21
  * Guru kirim rekomendasi/catatan ke siswa tertentu.
  * Muncul sebagai notifikasi di dashboard siswa (bell icon).
  * Dipakai dari MonitoringSection (modal "Beri Rekomendasi").
@@ -278,6 +282,7 @@ export const kelasDetailApi = {
  * @returns {Promise<{ id: string, created_at: string }>}
  */
 export async function kirimRekomendasi(payload) {
+  // CONTRACT V3.6 §21 POST /notifikasi
   const raw = await v3.post("/notifikasi", payload);
   return {
     id: raw.id,
@@ -286,8 +291,8 @@ export async function kirimRekomendasi(payload) {
 }
 
 /**
- * GET /guru/rekomendasi
- * Ambil semua rekomendasi yang diterima siswa (notifikasi bell).
+ * GET /siswa/:id/notifikasi — CONTRACT V3.6 §11
+ * Ambil semua notifikasi yang diterima siswa (notifikasi bell).
  * Dipakai DashboardSection siswa.
  * Role siswa yang mengakses, filter by siswa_id dari query param.
  *
@@ -304,6 +309,7 @@ export async function kirimRekomendasi(payload) {
  * @returns {Promise<object[]>}
  */
 export async function getRekomendasiSiswa(params) {
+  // CONTRACT V3.6 §11 GET /siswa/:id/notifikasi
   const rows = await v3.get(`/siswa/${encodeURIComponent(params.siswa_id)}/notifikasi`, {
     params: { dibaca: params.dibaca, page: params.page, limit: params.limit },
   });
@@ -312,7 +318,7 @@ export async function getRekomendasiSiswa(params) {
     created_at: r.dibuat_at ?? r.created_at,
   }));
 }
-// ─── PATCH /guru/rekomendasi/:id/baca ────────────────────────────────
+// ─── PATCH /notifikasi/:id/baca — CONTRACT V3.6 §21 ─────────────────────────
 /**
  * Tandai notifikasi rekomendasi sudah dibaca.
  * Dipanggil NotifikasiBell saat siswa membuka/expand notifikasi.
@@ -325,5 +331,21 @@ export async function getRekomendasiSiswa(params) {
  * @returns {Promise<{ dibaca: boolean }>}
  */
 export async function markRekomendasiBaca(id) {
+  // CONTRACT V3.6 §21 PATCH /notifikasi/:id/baca
   return v3.patch(`/notifikasi/${encodeURIComponent(id)}/baca`, {});
+}
+
+// ─── GET /guru/:id ────────────────────────────────────────────────────
+/**
+ * Ambil profil guru lengkap dari BE.
+ * CONTRACT V3.6 §10 GET /guru/:id
+ *
+ * Response shape:
+ *   { id, nama, nip, email, avatar, mapel_kelas_map, kelas_aktif[], mapel_aktif[] }
+ *
+ * @param {string} guruId
+ * @returns {Promise<object>}
+ */
+export async function getGuruProfile(guruId) {
+  return v3.get(`/guru/${encodeURIComponent(guruId)}`);
 }
