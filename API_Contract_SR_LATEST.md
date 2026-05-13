@@ -1195,8 +1195,7 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
               {
                 "id": "e1",
                 "soal": "Jelaskan langkah-langkah menyelesaikan persamaan linear satu variabel.",
-                "rubrik": "Menyebutkan 3+ langkah dengan benar",
-                "placeholder": "Tuliskan jawabanmu di sini..."
+                "rubrik": "Menyebutkan 3+ langkah dengan benar"
               }
             ]
           }
@@ -1572,7 +1571,7 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
 |------|-------------------|--------|
 | `bacaan` | `{ "text": "markdown string", "source": [{ "judul", "penulis", "tahun" }] }` | — |
 | `quiz_pg` | `{ "soal": [{ "id", "soal", "pilihan": string[], "jawaban": number, "penjelasan": string }] }` | 10 soal |
-| `quiz_essay` | `{ "pertanyaan": [{ "id", "soal", "rubrik", "placeholder" }] }` | 5 pertanyaan |
+| `quiz_essay` | `{ "pertanyaan": [{ "id", "soal", "rubrik"}] }` | 5 pertanyaan |
 | `flashcard` | `{ "cards": [{ "depan", "belakang" }], "source": [{ "judul", "penulis", "tahun" }] }` | 5–10 kartu |
 | `mindmap` | `{ "nodes": [{ "id", "label", "parent_id", "penjelasan": string }] }` | — |
 
@@ -1695,7 +1694,7 @@ Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disi
       "konten_id": "konten_mat_quiz_essay_low_1746342000",
       "tipe": "quiz_essay",
       "level": "Low",
-      "content": { "pertanyaan": [{ "id": "e1", "soal": "...", "rubrik": "...", "placeholder": "..." }] },
+      "content": { "pertanyaan": [{ "id": "e1", "soal": "...", "rubrik": "..."}] },
       "disetujui": true
     },
     {
