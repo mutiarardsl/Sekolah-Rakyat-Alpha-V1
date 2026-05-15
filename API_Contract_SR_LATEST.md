@@ -1165,9 +1165,7 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
           "level": "low",
           "content": {
             "text": "# Persamaan Linear\n\n## A. Pengertian\n...",
-            "source": [
-              { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
-            ]
+            "source": "Matematika SMA Kelas X"
           }
         },
         {
@@ -1208,9 +1206,7 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
             "cards": [
               { "depan": "Persamaan Linear", "belakang": "Persamaan berderajat satu dengan satu atau lebih variabel" }
             ],
-            "source": [
-              { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
-            ]
+            "source": "Matematika SMA Kelas X"
           }
         },
         {
@@ -1506,9 +1502,7 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
     "level": "low",
     "content": {
       "text": "# Persamaan Linear\n\n## A. Pengertian\n...",
-      "source": [
-        { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
-      ]
+      "source": "Matematika SMA Kelas X",
     },
     "dibuat_at": "2026-05-01T09:00:00.000Z"
   },
@@ -1569,16 +1563,16 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
 
 | tipe | Struktur `content` | Jumlah |
 |------|-------------------|--------|
-| `bacaan` | `{ "text": "markdown string", "source": [{ "judul", "penulis", "tahun" }] }` | — |
+| `bacaan` | `{ "text": "markdown string", "source": "buku" }` | — |
 | `quiz_pg` | `{ "soal": [{ "id", "soal", "pilihan": string[], "jawaban": number, "penjelasan": string }] }` | 10 soal |
 | `quiz_essay` | `{ "pertanyaan": [{ "id", "soal", "rubrik"}] }` | 5 pertanyaan |
-| `flashcard` | `{ "cards": [{ "depan", "belakang" }], "source": [{ "judul", "penulis", "tahun" }] }` | 5–10 kartu |
+| `flashcard` | `{ "cards": [{ "depan", "belakang" }], "source": "buku"  }` | 5–10 kartu |
 | `mindmap` | `{ "nodes": [{ "id", "label", "parent_id", "penjelasan": string }] }` | — |
 
 > `quiz_pg.soal[].jawaban` = **index integer** dari array `pilihan` (bukan string jawaban).  
 > `quiz_pg.soal[].penjelasan` = ditampilkan FE **setelah** siswa submit quiz MC, tidak saat mengerjakan.  
 > `mindmap.nodes[].penjelasan` = tooltip saat hover. Boleh string kosong `""` untuk node root.  
-> `bacaan.source` & `flashcard.source` = array kosong `[]` jika tidak ada sumber spesifik.
+> `bacaan.source` & `flashcard.source` =  kosong jika tidak ada sumber spesifik.
 
 > **Pretest (V3.4):** Tim 3 generate soal pretest bersamaan dengan ke-13 konten — **secara internal, tanpa request tambahan dari FE**. Trigger generate pretest terjadi pada **panggilan `POST /konten/generate` pertama** dari 13 panggilan paralel (Tim 3 RAG mendeteksi ini adalah batch baru berdasarkan kombinasi `mapel_id + elemen_id + materi_id + kelas_id`). Soal pretest disimpan langsung ke database Tim 6 BE. **Tidak dikembalikan** di response ini dan **tidak ditampilkan** di panel review guru.
 
@@ -1623,9 +1617,7 @@ Dipanggil saat guru klik **"Ulangi"** di panel review per konten per level.
     "level": "low",
     "content": {
       "text": "# Persamaan Linear\n\n## A. Pengertian\n... (versi baru)",
-      "source": [
-        { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
-      ]
+      "source": "Matematika SMA Kelas X"
     },
     "dibuat_at": "2026-05-01T09:05:00.000Z"
   },
@@ -1666,21 +1658,21 @@ Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disi
       "konten_id": "konten_mat_bacaan_low_1746342000",
       "tipe": "bacaan",
       "level": "Low",
-      "content": { "text": "# Persamaan Linear\n...", "source": [{ "judul": "...", "penulis": "...", "tahun": "..." }] },
+      "content": { "text": "# Persamaan Linear\n...", "source": "..." },
       "disetujui": true
     },
     {
       "konten_id": "konten_mat_bacaan_mid_1746342000",
       "tipe": "bacaan",
       "level": "Mid",
-      "content": { "text": "# Persamaan Linear — Menengah\n...", "source": [] },
+      "content": { "text": "# Persamaan Linear — Menengah\n...", "source": " " },
       "disetujui": true
     },
     {
       "konten_id": "konten_mat_bacaan_high_1746342000",
       "tipe": "bacaan",
       "level": "High",
-      "content": { "text": "# Persamaan Linear — Lanjutan\n...", "source": [] },
+      "content": { "text": "# Persamaan Linear — Lanjutan\n...", "source": " " },
       "disetujui": true
     },
     {
@@ -1701,7 +1693,7 @@ Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disi
       "konten_id": "konten_mat_flashcard_low_1746342000",
       "tipe": "flashcard",
       "level": "Low",
-      "content": { "cards": [{ "depan": "...", "belakang": "..." }], "source": [{ "judul": "...", "penulis": "...", "tahun": "..." }] },
+      "content": { "cards": [{ "depan": "...", "belakang": "..." }], "source": "..."},
       "disetujui": true
     },
     {
