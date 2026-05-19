@@ -25,7 +25,7 @@
 14. [PRETEST — Tim 3 RAG (generate) + Tim 6 BE (serve)](#14-pretest--tim-3-rag-generate--tim-6-be-serve)
 15. [QUIZ — Tim 6 BE](#15-quiz--tim-6-be)
 16. [RAG — Tim 3](#16-rag--tim-3)
-17. [GAME — Tim 4](#17-game--tim-4)
+17. [GAME — Tim 4 + Tim 6 BE](#17-game--tim-4--tim-6-BE)
 18. [EMOSI — Tim 1](#18-emosi--tim-1)
 19. [MENTOR — Tim 5](#19-mentor--tim-5)
 20. [LEADERBOARD — Tim 6 BE](#20-leaderboard--tim-6-be)
