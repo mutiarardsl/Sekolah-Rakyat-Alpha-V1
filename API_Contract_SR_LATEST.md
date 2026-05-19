@@ -2048,7 +2048,7 @@ Generate teks insight personal untuk Hero Banner dashboard siswa.
 
 ---
 
-## 17. GAME — Tim 4
+## 17. GAME — Tim 4 + Tim 6 BE
 
 > Tim 4 deliver game dalam format **HTML string** (bukan URL). FE me-render via:
 > ```html
