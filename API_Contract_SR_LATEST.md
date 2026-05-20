@@ -2155,7 +2155,7 @@ Guru minta generate ulang game spesifik. Iterative refinement menggunakan kontek
 ---
 
 ### GET /game/:id — Tim 4
-Detail satu game. Digunakan untuk polling saat status masih `"generating"`, dan untuk mengambil `html_string` saat siswa klik "Main Game".
+Detail satu game. Digunakan untuk polling saat status masih `"generating"`
 
 **Auth:** role `guru` (saat polling setelah generate)
 
