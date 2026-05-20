@@ -135,7 +135,7 @@ const buildGuruProfileV3 = (guru, kelasList, mapelList) => {
 // daily  → agregasi dari riwayat[0] (hari ini) saja: mc×60% + essay×40% per level
 // monthly → akumulasi agregasi dari SEMUA riwayat siswa
 //
-// Sesuai flow .md: "total poin kuiz = akumulasi agregasi nilai quiz MC & essay di semua sesi"
+// Sesuai flow .md: "total poin kuiz = akumulasi agregasi nilai quiz Pilgan & essay di semua sesi"
 const MC_WEIGHT = 0.6;
 const ESSAY_WEIGHT = 0.4;
 
@@ -2620,7 +2620,7 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
     const topik = materi || elemen_label || 'Pelajaran';
     const game_id = 'game_' + Date.now();
     const levelLc = (level || 'low').toLowerCase(); // CONTRACT V3.5 §2: lowercase
-    const html_string = `<!DOCTYPE html><html><head><title>Game Mock: ${game_id}</title></head><body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f0fdf4"><div style="text-align:center"><div style="font-size:48px">🎮</div><h2 style="color:#0d9488">Game Mock</h2><p style="color:#374151">Topik: ${topik}</p><p style="color:#6b7280;font-size:14px">Level: ${levelLc}</p><button onclick="window.parent.postMessage({type:'game:selesai'},'*')" style="background:#0d9488;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:16px">Selesai Game (Mock)</button></div></body></html>`; // CONTRACT V3.4 §1
+    const html_string = `<!DOCTYPE html><html><head><title>Game Mock: ${game_id}</title></head><body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#FFFFFF"><div style="text-align:center"><div style="font-size:48px">🎮</div><h2 style="color:#0d9488">Game Mock</h2><p style="color:#374151">Topik: ${topik}</p><p style="color:#6b7280;font-size:14px">Level: ${levelLc}</p><button onclick="window.parent.postMessage({type:'game:selesai'},'*')" style="background:#0d9488;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:16px">Selesai Game (Mock)</button></div></body></html>`; // CONTRACT V3.4 §1
     return HttpResponse.json({
       data: {
         game_id,

@@ -346,26 +346,13 @@ const QuizModal = ({
   const [activeSoal, setActiveSoal] = useState([]);
   const [mcAnswers, setMcAnswers] = useState({});
   const [essayAnswers, setEssayAnswers] = useState({});
-  const [submitted, setSubmitted] = useState(false);
   const bodyRef = useRef(null);
-
-  // ── REVISI FASE 3: State untuk skor essay dari RAG ─────────────────
-  // essay_score: skor essay yang dikembalikan backend (Tim RAG) setelah penilaian async
-  // Dalam mock: langsung tersedia dari response POST /content/quiz/submit
-  // Di produksi: bisa datang via webhook atau polling setelah beberapa detik
-  const [essayScore, setEssayScore] = useState(null); // 0–100 dari RAG
-  const [essayScoreLoading, setEssayScoreLoading] = useState(false);
-  const [essayState, setEssayState] = useState('idle'); // V3.3: idle | pending | processing | completed | failed
 
   // Reset semua state setiap kali modal dibuka — ini fix untuk bug soal tidak reset
   useEffect(() => {
     if (!open) return;
     setMcAnswers({});
     setEssayAnswers({});
-    setSubmitted(false);
-    setEssayScore(null);
-    setEssayScoreLoading(false);
-    setEssayState('idle'); // V3.3
     if (bodyRef.current) bodyRef.current.scrollTop = 0;
 
     // Soal baru: acak urutan. Soal lama (ulangi): pakai snapshot persis
@@ -438,8 +425,6 @@ const QuizModal = ({
         }))
         .filter((_, i) => mcAnswers[i] !== mcSoal[i].jawaban);
 
-      setSubmitted(true);
-
       // FIX P1: kirim skor MC ke backend via POST /siswa/:id/quiz/mc (V3.3)
       // Fire-and-forget — tidak block UI jika API gagal
       const siswaId = chatMateri?.siswaId || useStudentStore.getState().user?.id || '';
@@ -493,11 +478,6 @@ const QuizModal = ({
         });
       });
     } else {
-      // ── V3.3 REFACTOR 1: Essay submit — async via POST /siswa/:id/quiz/essay ──────────────
-      // 1. Tampilkan submitted segera (UX: tidak blokir user)
-      setSubmitted(true);
-      setEssayScoreLoading(true);
-      setEssayState('pending'); // V3.3
 
       const siswaId = chatMateri?.siswaId || useStudentStore.getState().user?.id || '';
       const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
@@ -522,9 +502,6 @@ const QuizModal = ({
         const hasilQuizId = response?.hasil_quiz_id ?? null;
 
         if (response?.menunggu_penilaian) {
-          // V3.3 Async path — tampilkan "Sedang dinilai..." dan tunggu WS essay_dinilai
-          setEssayState('processing');
-          setEssayScoreLoading(true);
           // Tetap panggil onSubmit agar ChatSection tahu submit berhasil
           onSubmit?.({
             type: 'essay',
@@ -543,9 +520,6 @@ const QuizModal = ({
         } else {
           // Sync fallback (jika BE langsung kembalikan nilai)
           const ragEssayScore = response?.score ?? null;
-          setEssayScore(ragEssayScore);
-          setEssayScoreLoading(false);
-          setEssayState('completed'); // V3.3
           onSubmit?.({
             type: 'essay',
             score: ragEssayScore,
@@ -562,9 +536,6 @@ const QuizModal = ({
         }
       } catch {
         // Fallback jika API gagal — essay tetap tersimpan lokal
-        setEssayScoreLoading(false);
-        setEssayScore(null);
-        setEssayState('failed'); // V3.3
         onSubmit?.({
           type: 'essay',
           score: null,
@@ -579,12 +550,6 @@ const QuizModal = ({
         });
       }
     }
-  };
-
-  const handleReset = () => {
-    setMcAnswers({});
-    setEssayAnswers({});
-    setSubmitted(false);
   };
 
   // Warna header: amber untuk MC, ungu untuk essay
@@ -632,7 +597,7 @@ const QuizModal = ({
               {soalSnapshot && <span style={{ marginLeft: 8, opacity: .8 }}>· Soal tersimpan</span>}
             </div>
           </div>
-          {!submitted && isMC && (
+          {isMC && (
             <div style={{
               fontSize: FS.sm, color: 'rgba(255,255,255,.85)',
               padding: '4px 12px', borderRadius: 99,
@@ -660,7 +625,7 @@ const QuizModal = ({
         >
 
           {/* ══ BODY: PILIHAN GANDA ══ */}
-          {isMC && !submitted && (
+          {isMC && (
             <>
               {/* Instruksi */}
               <div style={{
@@ -755,7 +720,7 @@ const QuizModal = ({
           )}
 
           {/* ══ BODY: ESSAY ══ */}
-          {isEssay && !submitted && (
+          {isEssay && (
             <>
               {/* Info penilaian essay */}
               <div style={{
@@ -841,168 +806,9 @@ const QuizModal = ({
               })}
             </>
           )}
-
-          {/* ══ HASIL: MC ══ */}
-          {isMC && submitted && (() => {
-            const pass = passed;
-            const levelLabels = { low: 'Low', mid: 'Mid', high: 'High' };
-            const nextLevelMap = { low: 'mid', mid: 'high', high: 'high' };
-            const nextLevel = nextLevelMap[currentLevel] || 'high';
-            const isMaxLevel = currentLevel === 'high';
-            const willLevelUp = pass && !isMaxLevel;
-
-            return (
-              <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
-                {/* ── Header seragam: ✅ + label + skor ── */}
-                <div style={{ fontSize: 52, marginBottom: 10 }}>✅</div>
-                <div style={{ fontWeight: 800, fontSize: 22, color: color, marginBottom: 4 }}>
-                  Jawaban Pilihan Ganda Terkirim
-                </div>
-                <div style={{ fontWeight: 800, fontSize: 40, color: pass ? C.green : C.amber, marginBottom: 14 }}>
-                  {mcScore}
-                </div>
-
-                {/* ── REVISI FASE 3: Info sistem agregasi ─── */}
-                <div style={{
-                  background: '#F0FDFA', border: '1px solid #90CDF4',
-                  borderRadius: 10, padding: '10px 14px', marginBottom: 14,
-                  fontSize: FS.xs, color: '#0D5C63', lineHeight: 1.6, textAlign: 'left',
-                }}>
-                  <strong>📊 Sistem Penilaian Agregasi (Fase 3):</strong><br />
-                  Skor MC kamu: <strong>{mcScore}/100</strong><br />
-                  Naik level jika: rata-rata <strong>MC + Essay ≥ KKM ({KKM})</strong><br />
-                  {pass
-                    ? '✅ Skor MC sudah melampaui KKM — jika Essay juga ≥ KKM, kamu akan naik level.'
-                    : `📝 Kerjakan Essay juga agar rata-rata agregasi bisa ≥ ${KKM}.`}
-                </div>
-
-                {/* Banner naik level */}
-                {willLevelUp && (
-                  <div style={{
-                    background: 'linear-gradient(135deg, #F0FFF4, #C6F6D5)',
-                    border: '1.5px solid #68D391',
-                    borderRadius: 12, padding: '12px 16px', marginBottom: 16,
-                    display: 'flex', gap: 12, alignItems: 'center', textAlign: 'left',
-                  }}>
-                    <span style={{ fontSize: 28, flexShrink: 0 }}>⬆️</span>
-                    <div>
-                      <div style={{ fontWeight: 800, color: '#276749', fontSize: FS.base, marginBottom: 3 }}>
-                        Selamat! Semua konten naik ke Level {levelLabels[nextLevel]}
-                      </div>
-                      <div style={{ fontSize: FS.sm, color: '#2F855A', lineHeight: 1.6 }}>
-                        Konten bacaan, flashcard, game, dan quiz di elemen/materi ini otomatis naik ke <strong>Level {levelLabels[nextLevel]}</strong>.
-                        Riwayat quiz Level {levelLabels[currentLevel]} masih bisa kamu lihat, tapi tidak bisa dikerjakan ulang.
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Banner belum KKM */}
-                {!pass && (
-                  <div style={{
-                    background: '#FFFBF0', border: '1.5px solid #F6AD55',
-                    borderRadius: 12, padding: '12px 16px', marginBottom: 16,
-                    display: 'flex', gap: 12, alignItems: 'center', textAlign: 'left',
-                  }}>
-                    <span style={{ fontSize: 26, flexShrink: 0 }}>📋</span>
-                    <div>
-                      <div style={{ fontWeight: 700, color: '#B7791F', fontSize: FS.md, marginBottom: 3 }}>
-                        KKM Agregasi: {KKM} — Nilaimu: {mcScore}
-                      </div>
-                      <div style={{ fontSize: FS.sm, color: '#975A16', lineHeight: 1.6 }}>
-                        Nilai yang digunakan adalah nilai quiz <strong>terbaru</strong>. Kamu bisa mengulang quiz ini.
-                        Naik level ditentukan dari rata-rata nilai MC dan Essay — kerjakan keduanya untuk hasil terbaik!
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Review MC */}
-                <div style={{ textAlign: 'left', background: C.cream, borderRadius: 12, padding: '16px 18px', marginBottom: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark, marginBottom: 12 }}>🔍 Review Jawaban</div>
-                  {mcSoal.map((s, si) => {
-                    const userAns = mcAnswers[si];
-                    const correct = userAns === s.jawaban;
-                    return (
-                      <div key={si} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: si < mcSoal.length - 1 ? `1px solid rgba(13,92,99,.07)` : 'none' }}>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 3 }}>
-                          <span style={{ fontSize: FS.base, flexShrink: 0 }}>{correct ? '✅' : '❌'}</span>
-                          <div style={{ fontSize: FS.sm, color: C.dark, fontWeight: 600, lineHeight: 1.4 }}>
-                            {si + 1}. <InlineLatex text={s.soal} />
-                          </div>
-                        </div>
-                        <div style={{ marginLeft: 20, fontSize: 11 }}>
-                          {correct
-                            ? <span style={{ color: C.green }}>Jawabanmu: <InlineLatex text={s.pilihan[userAns]} /></span>
-                            : <div>
-                              <span style={{ color: C.red }}>Jawabanmu: <InlineLatex text={s.pilihan[userAns] ?? '(tidak dijawab)'} /></span>
-                              <span style={{ color: C.green, marginLeft: 10 }}>✓ Jawaban benar: <InlineLatex text={s.pilihan[s.jawaban]} /></span>
-                            </div>
-                          }
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ fontSize: FS.sm, color: C.slate, marginBottom: 8 }}>
-                  {pass
-                    ? 'Hasil tersimpan. Riwayat level ini bisa kamu lihat dari panel kanan.'
-                    : 'Hasil tersimpan. Klik "Ulangi" di riwayat untuk mengerjakan soal yang sama.'}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* ══ HASIL: ESSAY ══ */}
-          {isEssay && submitted && (
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              {/* ── Header seragam: ✅ + label + skor ── */}
-              <div style={{ fontSize: 52, marginBottom: 12 }}>✅</div>
-              <div style={{ fontWeight: 800, fontSize: 22, color: C.teal, marginBottom: 4 }}>
-                Jawaban Essay Terkirim
-              </div>
-              {/* Nilai quiz essay — tampilkan skor tanpa /100 */}
-              {/* V3.3: gunakan essayState untuk state yang lebih granular */}
-              {(essayScoreLoading || essayState === 'processing') ? (
-                <div style={{ fontSize: FS.sm, color: C.teal, marginBottom: 14 }}>⏳ Sedang dinilai oleh sistem...</div>
-              ) : essayState === 'failed' ? (
-                <div style={{ fontSize: FS.sm, color: C.amber, marginBottom: 14 }}>⚠️ Gagal mengirim, coba lagi.</div>
-              ) : essayScore != null ? (
-                <div style={{ fontWeight: 800, fontSize: 40, color: essayScore >= KKM ? C.green : C.amber, marginBottom: 14 }}>
-                  {essayScore}
-                </div>
-              ) : (
-                <div style={{ marginBottom: 14 }} />
-              )}
-
-
-              <div style={{
-                background: `${C.teal}0D`, border: `1px solid ${C.teal}33`,
-                borderRadius: 12, padding: '14px 18px', textAlign: 'left', marginBottom: 16,
-              }}>
-                <div style={{ fontWeight: 700, fontSize: FS.md, color: C.teal, marginBottom: 8 }}>📋 Ringkasan Jawabanmu</div>
-                {essaySoal.map((s, si) => {
-                  const jawaban = essayAnswers[s.id] || '';
-                  const wc = jawaban.trim().split(/\s+/).filter(Boolean).length;
-                  return (
-                    <div key={s.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: si < essaySoal.length - 1 ? `1px solid ${C.teal}22` : 'none' }}>
-                      <div style={{ fontSize: FS.sm, fontWeight: 600, color: C.dark, marginBottom: 4 }}>Essay {si + 1}: {s.soal.slice(0, 60)}...</div>
-                      <div style={{ fontSize: FS.xs, color: jawaban ? C.green : C.red }}>
-                        {jawaban ? `✓ ${wc} kata ditulis` : '✗ Belum dijawab'}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: FS.sm, color: C.slate }}>
-                Hasil disimpan ke riwayat. Gunakan tombol <strong>Ulangi</strong> di riwayat untuk mengerjakan soal yang sama.
-              </div>
-            </div>
-          )}
         </div>
 
         {/* ── FOOTER ──────────────────────────────────────────────── */}
-        {!submitted && (
           <div style={{
             padding: '12px 22px', borderTop: `1px solid rgba(13,92,99,.07)`,
             display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0,
@@ -1045,7 +851,6 @@ const QuizModal = ({
               </>
             )}
           </div>
-        )}
       </div>
     </div>
   );

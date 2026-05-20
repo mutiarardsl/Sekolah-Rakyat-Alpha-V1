@@ -91,8 +91,14 @@ export async function recordGameSelesai(payload) {
     `/game/${encodeURIComponent(payload.game_id)}/penyelesaian`,
     { siswa_id: payload.siswa_id, level: payload.level },
   );
+
+  // Jika BE tidak return tercatat: true, anggap gagal → trigger retry
+  if (!raw?.tercatat) {
+    throw new Error('recordGameSelesai: BE tidak konfirmasi tercatat');
+  }
+
   return {
-    recorded: !!raw?.tercatat,
+    recorded: true,
     game_id: raw?.game_id,
     siswa_id: raw?.siswa_id,
     level: raw?.level,

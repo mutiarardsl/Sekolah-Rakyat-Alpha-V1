@@ -331,34 +331,47 @@ const StudentView = () => {
   // FIX KRITIS: Listener postMessage dari iframe game Tim 4
   // Game mengirim event 'game:selesai' saat siswa menyelesaikan game.
   // Format event yang diterima dari iframe: { type: 'game:selesai' } atau string 'game:selesai'
-  useEffect(() => {
-    if (!gameContext) return;
+useEffect(() => {
+  if (!gameContext) return;
 
-    const handleGameMessage = (event) => {
-      // Terima event dari origin mana pun (game hosted di domain Tim 4)
-      // tapi hanya proses jika ada gameContext aktif
-      const isSelesai =
-        event.data === 'game:selesai' ||
-        event.data?.type === 'game:selesai' ||
-        event.data?.event === 'game:selesai' ||
-        event.data === 'GAME_COMPLETE';
+  const handleGameMessage = async (event) => {
+    const isSelesai =
+      event.data === 'game:selesai' ||
+      event.data?.type === 'game:selesai' ||
+      event.data?.event === 'game:selesai' ||
+      event.data === 'GAME_COMPLETE';
 
-      if (!isSelesai) return;
+    if (!isSelesai) return;
 
-      const gameId = gameData?.game_id || gameContext?.game_id;
-      const siswaId = user?.id;
-      const level = gameContext?.level || 'Low';
+    const gameId = gameData?.game_id || gameContext?.game_id;
+    const siswaId = user?.id;
+    const level = gameContext?.level || 'Low';
 
-      if (!gameId || !siswaId) return;
+    if (!gameId || !siswaId) return;
 
-      // Catat completion ke Tim 4 — fire-and-forget
-      recordGameSelesai({ siswa_id: siswaId, game_id: gameId, level })
-        .catch(() => { /* silent — tracking tidak boleh blokir UX */ });
+    // Retry dengan exponential backoff — maks 3 kali
+    // UX tidak diblokir karena async fire-and-forget dengan retry
+    const MAX_RETRY = 3;
+    const BASE_DELAY_MS = 1000;
+
+    const attempt = async (retryCount) => {
+      try {
+        await recordGameSelesai({ siswa_id: siswaId, game_id: gameId, level });
+      } catch (err) {
+        if (retryCount < MAX_RETRY) {
+          const delay = BASE_DELAY_MS * Math.pow(2, retryCount); // 1s → 2s → 4s
+          setTimeout(() => attempt(retryCount + 1), delay);
+        }
+        // Setelah maks retry tetap silent — tidak blokir UX
+      }
     };
 
-    window.addEventListener('message', handleGameMessage);
-    return () => window.removeEventListener('message', handleGameMessage);
-  }, [gameContext, gameData, user?.id]);
+    attempt(0);
+  };
+
+  window.addEventListener('message', handleGameMessage);
+  return () => window.removeEventListener('message', handleGameMessage);
+}, [gameContext, gameData, user?.id]);
 
   /* ── Camera (inside ChatSection) ────────────────────────────── */
   const [camGranted, setCamGranted] = useState(false);

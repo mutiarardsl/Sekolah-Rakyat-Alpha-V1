@@ -602,7 +602,7 @@ const BacaanView = ({ bacaanData, currentLevel, color, materiId }) => {
             )}
             <div style={{ marginTop: 10, background: '#EBF8FF', borderRadius: 10, padding: '10px 14px', fontSize: FS.sm, color: '#2B6CB0', display: 'flex', gap: 8 }}>
                 <span>💡</span>
-                <span>Setelah membaca materi ini, kerjakan Flashcard untuk memantapkan hafalan, lalu selesaikan Quiz MC + Essay.</span>
+                <span>Setelah membaca materi ini, kerjakan Flashcard untuk memantapkan hafalan, lalu selesaikan Quiz Pilgan + Essay.</span>
             </div>
         </div>
     );
@@ -1440,7 +1440,7 @@ const ChatSection = ({
         const openingMsg = {
             id: Date.now() + 1,
             role: 'ai',
-            text: `Bagus! Kamu sudah selesai membaca materi **${materiId}**. 🎉\n\nSekarang saatnya memantapkan pemahamanmu:\n- 🧠 **Mindmap** — ringkasan visual materi\n- 🃏 **Flashcard** — latihan hafalan aktif\n- 🎮 **Game** — game edukatif\n- 📝 **Quiz MC** — uji pemahaman konsep\n- ✍️ **Essay** — dalami dengan analisismu sendiri\n\nMulai dari mana dulu? Atau ada bagian dari bacaan tadi yang ingin kamu tanyakan? 😊`,
+            text: `Bagus! Kamu sudah selesai membaca materi **${materiId}**. 🎉\n\nSekarang saatnya memantapkan pemahamanmu:\n- 🧠 **Mindmap** — ringkasan visual materi\n- 🃏 **Flashcard** — latihan hafalan aktif\n- 🎮 **Game** — game edukatif\n- 📝 **Quiz Pilgan** — uji pemahaman konsep\n- ✍️ **Quiz Essay** — dalami dengan analisismu sendiri\n\nMulai dari mana dulu? Atau ada bagian dari bacaan tadi yang ingin kamu tanyakan? 😊`,
             time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
         };
         setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), openingMsg] }));
@@ -1913,7 +1913,7 @@ const ChatSection = ({
                 const levelUpMsg = {
                     id: Date.now() + 5, role: 'ai', isLevelUp: true,
                     fromLevel: currentLevelForRecord, toLevel: nxtLvl,
-                    text: `🎉 Selamat! Kamu berhasil naik ke **Level ${LEVEL_LABELS_LOCAL[nxtLvl]}**!\n\n📊 **Rekap Nilai:**\n- Pilihan Ganda: ${mcS}/100\n- Essay: ${essayS}/100\n- **Nilai Agregasi (MC×60%+Essay×40%): ${aggregatedScore}/100** ✅\n\nSemua konten materi **${materiId}** sekarang naik ke Level ${LEVEL_LABELS_LOCAL[nxtLvl]}. Riwayat Level ${LEVEL_LABELS_LOCAL[currentLevelForRecord]} masih bisa kamu lihat di panel kanan. Terus semangat! 💪`,
+                    text: `🎉 Selamat! Kamu berhasil naik ke **Level ${LEVEL_LABELS_LOCAL[nxtLvl]}**!\n\n📊 **Rekap Nilai:**\n- Pilihan Ganda: ${mcS}/100\n- Essay: ${essayS}/100\n- **Nilai Agregasi (Pilgan×60%+Essay×40%): ${aggregatedScore}/100** ✅\n\nSemua konten materi **${materiId}** sekarang naik ke Level ${LEVEL_LABELS_LOCAL[nxtLvl]}. Riwayat Level ${LEVEL_LABELS_LOCAL[currentLevelForRecord]} masih bisa kamu lihat di panel kanan. Terus semangat! 💪`,
                     time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
                 };
                 setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), levelUpMsg] }));
@@ -2606,7 +2606,7 @@ const ChatSection = ({
                         </div>
                     )}
 
-                    {/* ── Mode: Detail Riwayat Quiz (menimpa format konten & latihan soal) ── */}
+                    {/* ── Mode: Detail Riwayat Quiz (menimpa format konten & Quiz) ── */}
                     {quizHistoryModal ? (() => {
                         const { result, index } = quizHistoryModal;
                         const isMcResult = result.type === 'mc' || !result.type;
@@ -2900,7 +2900,7 @@ const ChatSection = ({
                             </div>
                         );
                     })() : (
-                        /* ── Mode: Normal — Format Konten + Latihan Soal ── */
+                        /* ── Mode: Normal — Format Konten + Quiz ── */
                         <>
                             {/* Format Konten — tanpa Bacaan (sudah tampil di chatbot) */}
                             <div style={{ padding: '12px 12px 8px', borderBottom: `1px solid rgba(13,92,99,.06)`, flexShrink: 0 }}>
@@ -2976,12 +2976,12 @@ const ChatSection = ({
                             <div style={{ padding: '10px 12px', flex: 1, overflowY: 'auto' }}>
                                 {/* Header */}
                                 <div style={{ fontWeight: 700, fontSize: FS.md, color: C.dark, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    📝 Latihan Soal
+                                    📝 Quiz
                                 </div>
 
                                 {!materiId ? (
                                     <div style={{ fontSize: FS.sm, color: C.slate, background: C.cream, borderRadius: 8, padding: '10px', textAlign: 'center' }}>
-                                        Pilih materi dulu untuk mulai latihan soal
+                                        Pilih materi dulu untuk mulai quiz
                                     </div>
                                 ) : (
                                     <>
