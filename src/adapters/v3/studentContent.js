@@ -99,10 +99,21 @@ export function mapKontenSiswaList(rows) {
     if (!item?.konten_list) return item;
     return {
       ...item,
-      konten_list: item.konten_list.map((c) => ({
-        ...c,
-        approved: c.approved ?? c.disetujui ?? false,
-      })),
+      konten_list: item.konten_list.map((c) => {
+        // Untuk item game: pastikan html_string dari DB BE ikut di-forward
+        // agar normalizeGameData di game.js bisa convert ke html_url (Blob URL)
+        if (c.tipe === 'game' && c.content?.html_string && !c.html_string) {
+          return {
+            ...c,
+            html_string: c.content.html_string, // angkat ke level atas
+            approved: c.approved ?? c.disetujui ?? false,
+          };
+        }
+        return {
+          ...c,
+          approved: c.approved ?? c.disetujui ?? false,
+        };
+      }),
     };
   });
 }
@@ -243,7 +254,7 @@ export function mapEssayDinilaiWS(payload) {
     materi_id: payload?.materi_id ?? null,
     level: levStr,
     nilai_essay: payload?.nilai_essay ?? 0,
-    nilai_mc: payload?.nilai_mc ?? 0,
+    nilai_mc: payload?.nilai_mc ?? null,
     agregasi: payload?.agregasi ?? 0,
     naik_level: !!payload?.naik_level,
     kkm: payload?.kkm ?? 75,

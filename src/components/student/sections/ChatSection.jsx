@@ -16,8 +16,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Btn, Card, Divider } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
-import { CONF_TYPES, SUBJECTS, MATERI_PER_ELEMEN } from '../../../data/masterData';
-import { useWebSocket } from '../../../hooks/useWebSocket';
+import { CONF_TYPES, MATERI_PER_ELEMEN } from '../../../data/masterData';
+import { useWebSocketSiswa } from '../../../hooks/useWebSocket';
 import { useStudentStore } from '../../../stores/studentStore';
 import QuizModal, { getQuizV2 } from './QuizModal';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
@@ -25,13 +25,7 @@ import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { sendMessage, streamMessage, streamEvaluasi, sendEvaluasi, getChatHistory, createSesi } from '../../../api/mentor';
 import { sessionTelemetry } from '../../../telemetry/sessionTelemetry';
 import { getKontenSiswa, getQuizHistory } from '../../../api/content'; // bank konten guru + riwayat quiz dari BE
-// FIX 4: getKontenSiswa → prefetch bank konten guru saat topik dibuka
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-// katex/dist/katex.min.css diimport di main.jsx agar tersedia global,
-// tidak bergantung pada apakah ChatSection sudah di-render (penting untuk code-split).
+import { renderMarkdownSR, InlineLatex } from '../../shared/LatexRenderer';
 
 // Flag dari .env:
 //   VITE_MENTOR_STREAM : true → stream token-per-token, false → tunggu full response
@@ -42,91 +36,17 @@ const USE_STREAM = import.meta.env.VITE_MENTOR_STREAM === 'true';
 /* ─────────────────────────────────────────────────────────────────── */
 const makeKey = (mapelId, sub) => `${mapelId}__${sub}`;
 
+// Helper: konversi materiLabel ke format materi_id BE (§23.2 contract)
+// Jika materiLabel = elemenLabel (flag FE untuk elemen tanpa materi) → return null
+const toMateriId = (mapelId, materiLabel, elemenLabel) => {
+    if (!materiLabel || materiLabel === elemenLabel) return null;
+    return `${mapelId}__${materiLabel.toLowerCase().replace(/\s+/g, '_')}`;
+};
+
 // Bobot agregasi quiz — MC 70%, Essay 30%
 const MC_WEIGHT = 0.6;
 const ESSAY_WEIGHT = 0.4;
 const KKM_AGREGASI = 75;
-
-/* ─── Markdown renderer for AI messages ─────────────────────────── */
-const renderMarkdown = (text) => (
-    <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={{
-            // ── Table styling ──
-            table: ({ children }) => (
-                <div style={{ overflowX: 'auto', margin: '8px 0' }}>
-                    <table style={{
-                        width: '100%', borderCollapse: 'collapse',
-                        fontSize: FS.base, fontFamily: FONTS.sans,
-                        border: `1px solid ${C.teal}30`,
-                        borderRadius: 8,
-                    }}>{children}</table>
-                </div>
-            ),
-            thead: ({ children }) => (
-                <thead style={{ background: `${C.teal}14` }}>{children}</thead>
-            ),
-            th: ({ children }) => (
-                <th style={{
-                    padding: '8px 12px', textAlign: 'left',
-                    fontWeight: 700, fontSize: FS.sm, color: C.teal,
-                    borderBottom: `2px solid ${C.teal}30`,
-                    fontFamily: FONTS.sans,
-                }}>{children}</th>
-            ),
-            td: ({ children }) => (
-                <td style={{
-                    padding: '7px 12px',
-                    borderBottom: `1px solid ${C.teal}15`,
-                    fontSize: FS.base, fontFamily: FONTS.sans,
-                }}>{children}</td>
-            ),
-            // ── Typography — semua diseragamkan ke FS.base ──
-            p: ({ children }) => (
-                <p style={{ margin: '3px 0', lineHeight: 1.65, fontSize: FS.base, fontFamily: FONTS.sans }}>{children}</p>
-            ),
-            h1: ({ children }) => (
-                // h1 → sedikit di atas base agar tidak terlalu jumbo
-                <div style={{ fontSize: FS.lg, fontWeight: 700, color: C.dark, margin: '10px 0 4px', fontFamily: FONTS.sans }}>{children}</div>
-            ),
-            h2: ({ children }) => (
-                <div style={{ fontSize: FS.base + 1, fontWeight: 700, color: C.dark, margin: '8px 0 3px', borderBottom: `1px solid ${C.teal}15`, paddingBottom: 3, fontFamily: FONTS.sans }}>{children}</div>
-            ),
-            h3: ({ children }) => (
-                <div style={{ fontSize: FS.base, fontWeight: 700, color: C.teal, margin: '6px 0 3px', fontFamily: FONTS.sans }}>{children}</div>
-            ),
-            // ── Lists ──
-            ul: ({ children }) => (
-                <ul style={{ margin: '3px 0', paddingLeft: 18, fontFamily: FONTS.sans }}>{children}</ul>
-            ),
-            ol: ({ children }) => (
-                <ol style={{ margin: '3px 0', paddingLeft: 18, fontFamily: FONTS.sans }}>{children}</ol>
-            ),
-            li: ({ children }) => (
-                <li style={{ marginBottom: 2, lineHeight: 1.6, fontSize: FS.base, fontFamily: FONTS.sans }}>{children}</li>
-            ),
-            // ── Code ──
-            pre: ({ children }) => (
-                <pre style={{ background: '#1A2332', color: '#E2E8F0', padding: 12, borderRadius: 8, fontSize: FS.sm, overflowX: 'auto', margin: '6px 0', lineHeight: 1.5 }}>{children}</pre>
-            ),
-            code: ({ children, ...props }) => (
-                <code style={{ background: `${C.teal}12`, padding: '1px 4px', borderRadius: 3, fontSize: FS.sm, fontFamily: 'monospace', color: C.teal }} {...props}>{children}</code>
-            ),
-            // ── Blockquote ──
-            blockquote: ({ children }) => (
-                <blockquote style={{ borderLeft: `3px solid ${C.teal}`, margin: '6px 0', paddingLeft: 12, color: C.darkL, fontStyle: 'italic', fontSize: FS.base, fontFamily: FONTS.sans }}>{children}</blockquote>
-            ),
-            // ── Strong / em ──
-            strong: ({ children }) => (
-                <strong style={{ fontWeight: 700, fontFamily: FONTS.sans }}>{children}</strong>
-            ),
-            em: ({ children }) => (
-                <em style={{ fontFamily: FONTS.sans }}>{children}</em>
-            ),
-        }}
-    >{text}</ReactMarkdown>
-);
 
 // Legacy simple renderer for user messages
 const renderText = (text) => text.split('\n').map((line, i, arr) => (
@@ -171,26 +91,27 @@ const getOpeningMessage = (mapelId, mapelLabel, materiId, studiSessions, source)
 };
 
 // Dipanggil setelah confContent ter-update (prefetch selesai) untuk meng-inject teks bacaan asli
-const injectBacaanIntoOpening = (msgs, bacaanByLevel, currentLevel, sapaan, materiId) => {
+const injectBacaanIntoOpening = (msgs, bacaanByLevel, currentLevel, sapaan, materiId, sourceByLevel) => {
     const text = bacaanByLevel?.[currentLevel] || bacaanByLevel?.['low'];
-    if (!text) return msgs; // belum ada konten, biarkan placeholder
+    if (!text) return msgs;
+    const source = sourceByLevel?.[currentLevel] || sourceByLevel?.['low'] || null;
     return msgs.map(m => {
         if (m.isBacaan && m.showReadBtn) {
-            return { ...m, text: text };
+            return { ...m, text: text, bacaanSource: source };
         }
         return m;
     });
 };
 
 /* ═══════════════ [TIM 5] QUIZ DISCUSSION OPENER ══════════════════
- * Dipanggil saat siswa klik "Tanya Kak Nusa" dari detail riwayat quiz.
+ * Dipanggil saat siswa klik "Tanya Mentor AI" dari detail riwayat quiz.
  * TIDAK langsung mengevaluasi — AI tanya dulu soal mana yang ingin dibahas.
  * Fase 3: fungsi ini digantikan stream dari Tim 5.
  * ═══════════════════════════════════════════════════════════════════ */
 const buildQuizDiscussionOpener = ({ quizType, score, correct, total, materiId, wrongItems, essayAnswers, soalSnapshot }) => {
     if (quizType === 'essay') {
         const answeredCount = essayAnswers ? Object.values(essayAnswers).filter(v => v?.trim()).length : 0;
-        return `📋 **Kak Nusa siap membahas jawaban essaymu — ${materiId}**\n\nKamu sudah mengerjakan **${answeredCount} soal essay**. Bagus! Kak Nusa ingin membantu kamu mendalami lebih jauh.\n\n✍️ **Soal mana yang ingin kamu bahas dulu?**\n${(soalSnapshot || []).map((s, i) => `${i + 1}. *${s.soal.slice(0, 80)}${s.soal.length > 80 ? '…' : ''}*`).join('\n')}\n\nTulis nomor soal atau tanya hal spesifik yang membingungkanmu — Kak Nusa akan memberikan feedback mendalam pada jawabanmu! 😊`;
+        return `📋 **Mentor AI siap membahas jawaban essaymu — ${materiId}**\n\nKamu sudah mengerjakan **${answeredCount} soal essay**. Bagus! Mentor AI ingin membantu kamu mendalami lebih jauh.\n\n✍️ **Soal mana yang ingin kamu bahas dulu?**\n${(soalSnapshot || []).map((s, i) => `${i + 1}. *${s.soal.slice(0, 80)}${s.soal.length > 80 ? '…' : ''}*`).join('\n')}\n\nTulis nomor soal atau tanya hal spesifik yang membingungkanmu — Mentor AI akan memberikan feedback mendalam pada jawabanmu! 😊`;
     }
 
     // MC
@@ -199,7 +120,7 @@ const buildQuizDiscussionOpener = ({ quizType, score, correct, total, materiId, 
     const scoreInfo = `Skor kamu **${score}/100** (${correct}/${total} soal benar).`;
 
     if (wrongCount === 0) {
-        return `🌟 **Semua jawaban benar di quiz ${materiId}!** ${scoreInfo}\n\nLuar biasa! Meski sudah sempurna, apakah ada **konsep** dari topik ini yang ingin kamu perdalam atau tanyakan? Kak Nusa siap berdiskusi lebih jauh. 😊`;
+        return `🌟 **Semua jawaban benar di quiz ${materiId}!** ${scoreInfo}\n\nLuar biasa! Meski sudah sempurna, apakah ada **konsep** dari topik ini yang ingin kamu perdalam atau tanyakan? Mentor AI siap berdiskusi lebih jauh. 😊`;
     }
 
     const wrongList = (wrongItems || []).map((w, i) => `${i + 1}. *${w.soal.slice(0, 80)}${w.soal.length > 80 ? '…' : ''}*`).join('\n');
@@ -207,7 +128,7 @@ const buildQuizDiscussionOpener = ({ quizType, score, correct, total, materiId, 
         ? `Ada **${wrongCount} soal** yang jawabannya kurang tepat:`
         : `Ada **${wrongCount} soal** yang perlu kita bahas:`;
 
-    return `💬 **Kak Nusa siap membahas quiz ${materiId}** — ${scoreInfo}\n\n${prompt}\n${wrongList}\n\n📌 **Soal nomor berapa yang ingin kamu bahas dulu?** Tulis nomornya atau langsung tanyakan bagian yang membingungkan — Kak Nusa akan membantu menjelaskan! 🚀`;
+    return `💬 **Mentor AI siap membahas quiz ${materiId}** — ${scoreInfo}\n\n${prompt}\n${wrongList}\n\n📌 **Soal nomor berapa yang ingin kamu bahas dulu?** Tulis nomornya atau langsung tanyakan bagian yang membingungkan — Mentor AI akan membantu menjelaskan! 🚀`;
 };
 
 const getConfContent = (materiId, mapelLabel) => ({
@@ -514,7 +435,7 @@ const flashcardFontSize = (text = '') => {
     return FS.sm;                   // 11px — mendekati 150 char
 };
 
-const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx, flashFlipped, setFlashFlipped }) => {
+const FlashcardView = ({ cards, source, color, bgLight, materiId, flashIdx, setFlashIdx, flashFlipped, setFlashFlipped }) => {
     const total = cards.length;
     const card = cards[flashIdx] || cards[0];
 
@@ -565,7 +486,7 @@ const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx,
                     }}>
                         <div style={{ fontSize: 28, marginBottom: 14 }}>❓</div>
                         <div style={{ fontSize: flashcardFontSize(card.depan), fontWeight: 700, color: C.dark, lineHeight: 1.6 }}>
-                            {card.depan}
+                            <InlineLatex text={card.depan} />
                         </div>
                         <div style={{ position: 'absolute', bottom: 14, fontSize: FS.sm, color: color, fontWeight: 600, opacity: 0.7 }}>
                             Klik untuk melihat jawaban →
@@ -589,7 +510,7 @@ const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx,
                     }}>
                         <div style={{ fontSize: 28, marginBottom: 14 }}>💡</div>
                         <div style={{ fontSize: flashcardFontSize(card.belakang), color: '#fff', lineHeight: 1.7, fontWeight: 500 }}>
-                            {card.belakang}
+                            <InlineLatex text={card.belakang} />
                         </div>
                         <div style={{ position: 'absolute', bottom: 14, fontSize: FS.sm, color: 'rgba(255,255,255,.65)', fontWeight: 600 }}>
                             ← Klik untuk balik lagi
@@ -622,6 +543,11 @@ const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx,
             <div style={{ marginTop: 16, background: '#EBF8FF', borderRadius: 10, padding: '10px 14px', fontSize: FS.sm, color: '#2B6CB0', display: 'flex', gap: 8 }}>
                 <span>💡</span><span>Gunakan kartu ini untuk latihan hafalan aktif. Coba jawab dulu sebelum membalik!</span>
             </div>
+            {source && (
+                <div style={{ marginTop: 8, fontSize: FS.xs, color: '#a0aec0' }}>
+                    📚 Sumber: {source}
+                </div>
+            )}
         </div>
     );
 };
@@ -630,6 +556,8 @@ const FlashcardView = ({ cards, color, bgLight, materiId, flashIdx, setFlashIdx,
 const BacaanView = ({ bacaanData, currentLevel, color, materiId }) => {
     const LEVEL_LABELS = { low: 'Low', mid: 'Mid', high: 'High' };
     const text = bacaanData?.byLevel?.[currentLevel] || bacaanData?.byLevel?.['low'] || null;
+    // CONTRACT V3.6: source adalah string — nama buku/dokumen hasil retrieve RAG
+    const source = bacaanData?.sourceByLevel?.[currentLevel] || bacaanData?.sourceByLevel?.['low'] || null;
 
     if (!text) {
         return (
@@ -665,9 +593,14 @@ const BacaanView = ({ bacaanData, currentLevel, color, materiId }) => {
                     color: C.dark,
                 }}
             >
-                {renderMarkdown(text)}
+                {renderMarkdownSR(text)}
             </div>
-            <div style={{ marginTop: 14, background: '#EBF8FF', borderRadius: 10, padding: '10px 14px', fontSize: FS.sm, color: '#2B6CB0', display: 'flex', gap: 8 }}>
+            {source && (
+                <div style={{ marginTop: 10, textAlign: 'right', fontSize: FS.xs, color: '#a0aec0' }}>
+                    📚 Sumber: {source}
+                </div>
+            )}
+            <div style={{ marginTop: 10, background: '#EBF8FF', borderRadius: 10, padding: '10px 14px', fontSize: FS.sm, color: '#2B6CB0', display: 'flex', gap: 8 }}>
                 <span>💡</span>
                 <span>Setelah membaca materi ini, kerjakan Flashcard untuk memantapkan hafalan, lalu selesaikan Quiz MC + Essay.</span>
             </div>
@@ -750,7 +683,7 @@ const ChatSection = ({
 
     /* ── [TIM 5] Context Injection Pasca-Kuis ──────────────────────────
      * Setiap kali needsQuizAnalysis berubah jadi true dan ada quiz result,
-     * kita susun pesan pembuka diskusi dari Kak Nusa — bukan langsung evaluasi,
+     * kita susun pesan pembuka diskusi dari Mentor AI — bukan langsung evaluasi,
      * tapi menanyakan soal mana yang ingin dibahas dulu.
      * Fase 3: digantikan stream dari Tim 5.
      */
@@ -887,22 +820,28 @@ const ChatSection = ({
         setTimeout(() => { isWebcamPreviewOpen.current = false; }, 150);
     }, []);
 
-    // V3.3: ref sebagai bridge — useWebSocket dipanggil sebelum handleEssayDinilaiPayload
+    // V3.3: ref sebagai bridge — useWebSocketSiswa dipanggil sebelum handleEssayDinilaiPayload
     // dideklarasikan (karena activeKey belum ada). Ref memungkinkan callback terdaftar
     // sekarang tapi eksekusinya menunggu sampai fungsi asli siap.
     const essayDinilaiRef = useRef(null);
-    const { liveStudents: _ls, ...wsHook } = useWebSocket({
-        kelasId: 'kelas1',
-        guruId: 'g1',
-        enabled: false,
+    // CONTRACT V3.6 §22.1.2: siswa terhubung ke WS /ws/siswa untuk terima essay_dinilai
+    // sesiId di-set setelah createSesi berhasil (lihat useEffect createSesi di bawah)
+    const [activeSesiId, setActiveSesiId] = useState(null);
+    const siswaIdForWS = chatMateri?.siswaId || useStudentStore.getState().user?.id || null;
+    useWebSocketSiswa({
+        siswaId: siswaIdForWS,
+        sesiId: activeSesiId,
+        enabled: !!activeSesiId && !!siswaIdForWS,
         onEssayDinilai: (payload) => essayDinilaiRef.current?.(payload),
     });
 
     const sendViolationToTeacher = useCallback((detail) => {
+        // CONTRACT V3.6: gunakan user real dari store, bukan hardcoded mock ID
+        const _u = useStudentStore.getState().user;
         window.dispatchEvent(new CustomEvent('sr_student_violation', {
             detail: {
                 type: 'student_violation',
-                siswa: { id: 'siswa1', nama: 'Budi Santoso', avatar: 'BS' },
+                siswa: { id: _u?.id || '', nama: _u?.nama || '', avatar: _u?.avatar || null },
                 payload: { detail, timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) },
                 timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             }
@@ -929,11 +868,12 @@ const ChatSection = ({
         stopSessionCamera?.();
         // Kirim durasi + violations final ke BE sebelum keluar
         sessionTelemetry.end(useStudentStore.getState().currentEmosi || null);
+        useStudentStore.getState().setCurrentSesiId(null);
         // Kirim status inactive ke teacher
         window.dispatchEvent(new CustomEvent('sr_student_violation', {
             detail: {
                 type: 'student_inactive',
-                siswa: { id: 'siswa1', nama: 'Budi Santoso', avatar: 'BS' },
+                siswa: { id: useStudentStore.getState().user?.id || '', nama: useStudentStore.getState().user?.nama || '', avatar: useStudentStore.getState().user?.avatar || null },
                 payload: { materiId: 'exit' },
                 timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
             }
@@ -1106,11 +1046,14 @@ const ChatSection = ({
         // menyimpan konteks percakapan sejak pertama kali siswa membuka chatbot
         (async () => {
             const sesiId = await createSesi({
-                siswa_id: chatMateri.siswaId || useStudentStore.getState().user?.id || 'usr_001',
+                siswa_id: chatMateri.siswaId || useStudentStore.getState().user?.id || '',
                 mapel_id: chatMateri.mapelId || '',
-                elemen_id: chatMateri.elemenId || chatMateri.materiId || '',
-                materi_id: chatMateri.materiId || null,
+                elemen_id: chatMateri.elemenId || '',
+                materi_id: toMateriId(chatMateri.mapelId, chatMateri.materiId, chatMateri.elemenLabel),
             });
+            // CONTRACT V3.6 §22.1.2: simpan sesiId untuk WS siswa (essay_dinilai)
+            setActiveSesiId(sesiId);
+            useStudentStore.getState().setCurrentSesiId(sesiId);
             // Mulai tracking durasi — wajib agar PATCH /sesi/:id akurat
             sessionTelemetry.start(sesiId);
         })();
@@ -1139,7 +1082,7 @@ const ChatSection = ({
                 (async () => {
                     try {
                         const history = await getChatHistory({
-                            siswa_id: chatMateri.siswaId || 'usr_001',
+                            siswa_id: chatMateri.siswaId || useStudentStore.getState().user?.id || '',
                             mapel_id: chatMateri.mapelId || '',
                             materi: chatMateri.mapelLabel || chatMateri.materiId || '',
                             materi_id: chatMateri.materiId || '',
@@ -1173,7 +1116,7 @@ const ChatSection = ({
                 (async () => {
                     try {
                         const qh = await getQuizHistory({
-                            siswa_id: chatMateri.siswaId || 'usr_001',
+                            siswa_id: chatMateri.siswaId || useStudentStore.getState().user?.id || '',
                             elemen_id: chatMateri.elemenId || chatMateri.materiId,
                             materi_id: chatMateri.materiId || null,
                         });
@@ -1223,10 +1166,12 @@ const ChatSection = ({
             (async () => {
                 try {
                     const bank = await getKontenSiswa({
-                        siswa_id: chatMateri.siswaId || 'usr_001',
+                        siswa_id: chatMateri.siswaId || useStudentStore.getState().user?.id || '',
                         mapel_id: chatMateri.mapelId,
-                        materi_id: chatMateri.materiId,
-                        elemen_id: chatMateri.elemenId || chatMateri.materiId,
+                        materi_id: (chatMateri.materiId && chatMateri.materiId !== chatMateri.elemenLabel)
+                            ? chatMateri.materiId
+                            : undefined,
+                        elemen_id: chatMateri.elemenId || '',
                     });
                     if (!Array.isArray(bank) || !bank.length) return;
                     // Cari paket yang cocok — fallback ke paket pertama (toleran untuk mock)
@@ -1242,6 +1187,7 @@ const ChatSection = ({
                         const updated = { ...existing };
                         // Simpan atp dari paket untuk dipakai di mentor payload
                         if (paket.atp) updated._atp = paket.atp;
+                        if (paket.publish_id) updated._publishId = paket.publish_id;
                         paket.konten_list.forEach(item => {
                             const tipeKey = item.tipe;
                             if (tipeKey === 'flashcard') {
@@ -1249,7 +1195,9 @@ const ChatSection = ({
                                     const lb = getConfContent(chatMateri.materiId, chatMateri.mapelLabel).flashcard || {};
                                     updated.flashcard = {
                                         ...lb, generated: true,
-                                        ...(Array.isArray(item.content?.cards) && item.content.cards.length ? { cards: item.content.cards } : {})
+                                        ...(Array.isArray(item.content?.cards) && item.content.cards.length ? { cards: item.content.cards } : {}),
+                                        // CONTRACT V3.6: source adalah string (nama buku/dokumen dari RAG)
+                                        ...(typeof item.content?.source === 'string' && item.content.source ? { source: item.content.source } : {}),
                                     };
                                 }
                             } else if (tipeKey === 'mindmap') {
@@ -1265,16 +1213,24 @@ const ChatSection = ({
                                 }
                             } else if (tipeKey === 'bacaan' && item.content?.text) {
                                 // BACAAN MARKDOWN: simpan per level (lowercase), dirender via renderMarkdown() di panel kanan
-                                if (!updated.bacaan) updated.bacaan = { generated: true, byLevel: {} };
+                                if (!updated.bacaan) updated.bacaan = { generated: true, byLevel: {}, sourceByLevel: {} };
                                 else if (!updated.bacaan.byLevel) updated.bacaan.byLevel = {};
+                                if (!updated.bacaan.sourceByLevel) updated.bacaan.sourceByLevel = {};
                                 const lvKey = (item.level || 'low').toLowerCase(); // normalisasi: 'Low' → 'low'
                                 updated.bacaan.byLevel[lvKey] = item.content.text;
+                                // CONTRACT V3.6: source adalah string (nama buku/dokumen dari RAG)
+                                if (item.content.source) updated.bacaan.sourceByLevel[lvKey] = item.content.source;
                                 updated.bacaan.generated = true;
                             } else if (tipeKey === 'game' && item.level) {
-                                // GAME: simpan per level, tombol Main Game pakai game sesuai level aktif
                                 if (!updated.game) updated.game = { generated: true, byLevel: {} };
                                 else if (!updated.game.byLevel) updated.game.byLevel = {};
-                                updated.game.byLevel[item.level] = item.content;
+                                // Simpan game_id dari level item + html_string dari content
+                                // agar openGame bisa langsung pakai tanpa fetch GET /game/:id
+                                updated.game.byLevel[item.level] = {
+                                    ...item.content,
+                                    game_id: item.game_id ?? null,         // ← angkat game_id ke dalam
+                                    html_string: item.content?.html_string ?? null,
+                                };
                                 updated.game.generated = true;
                             } else if (tipeKey === 'quiz_pg' && item.level) {
                                 // FIX T2: QUIZ PILIHAN GANDA — simpan per level dari API, override QUIZ_BANK_V2 lokal
@@ -1368,8 +1324,9 @@ const ChatSection = ({
             r.type === 'essay' && (r.level || 'low') === level
         );
 
-        // Gunakan nilai dari quizHistory jika ada, fallback ke nilai dari WS payload
-        const finalMcScore = mcRec?.score ?? nilai_mc ?? null;
+        // Jangan pernah fallback ke nilai_mc dari WS — itu hanya untuk guru monitoring
+        // MC dianggap ada HANYA jika record-nya benar-benar ada di quizHistory
+        const finalMcScore = mcRec != null ? (mcRec.score ?? null) : null;
         const finalEssayScore = essayRec?.score ?? nilai_essay ?? null;
 
         // Hitung agregasi dari nilai aktual (bukan dari WS payload yang bisa tidak akurat di mock)
@@ -1424,7 +1381,7 @@ const ChatSection = ({
     essayDinilaiRef.current = handleEssayDinilaiPayload;
 
     // V3.3: listen mock_ws_essay_dinilai (MSW dev mode)
-    // Di production: event datang dari WebSocket real via useWebSocket onEssayDinilai
+    // Di production: event datang dari WebSocket real via useWebSocketSiswa onEssayDinilai
     useEffect(() => {
         const handler = (e) => {
             if (e.detail?.payload) handleEssayDinilaiPayload(e.detail.payload);
@@ -1447,7 +1404,7 @@ const ChatSection = ({
             if (!hasBacaanMsg) return p;
             const currentLvl = levelMap[activeKey] || chatMateri?.level || 'low';
             const firstBacaan = existing.find(m => m.isBacaan);
-            const injected = injectBacaanIntoOpening(existing, bacaanByLevel, currentLvl, firstBacaan?.sapaan || '', firstBacaan?.materiId || materiId);
+            const injected = injectBacaanIntoOpening(existing, bacaanByLevel, currentLvl, firstBacaan?.sapaan || '', firstBacaan?.materiId || materiId, kConf.bacaan?.sourceByLevel);
             // Hanya update jika benar-benar berubah (cegah infinite loop)
             if (injected === existing) return p;
             return { ...p, [activeKey]: injected };
@@ -1483,7 +1440,7 @@ const ChatSection = ({
         const openingMsg = {
             id: Date.now() + 1,
             role: 'ai',
-            text: `Bagus! Kamu sudah selesai membaca materi **${materiId}** level **${LEVEL_LABELS[currentLevel]}**. 🎉\n\nSekarang saatnya memantapkan pemahamanmu:\n- 🃏 **Flashcard** — latihan hafalan aktif\n- 📝 **Quiz MC** — uji pemahaman konsep\n- ✍️ **Essay** — dalami dengan analisismu sendiri\n\nMulai dari mana dulu? Atau ada bagian dari bacaan tadi yang ingin kamu tanyakan? 😊`,
+            text: `Bagus! Kamu sudah selesai membaca materi **${materiId}**. 🎉\n\nSekarang saatnya memantapkan pemahamanmu:\n- 🧠 **Mindmap** — ringkasan visual materi\n- 🃏 **Flashcard** — latihan hafalan aktif\n- 🎮 **Game** — game edukatif\n- 📝 **Quiz MC** — uji pemahaman konsep\n- ✍️ **Essay** — dalami dengan analisismu sendiri\n\nMulai dari mana dulu? Atau ada bagian dari bacaan tadi yang ingin kamu tanyakan? 😊`,
             time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
         };
         setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), openingMsg] }));
@@ -1500,9 +1457,9 @@ const ChatSection = ({
      *
      * @param {string} text        — teks pesan yang akan dikirim
      * @param {object} [opts]
-     * @param {string|null} [opts.hasil_quiz_id]  — V3.2: dikirim di body POST /mentor/pesan
-     *                                              BE Tim 6 inject konteks quiz ke Tim 5
+     * @param {string|null} [opts.hasil_quiz_id]  — V3.3: POST /mentor/evaluasi (bukan /mentor/pesan)
      * @param {boolean} [opts.suppressUserBubble] — true → jangan render user bubble (CTA opener)
+     * @param {string|null} [opts.quizLevel]      — level attempt quiz ('low'|'mid'|'high') untuk body evaluasi
      */
     const dispatchMentorMessage = async (text, opts = {}) => {
         if (!text?.trim()) {
@@ -1518,7 +1475,7 @@ const ChatSection = ({
             return;
         }
 
-        const { hasil_quiz_id = null, suppressUserBubble = false } = opts;
+        const { hasil_quiz_id = null, suppressUserBubble = false, quizLevel = null } = opts;
 
         // Tampilkan user bubble kecuali CTA opener (suppressUserBubble)
         if (!suppressUserBubble) {
@@ -1532,21 +1489,30 @@ const ChatSection = ({
         setTyping(true);
 
         // Bangun payload sesuai MentorChatPayload contract Tim 5
-        const siswaId = chatMateri?.siswaId || 'usr_001';
+        const siswaId = chatMateri?.siswaId || useStudentStore.getState().user?.id || '';
         const currentEmosi = useStudentStore.getState().currentEmosi || null;
         const elemenId = chatMateri?.elemenId || '';
         const elemenLabel = chatMateri?.elemenLabel || chatMateri?.mapelLabel || '';
         const activeLevelRaw = levelMap[activeKey] || chatMateri?.level || 'low';
         const activeLevelForMentor = activeLevelRaw.charAt(0).toUpperCase() + activeLevelRaw.slice(1).toLowerCase();
+        /** Level attempt quiz (CTA) — CONTRACT §19: kirim level konteks quiz, bukan level chat aktif setelah naik. */
+        const quizLevelRaw = (quizLevel != null && quizLevel !== '')
+            ? String(quizLevel).toLowerCase()
+            : null;
+        const levelForMentorPayload = quizLevelRaw
+            ? quizLevelRaw.charAt(0).toUpperCase() + quizLevelRaw.slice(1).toLowerCase()
+            : activeLevelForMentor;
         const atpForMentor = confContent[activeKey]?._atp || confContent[makeKey(chatMateri?.mapelId, chatMateri?.materiId)]?._atp || '';
 
         // Bacaan level aktif — dikirim flat di konteks, Tim 5 gunakan sebagai referensi materi.
         const kNow = confContent[activeKey] || confContent[makeKey(chatMateri?.mapelId, chatMateri?.materiId)] || {};
         const lvl = (levelMap[activeKey] || chatMateri?.level || 'low').toLowerCase();
         const bacaanKonteks = kNow.bacaan?.byLevel?.[lvl]?.slice(0, 3000) || '';
-        const storeHasilQuizId = useStudentStore.getState().ctaHasilQuizId ?? null;
-        if (storeHasilQuizId) useStudentStore.getState().clearCtaHasilQuizId();
-        const effectiveHasilQuizId = hasil_quiz_id || storeHasilQuizId || null;
+        // store hanya dibaca jika hasil_quiz_id memang dikirim via opts (dari CTA flow)
+        // Chat normal (sendMsg) tidak pernah kirim hasil_quiz_id di opts, jadi store tidak terbaca
+        const effectiveHasilQuizId = hasil_quiz_id || null;
+        // Bersihkan store jika masih ada sisa (safeguard)
+        useStudentStore.getState().clearCtaHasilQuizId();
 
         const payload = {
             siswa_id: siswaId,
@@ -1556,7 +1522,7 @@ const ChatSection = ({
             materi: chatMateri?.mapelLabel || materiId || null,
             materi_id: materiId || null,
             atp: atpForMentor,
-            level: activeLevelForMentor,
+            level: levelForMentorPayload,
             message: text,
             context: {
                 emosi: currentEmosi,
@@ -1564,7 +1530,7 @@ const ChatSection = ({
                 publish_id: kNow._publishId || null,
                 bacaan: bacaanKonteks,
             },
-            // V3.2: hasil_quiz_id dikirim di body POST /mentor/pesan — bukan di POST /sesi
+            // V3.3: jika hasil_quiz_id ada → route ke POST /mentor/evaluasi/stream (bukan /mentor/pesan)
             // BE Tim 6 akan lookup dan inject konteks quiz ke Tim 5 secara internal
             ...(effectiveHasilQuizId ? { hasil_quiz_id: effectiveHasilQuizId } : {}),
         };
@@ -1691,12 +1657,12 @@ const ChatSection = ({
                 setTyping(false);
                 setTimeout(() => messagesEnd?.current?.scrollIntoView({ behavior: 'smooth' }), 80);
             }
-        } catch {
+        } catch (err) {
             // Fallback lokal jika API tidak tersedia
-            const topikCtx = materiId || chatMateri?.mapelLabel;
+            console.error('[Mentor] dispatchMentorMessage gagal:', err);
             const aiReply = {
                 id: Date.now() + 1, role: 'ai',
-                text: `Pertanyaan bagus tentang **${topikCtx}**! 😊\n\nMari kita telaah lebih dalam. Konsep kunci yang perlu dipahami:\n\n1. Pahami definisi dasarnya terlebih dahulu\n2. Lihat contoh nyata di sekitar kita\n3. Coba kerjakan soal latihan untuk memastikan pemahamanmu\n\nApa yang masih membingungkan?`,
+                text: `⚠️ Koneksi ke Mentor AI terputus. Silakan coba lagi.`,
                 time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }), team: 'Tim 5',
             };
             setMsgsByKey(p => ({ ...p, [activeKey]: [...(p[activeKey] || []), aiReply] }));
@@ -1718,7 +1684,7 @@ const ChatSection = ({
     };
 
     /**
-     * startQuizDiscussion — CTA "Tanya Kak Nusa" orchestration.
+     * startQuizDiscussion — CTA "Tanya Mentor AI" orchestration.
      *
      * Dipanggil oleh useEffect saat needsQuizAnalysis === true.
      * Flow:
@@ -1747,6 +1713,7 @@ const ChatSection = ({
             materiId: qMateriId, mapelLabel,
             wrongItems, essayAnswers, soalSnapshot,
             hasil_quiz_id,
+            level: quizLevelFromResult,
         } = quizResult;
 
         // Bangun opener message yang akan dikirim ke Tim 5 sebagai pesan siswa
@@ -1786,6 +1753,7 @@ const ChatSection = ({
             await dispatchMentorMessage(openerText, {
                 hasil_quiz_id: hasil_quiz_id ?? null,
                 suppressUserBubble: true,
+                quizLevel: quizLevelFromResult ?? null,
             });
         } catch (err) {
             console.error('[CTA] startQuizDiscussion: dispatchMentorMessage gagal:', err);
@@ -1843,10 +1811,6 @@ const ChatSection = ({
     const handleQuizSubmit = (result) => {
         const { type, score, correct, total, wrongItems, answers, essayAnswers, soalSnapshot, kkm, hasil_quiz_id } = result;
         const KKM_BARU = kkm ?? KKM_AGREGASI;
-
-        if (hasil_quiz_id) {
-            useStudentStore.getState().setCtaHasilQuizId(hasil_quiz_id);
-        }
         const currentLevelForRecord = levelMap[activeKey] || chatMateri?.level || 'low';
 
         const newRecord = {
@@ -1861,7 +1825,7 @@ const ChatSection = ({
             wrongItems,
             essayAnswers,
             kkm: KKM_BARU,
-            // Wajib untuk CTA "Tanya Kak Nusa" dari modal riwayat — jangan hanya andalkan store global
+            // Wajib untuk CTA "Tanya Mentor AI" dari modal riwayat — jangan hanya andalkan store global
             hasil_quiz_id: hasil_quiz_id ?? null,
         };
 
@@ -2157,7 +2121,7 @@ const ChatSection = ({
 
                     <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(135deg,${C.teal},${C.tealL})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.xl, flexShrink: 0 }}>🤖</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark }}>Mentor AI — Kak Nusa</div>
+                        <div style={{ fontWeight: 700, fontSize: FS.base, color: C.dark }}>Mentor AI</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             <span style={{ width: 5, height: 5, borderRadius: '50%', background: C.green, display: 'inline-block' }} />
                             <span style={{ fontSize: FS.xs, color: C.green }}>Online</span>
@@ -2281,7 +2245,7 @@ const ChatSection = ({
                                                 margin: '-4px -8px',
                                             } : {}),
                                         }}>
-                                            {renderMarkdown(msg.text)}
+                                            {renderMarkdownSR(msg.text)}
                                         </div>
 
                                         {/* ── Tombol Selesai Membaca (hanya untuk pesan bacaan yang belum done) ── */}
@@ -2309,6 +2273,11 @@ const ChatSection = ({
                                         {msg.isBacaan && readDone[activeKey] && (
                                             <div style={{ marginTop: 10, fontSize: FS.xs, color: C.teal, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
                                                 ✅ <span>Kamu sudah menyelesaikan bacaan ini</span>
+                                            </div>
+                                        )}
+                                        {msg.isBacaan && msg.bacaanSource && (
+                                            <div style={{ marginTop: 8, textAlign: 'right', fontSize: FS.xs, color: '#a0aec0' }}>
+                                                📚 Sumber: {msg.bacaanSource}
                                             </div>
                                         )}
 
@@ -2438,7 +2407,7 @@ const ChatSection = ({
                             </div>
                         </div>
                     )}
-                    {/* [TIM 5] Typing indicator khusus pasca-kuis — Kak Nusa menganalisis */}
+                    {/* [TIM 5] Typing indicator khusus pasca-kuis — Mentor AI menganalisis */}
                     {quizAnalysisTyping && (
                         <div style={{
                             display: 'flex', gap: 0, padding: '14px 16px 10px',
@@ -2458,7 +2427,7 @@ const ChatSection = ({
                             </div>
                             <div style={{ flex: 1 }}>
                                 <div style={{ fontSize: FS.md, fontWeight: 700, color: C.teal, marginBottom: 4 }}>
-                                    Kak Nusa
+                                    Mentor AI
                                     <span style={{ fontSize: FS.xs, color: C.teal, fontWeight: 500, marginLeft: 8, opacity: .8 }}>
                                         sedang menyiapkan pembahasan...
                                     </span>
@@ -2783,7 +2752,7 @@ const ChatSection = ({
                                     )}
                                 </div>
 
-                                {/* Footer: tombol Ulangi + Tanya Kak Nusa */}
+                                {/* Footer: tombol Ulangi + Tanya Mentor AI */}
                                 <div style={{
                                     padding: '8px 12px', borderTop: `1px solid rgba(13,92,99,.07)`,
                                     flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 5,
@@ -2826,13 +2795,13 @@ const ChatSection = ({
                                         );
                                     })()}
 
-                                    {/* Tanya Kak Nusa — berlaku untuk MC dan Essay */}
+                                    {/* Tanya Mentor AI — berlaku untuk MC dan Essay */}
                                     <div style={{
                                         background: `${C.teal}0D`, borderRadius: 7, padding: '7px 9px',
                                         fontSize: FS.xs, color: C.teal, lineHeight: 1.5,
                                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 7,
                                     }}>
-                                        <span>💬 {isMcResult ? 'Bahas soal yang salah' : 'Minta feedback'} dengan <strong>Kak Nusa</strong></span>
+                                        <span>💬 {isMcResult ? 'Bahas soal yang salah' : 'Minta feedback'} dengan <strong>Mentor AI</strong></span>
                                         <button
                                             onClick={() => {
                                                 // Prioritas: ID pada baris riwayat (benar per MC/Essay). Fallback: store (baru submit).
@@ -2844,6 +2813,7 @@ const ChatSection = ({
                                                     score: result.score,
                                                     correct: result.correct,
                                                     total: result.total,
+                                                    level: result.level,
                                                     materiId: materiId || chatMateri.mapelLabel,
                                                     mapelLabel: chatMateri.mapelLabel,
                                                     wrongItems: result.wrongItems || [],
@@ -2919,7 +2889,7 @@ const ChatSection = ({
                                             )}
                                             {ct.type === 'flashcard' && data.cards && (
                                                 <FlashcardView
-                                                    cards={data.cards} color={ct.color} bgLight={`${ct.color}18`} materiId={materiId}
+                                                    cards={data.cards} source={kConf.flashcard?.source || null} color={ct.color} bgLight={`${ct.color}18`} materiId={materiId}
                                                     flashIdx={flashIdx} setFlashIdx={setFlashIdx}
                                                     flashFlipped={flashFlipped} setFlashFlipped={setFlashFlipped}
                                                 />
@@ -2978,7 +2948,8 @@ const ChatSection = ({
                                                 level: activeLvlNorm,
                                                 // FIX T4: game_id diteruskan dari byLevel → polling & iframe jalan
                                                 game_id: gameConf?.game_id || gameConf?.id || null,
-                                                html_url: gameConf?.html_url || null,
+                                                html_string: gameConf?.html_string || null,  // ← dari DB BE via byLevel
+                                                html_url: gameConf?.html_url || null,        // ← null, dikonversi di openGame
                                             });
                                         }
                                     }}
@@ -3203,6 +3174,7 @@ const ChatSection = ({
                 chatMateri={chatMateri}
                 materiId={materiId}
                 activeKey={activeKey}
+                confContent={confContent}
                 quizType="mc"
                 soalSnapshot={retrySnapshot?.type === 'mc' ? retrySnapshot.soal : null}
                 currentLevel={(levelMap[activeKey] || chatMateri?.level || 'low').toLowerCase()}
@@ -3217,6 +3189,7 @@ const ChatSection = ({
                 chatMateri={chatMateri}
                 materiId={materiId}
                 activeKey={activeKey}
+                confContent={confContent}
                 quizType="essay"
                 soalSnapshot={retrySnapshot?.type === 'essay' ? retrySnapshot.soal : null}
                 currentLevel={(levelMap[activeKey] || chatMateri?.level || 'low').toLowerCase()}

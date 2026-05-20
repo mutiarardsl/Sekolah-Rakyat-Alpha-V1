@@ -10,7 +10,7 @@
  *  - pretestDoneMapels & markPretestDoneWithLeveling dipertahankan (backward compat)
  */
 import { create } from 'zustand';
-import { PROGRESS_DATA_INIT, KURIKULUM, KURIKULUM_ELEMEN, MATERI_PER_ELEMEN } from '../data/masterData';
+import { KURIKULUM, KURIKULUM_ELEMEN, MATERI_PER_ELEMEN } from '../data/masterData';
 
 const makeKey = (mapelId, elemenId) => `${mapelId}__${elemenId}`;
 const makeMateriKey = (mapelId, elemenId, materiId) => `${mapelId}__${elemenId}__${materiId}`;
@@ -154,17 +154,47 @@ export const useStudentStore = create((set, get) => ({
     return !!get().gameCompleted[`${mapelId}__${elemenId}__${level}`];
   },
 
-  progressData: { ...PROGRESS_DATA_INIT },
+  // CONTRACT V3.6: mulai dengan state kosong — di-sync dari API via ProgressSection
+  progressData: { belumSelesai: [], sudahSelesai: [] },
   setProgressData: (updater) => set(state => ({
     progressData: typeof updater === 'function' ? updater(state.progressData) : updater,
   })),
+  // Merge data API ke progressData tanpa menghapus data lokal sesi ini.
+  // Dipanggil oleh ProgressSection saat hidrasi dari GET /siswa/:id/progress.
+  // Tidak menimpa belumSelesai lokal — merge additive.
+  setProgressFromApi: (apiData) => set(state => {
+    const fromApi = (apiData?.by_mapel || []).flatMap(m =>
+      (m.elemen || []).flatMap(e => {
+        const base = { mapelId: m.mapel_id, elemenId: e.elemen_id };
+        if (e.materi?.length) {
+          return e.materi.map(mt => ({ ...base, materiId: mt.materi_id, status: mt.status }));
+        }
+        return [{ ...base, materiId: e.elemen_id, status: e.status }];
+      })
+    );
+    // Hanya tambah entri yang belum ada di store lokal
+    const existingKeys = new Set([
+      ...state.progressData.sudahSelesai.map(m => `${m.mapelId}__${m.materiId}`),
+      ...state.progressData.belumSelesai.map(m => `${m.mapelId}__${m.materiId}`),
+    ]);
+    const newBelumSelesai = fromApi
+      .filter(e => e.status === 'dalam_proses' && !existingKeys.has(`${e.mapelId}__${e.materiId}`))
+      .map(e => ({ ...e, progress: 10, lastChat: '', confDone: [], quizDone: false, quizScore: null }));
+    const newSudahSelesai = fromApi
+      .filter(e => e.status === 'selesai' && !existingKeys.has(`${e.mapelId}__${e.materiId}`))
+      .map(e => ({ ...e, progress: 100, lastChat: '', confDone: [], quizDone: true, quizScore: null }));
+    return {
+      progressData: {
+        belumSelesai: [...state.progressData.belumSelesai, ...newBelumSelesai],
+        sudahSelesai: [...state.progressData.sudahSelesai, ...newSudahSelesai],
+      },
+    };
+  }),
 
   markTopicOngoing: (materi) => set(state => {
     const { mapelId, materiId } = materi;
-    if (!materiId) return state;
-    const validMateris = KURIKULUM[mapelId] || [];
-    const materiPerElemen = Object.values((MATERI_PER_ELEMEN[mapelId] || {})).flat();
-    if (!validMateris.includes(materiId) && !materiPerElemen.includes(materiId)) return state;
+    if (!materiId || !mapelId) return state;
+    // Guard: jangan duplikasi jika sudah ada di salah satu list
     const key = makeKey(mapelId, materiId);
     if (state.progressData.sudahSelesai.find(m => makeKey(m.mapelId, m.materiId) === key)) return state;
     if (state.progressData.belumSelesai.find(m => makeKey(m.mapelId, m.materiId) === key)) return state;
@@ -229,6 +259,9 @@ export const useStudentStore = create((set, get) => ({
   currentEmosi: null,
   setCurrentEmosi: (emosi) => set({ currentEmosi: emosi }),
 
+  currentSesiId: null,
+  setCurrentSesiId: (id) => set({ currentSesiId: id }),
+
   chatMateri: null,
   setChatMateri: (m) => set({ chatMateri: m }),
 
@@ -237,7 +270,7 @@ export const useStudentStore = create((set, get) => ({
   setQuizAnalysisNeeded: (result) => set({ needsQuizAnalysis: true, lastQuizResult: result }),
   clearQuizAnalysis: () => set({ needsQuizAnalysis: false }),
 
-  // V3.1: hasil_quiz_id untuk CTA "Tanya Kak Nusa" — disimpan setelah submit quiz
+  // V3.1: hasil_quiz_id untuk CTA "Tanya Mentor AI" — disimpan setelah submit quiz
   ctaHasilQuizId: null,
   setCtaHasilQuizId: (id) => set({ ctaHasilQuizId: id ?? null }),
   clearCtaHasilQuizId: () => set({ ctaHasilQuizId: null }),
@@ -277,6 +310,7 @@ export const useStudentStore = create((set, get) => ({
       confContent: {},
       chatMateri: null,
       currentEmosi: null,
+      currentSesiId: null,
 
       // Game
       gameCompleted: {},

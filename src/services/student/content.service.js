@@ -139,28 +139,6 @@ export async function getContentInsight(payload) {
   return LEG.mapInsightResponse(data);
 }
 
-export async function submitQuiz(payload) {
-  const sid = payload.siswa_id;
-  const apiBody = TO.toQuizSubmitV3(payload);
-  const raw = await runHybrid(
-    () =>
-      v3.post(`/siswa/${encodeURIComponent(sid)}/quiz`, apiBody),
-    () =>
-    ({
-      disimpan: true,
-      tipe: payload.quiz_type === "essay" ? "essay" : "mc",
-      nilai: payload.score ?? 0,
-      nilai_essay: null,
-      elemen_id: payload.elemen_id,
-      level: String(payload.level || "low").toLowerCase(),
-      menunggu_agregasi: payload.quiz_type === "essay",
-      kkm: 75,
-      dicatat_at: new Date().toISOString(),
-    }),
-  );
-  return LEG.mapQuizSubmitV3(raw);
-}
-
 export async function getQuizHistory(params) {
   const sid = params.siswa_id;
   const q = {
@@ -227,65 +205,59 @@ export async function submitPretestJawaban(body) {
 }
 
 /** Guru */
+/**
+ * Generate atau regenerate konten — 1 endpoint Tim 3.
+ * POST /konten/generate
+ *
+ * Generate baru  → instruksi_revisi tidak dikirim
+ * Regenerate     → konten_id + instruksi_revisi keduanya dikirim
+ * Tim 3 deteksi dari ada/tidaknya instruksi_revisi.
+ */
 export async function generateContent(payload) {
+  const body = {
+    mapel_id: payload.mapel_id,
+    elemen_id: payload.elemen_id,
+    elemen_label: payload.elemen_label,
+    materi: payload.materi ?? null,
+    materi_id: payload.materi_id ?? null,
+    jenjang: payload.jenjang,
+    atp: payload.atp ?? "",
+    tipe: payload.tipe,
+    level: payload.level ?? null,
+  };
+
+  // Regenerate: tambahkan konten_id (referensi Tim 3) dan instruksi_revisi (sinyal deteksi Tim 3)
+  if (payload.instruksi_revisi) {
+    body.konten_id = payload.konten_id ?? null;
+    body.instruksi_revisi = payload.instruksi_revisi;
+  }
+
   const data = await runHybrid(
-    () => v3.post("/konten/generate", TO.toKontenGeneratePayload(payload)),
-    () =>
-    ({
-      konten_id: `konten_mock_${payload.tipe}_${payload.level || "none"}_${Date.now()}`,
+    () => v3.post("/konten/generate", body),
+    () => Promise.resolve({
+      konten_id: payload.konten_id
+        ?? `konten_mock_${payload.tipe}_${payload.level || "none"}_${Date.now()}`,
       tipe: payload.tipe,
       level: payload.level,
       content: payload.tipe === "mindmap"
-        ? { nodes: [{ id: "n1", label: "Mindmap mock", parent_id: null }] }
-        : payload.tipe?.includes?.("quiz") ? { soal: [] }
-          : { text: "# Konten Mock\nPlaceholder." },
+        ? { nodes: [{ id: "n1", label: "Mindmap mock", parent_id: null, penjelasan: "" }] }
+        : payload.tipe?.includes?.("quiz_pg")
+          ? { soal: [] }
+          : payload.tipe?.includes?.("quiz_essay")
+            ? { pertanyaan: [] }
+            : payload.tipe === "flashcard"
+              ? { cards: [{ depan: "Mock", belakang: "Placeholder" }], source: "" }
+              : { text: "# Konten Mock\nPlaceholder.", source: "" },
       dibuat_at: new Date().toISOString(),
     }),
   );
+
   return {
-    konten_id: data.konten_id ?? null,   // V3.3: wajib disimpan di state guru untuk regenerate
+    konten_id: data.konten_id ?? null,
     tipe: data.tipe,
     level: data.level,
     content: data.content,
     generated_at: data.dibuat_at ?? data.generated_at ?? new Date().toISOString(),
-  };
-}
-
-/**
- * Regenerate satu konten spesifik via konten_id.
- * Dipanggil saat guru klik "Ulangi" di panel review.
- * POST /konten/regenerate
- * REFACTOR 2: Konten Regenerate — Integration Guide V3.3 §5 & §10.2
- */
-export async function regenerateContent(payload) {
-  const data = await runHybrid(
-    () => v3.post("/konten/regenerate", {
-      konten_id: payload.konten_id,
-      mapel_id: payload.mapel_id,
-      elemen_id: payload.elemen_id,
-      elemen_label: payload.elemen_label,
-      materi: payload.materi ?? null,
-      materi_id: payload.materi_id ?? null,
-      jenjang: payload.jenjang,
-      atp: payload.atp ?? "",
-      tipe: payload.tipe,
-      level: payload.level ?? null,
-      instruksi_revisi: payload.instruksi_revisi ?? "",
-    }),
-    () => ({
-      konten_id: payload.konten_id,     // tetap sama
-      tipe: payload.tipe,
-      level: payload.level,
-      content: { text: `# Konten Mock (Regenerated)\nPlaceholder diperbarui.` },
-      dibuat_at: new Date().toISOString(),
-    }),
-  );
-  return {
-    konten_id: data.konten_id,          // tetap sama — hanya content yang berubah
-    tipe: data.tipe,
-    level: data.level,
-    content: data.content,              // INI yang berubah
-    generated_at: data.dibuat_at ?? new Date().toISOString(),
   };
 }
 

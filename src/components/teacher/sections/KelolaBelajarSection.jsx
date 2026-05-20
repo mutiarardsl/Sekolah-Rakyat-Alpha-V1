@@ -24,17 +24,15 @@ import { C, FONTS, FS } from '../../../styles/tokens';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { useAuth } from '../../../context/AuthContext';
 // FIX P2: sambungkan publishKonten (POST /content/publish) + generateGame (POST /game/generate)
-// V3.3: tambah regenerateContent dan regenerateGame untuk per-card regenerate
-import { publishKonten, generateContent, regenerateContent } from '../../../api/content';
+// V3.3: regenerateContent dihapus — Tim 3 pakai 1 endpoint POST /konten/generate
+import { publishKonten, generateContent } from '../../../api/content';
 import { generateGame, regenerateGame } from '../../../api/game';
-import { mapelApi, elemenApi } from '../../../api/admin';
+import { mapelApi, elemenApi, kelasApi, getGuruProfile } from '../../../api/admin';
+import { MarkdownLatex, InlineLatex } from '../../shared/LatexRenderer';
 import {
   ADMIN_MAPEL_LIST,   // fallback statis jika API belum tersedia
   ADMIN_KELAS_INIT,
   KURIKULUM_ELEMEN,   // fallback statis jika API belum tersedia
-  ADMIN_GURU_INIT,
-  TEACHERS,
-  SEEDED_TEACHER_ID,
   CAPAIAN_PEMBELAJARAN,
 } from '../../../data/masterData';
 
@@ -99,8 +97,15 @@ const generatePlaceholderKonten = (type, level, config) => {
     Mid: 'Pembahasan mendalam dengan analogi kontekstual.',
     High: 'Analisis tingkat lanjut mencakup aspek kritis dan komparasi.',
   };
+  // CONTRACT V3.6: bacaan placeholder dikembalikan sebagai { text, source } bukan string
+  // agar konsisten dengan API response dan publish payload builder
+  if (type === 'bacaan') {
+    return {
+      text: `[Konten Bacaan - ${level}]\nTeks bacaan tentang ${materi} dalam konteks ${mapelLabel}.\n\n${levelDesc[level] || ''}`,
+      source: '',
+    };
+  }
   const texts = {
-    bacaan: `[Konten Bacaan - ${level}]\nTeks bacaan tentang ${materi} dalam konteks ${mapelLabel}.\n\n${levelDesc[level] || ''}`,
     mindmap: `[Mindmap - ${mapelLabel}]\nTopik Utama: ${elemenLabel}\n- Subtopik 1: Definisi & Konsep Dasar\n  - Point A\n  - Point B\n- Subtopik 2: ${materi}\n  - Contoh Kasus\n  - Aplikasi\n- Subtopik 3: Evaluasi & Refleksi`,
     game: `[Game Preview - ${level}]\nJenis: Kuis Interaktif\nTopik: ${materi}\nLevel: ${level}\nEstimasi Durasi: ${level === 'Low' ? '10' : level === 'Mid' ? '20' : '30'} menit\n\nSiswa menjawab pertanyaan tentang ${elemenLabel} melalui tampilan game interaktif.`,
   };
@@ -113,7 +118,9 @@ const generatePlaceholderKonten = (type, level, config) => {
 const extractKontenResult = (tipe, level, res) => {
   if (!res?.content) return null;
   switch (tipe) {
-    case 'bacaan': return res.content.text || null;
+    // CONTRACT V3.6: source adalah string — kembalikan full object agar source ikut tersimpan di kontenMap
+    // kontenMap['bacaan__Low'] akan berupa { text, source } bukan hanya string text
+    case 'bacaan': return res.content.text ? res.content : null;
     case 'quiz_pg': return res.content.soal?.length ? res.content : null;
     case 'quiz_essay': return res.content.pertanyaan?.length ? res.content : null;
     case 'flashcard': return res.content.cards?.length ? res.content : null;
@@ -304,24 +311,34 @@ const CapaianPembelajaranBox = ({ mapelId, mapelLabel }) => {
 
 /* ── ManualEditForm ──────────────────────────────────────────────── */
 // Form edit manual isi konten tanpa memanggil ulang API RAG/Game.
-// Mendukung semua tipe konten: bacaan (string), quiz_pg, quiz_essay, flashcard, mindmap.
+// Mendukung semua tipe konten: bacaan ({ text, source }), quiz_pg, quiz_essay, flashcard, mindmap.
 // Game tidak bisa diedit manual (tidak ada field teks yang bisa diubah guru).
 const ManualEditForm = ({ typeId, data, onChange, onSave, onCancel }) => {
   const isGame = typeId === 'game';
 
-  // ── bacaan: data = string markdown ──────────────────────────────
+  // ── bacaan: data = { text, source } (CONTRACT V3.6) ─────────────
+  // source adalah string readonly — guru hanya bisa edit teks bacaan.
   if (typeId === 'bacaan') {
     const text = typeof data === 'string' ? data : (data?.text ?? '');
+    const source = typeof data === 'object' && data !== null ? (data.source ?? '') : '';
     return (
       <div style={{ marginTop: 10, padding: 14, background: C.white, borderRadius: 10, border: `1.5px solid ${C.tealXL}` }}>
         <div style={{ fontSize: FS.sm, fontWeight: 700, color: C.teal, marginBottom: 8 }}>✏️ Edit Manual — Bacaan</div>
         <textarea
           value={text}
-          onChange={e => onChange(e.target.value)}
+          onChange={e => onChange(typeof data === 'string'
+            ? { text: e.target.value, source: '' }
+            : { ...data, text: e.target.value }
+          )}
           rows={12}
           style={{ ...INP, fontFamily: 'monospace', fontSize: 12, lineHeight: 1.7, resize: 'vertical', whiteSpace: 'pre' }}
           placeholder="Edit teks bacaan (format Markdown)"
         />
+        {source && (
+          <div style={{ fontSize: FS.xs, color: '#a0aec0', marginBottom: 4 }}>
+            📚 Sumber: {source}
+          </div>
+        )}
         <div style={{ fontSize: FS.xs, color: C.slate, marginBottom: 8 }}>Mendukung format Markdown.</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onCancel} style={{ flex: 1, padding: '7px', borderRadius: 8, border: `1px solid ${C.tealXL}`, background: C.white, fontSize: FS.md, color: C.slate, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
@@ -585,45 +602,25 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
           if (res?.game_id) setGameIds(p => ({ ...p, [lv]: res.game_id }));
         }
       } else {
-        // V3.3 REFACTOR 2: konten regenerate via konten_id
+        // Tim 3 pakai 1 endpoint — instruksi_revisi sebagai sinyal deteksi regenerate
+        // konten_id dikirim sebagai referensi konteks jika sudah ada (opsional)
         const kontenId = kontenIds?.[key];
-        if (kontenId) {
-          // Gunakan regenerateContent jika konten_id sudah ada
-          const res = await regenerateContent({
-            konten_id: kontenId,
-            mapel_id: config.mapelId,
-            elemen_id: config.elemenId,
-            elemen_label: config.elemenLabel,
-            materi: config.materi || null,
-            materi_id: config.materiId || null,
-            jenjang: config.jenjang,
-            atp: config.atp,
-            tipe: type.id,
-            level: type.hasLevel ? lv : null,
-            instruksi_revisi: editText.trim(),
-          });
-          const newKonten = extractKontenResult(type.id, lv, res);
-          setKontenMap(p => ({ ...p, [key]: newKonten ?? generatePlaceholderKonten(type.id, lv, config) }));
-          // konten_id tetap sama setelah regenerate
-        } else {
-          // Fallback: generate baru jika belum ada konten_id
-          const res = await generateContent({
-            guru_id: config.guruId,
-            mapel_id: config.mapelId,
-            elemen_id: config.elemenId,
-            elemen_label: config.elemenLabel,
-            materi: config.materi || null,
-            materi_id: config.materiId || null,
-            jenjang: config.jenjang,
-            atp: config.atp,
-            tipe: type.id,
-            level: type.hasLevel ? lv : null,
-            revisi_guru: editText.trim(),
-          });
-          const newKonten = extractKontenResult(type.id, lv, res);
-          setKontenMap(p => ({ ...p, [key]: newKonten ?? generatePlaceholderKonten(type.id, lv, config) }));
-          if (res?.konten_id) setKontenIds(p => ({ ...p, [key]: res.konten_id }));
-        }
+        const res = await generateContent({
+          mapel_id: config.mapelId,
+          elemen_id: config.elemenId,
+          elemen_label: config.elemenLabel,
+          materi: config.materi || null,
+          materi_id: config.materiId || null,
+          jenjang: config.jenjang,
+          atp: config.atp,
+          tipe: type.id,
+          level: type.hasLevel ? lv : null,
+          konten_id: kontenId ?? null,           // referensi Tim 3, null jika belum ada
+          instruksi_revisi: editText.trim(),     // sinyal deteksi regenerate untuk Tim 3
+        });
+        const newKonten = extractKontenResult(type.id, lv, res);
+        setKontenMap(p => ({ ...p, [key]: newKonten ?? generatePlaceholderKonten(type.id, lv, config) }));
+        if (res?.konten_id) setKontenIds(p => ({ ...p, [key]: res.konten_id }));
       }
     } catch {
       // Fallback lokal jika API error
@@ -736,7 +733,7 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                         quiz_pg    -> { soal: [{pertanyaan, pilihan, jawaban}] }
                         quiz_essay -> { pertanyaan: string[] }
                         flashcard  -> { cards: [{depan, belakang}] }
-                        bacaan / mindmap / game -> string */}
+                        bacaan -> { text, source } (CONTRACT V3.6) / mindmap -> nodes[] / game -> object */}
                     {type.id === 'game' ? (
                       <pre style={{ fontFamily: 'inherit', fontSize: FS.md, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
                         {kontenMap[key]?.nama || kontenMap[key]?.deskripsi || '(game sedang disiapkan...)'}
@@ -747,11 +744,13 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                           ? <span style={{ color: C.slate, fontSize: FS.md }}>Soal sedang disiapkan...</span>
                           : (kontenMap[key].soal).map((s, i) => (
                             <div key={i} style={{ marginBottom: 14 }}>
-                              <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.md, marginBottom: 6 }}>{i + 1}. {s.soal}</div>
+                              <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.md, marginBottom: 6 }}>
+                                {i + 1}. <InlineLatex text={s.soal} />
+                              </div>
                               {(s.pilihan || []).map((p, j) => (
                                 <div key={j} style={{ paddingLeft: 12, marginBottom: 3 }}>
                                   <span style={{ fontSize: FS.md, color: j === s.jawaban ? C.green : C.darkL, fontWeight: j === s.jawaban ? 700 : 400 }}>
-                                    {String.fromCharCode(97 + j)}) {p} {j === s.jawaban ? ' (jawaban)' : ''}
+                                    {String.fromCharCode(97 + j)}) <InlineLatex text={p} />{j === s.jawaban ? ' (jawaban)' : ''}
                                   </span>
                                 </div>
                               ))}
@@ -768,7 +767,9 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                             const rubrikText = typeof p === 'string' ? '' : (p.rubrik ?? '');
                             return (
                               <div key={i} style={{ marginBottom: 10 }}>
-                                <div style={{ fontSize: FS.md, color: C.darkL, lineHeight: 1.7 }}>{i + 1}. {soalText}</div>
+                                <div style={{ fontSize: FS.md, color: C.darkL, lineHeight: 1.7 }}>
+                                  {i + 1}. <InlineLatex text={soalText} />
+                                </div>
                                 {rubrikText ? (
                                   <div style={{ fontSize: FS.xs, color: C.slate, marginTop: 3, paddingLeft: 16, fontStyle: 'italic' }}>
                                     📋 {rubrikText}
@@ -788,14 +789,24 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                               <div style={{ background: `${C.teal}18`, padding: '6px 12px', fontSize: FS.sm, fontWeight: 700, color: C.teal, borderBottom: `1px solid ${C.tealXL}` }}>
                                 [Depan]
                               </div>
-                              <div style={{ padding: '8px 12px', fontSize: FS.md, color: C.dark }}>{c.depan}</div>
+                              <div style={{ padding: '8px 12px', fontSize: FS.md, color: C.dark }}>
+                                <InlineLatex text={c.depan} />
+                              </div>
                               <div style={{ background: '#F0FFF4', padding: '6px 12px', fontSize: FS.sm, fontWeight: 700, color: C.green, borderTop: `1px solid ${C.tealXL}`, borderBottom: `1px solid ${C.tealXL}` }}>
                                 [Belakang]
                               </div>
-                              <div style={{ padding: '8px 12px', fontSize: FS.md, color: C.darkL }}>{c.belakang}</div>
+                              <div style={{ padding: '8px 12px', fontSize: FS.md, color: C.darkL }}>
+                                <InlineLatex text={c.belakang} />
+                              </div>
                             </div>
                           ))
                         }
+                        {/* CONTRACT V3.6: source flashcard adalah string */}
+                        {kontenMap[key]?.source && (
+                          <div style={{ marginTop: 4, fontSize: 11, color: '#a0aec0', textAlign: 'right' }}>
+                            📚 Sumber: {kontenMap[key].source}
+                          </div>
+                        )}
                       </div>
                     ) : type.id === 'mindmap' ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -813,9 +824,22 @@ const KontenCard = ({ type, config, approvedMap, setApprovedMap, kontenMap, setK
                           ));
                         })()}
                       </div>
+                    ) : type.id === 'bacaan' ? (
+                      /* CONTRACT V3.6: bacaan disimpan sbg { text, source } — source adalah string */
+                      <div>
+                        <MarkdownLatex
+                          text={typeof kontenMap[key] === 'string' ? kontenMap[key] : (kontenMap[key]?.text || '(konten kosong)')}
+                          style={{ fontSize: FS.md, color: C.darkL, lineHeight: 1.8 }}
+                        />
+                        {kontenMap[key]?.source && (
+                          <div style={{ marginTop: 8, fontSize: 11, color: '#a0aec0', textAlign: 'right' }}>
+                            📚 Sumber: {kontenMap[key].source}
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <pre style={{ fontFamily: 'inherit', fontSize: FS.md, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
-                        {typeof kontenMap[key] === 'string' ? kontenMap[key] : JSON.stringify(kontenMap[key], null, 2)}
+                        {JSON.stringify(kontenMap[key], null, 2)}
                       </pre>
                     )}
                   </div>
@@ -985,14 +1009,12 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   // Ambil user dari AuthContext — sumber kebenaran saat integrasi BE
   const { user: authUser } = useAuth();
 
-  // Guru: coba ambil dari AuthContext (integrasi), fallback ke masterData (dev)
-  const teacherFromTeachers = TEACHERS.find(t => t.id === SEEDED_TEACHER_ID);
-  const guru = ADMIN_GURU_INIT.find(g =>
-    g.id === 'g1' ||
-    (teacherFromTeachers?.name && g.nama.includes(teacherFromTeachers.name.split(',')[0].replace('Bpk. ', '').replace('Ibu ', '').trim()))
-  ) || ADMIN_GURU_INIT[0];
-  const guruMapelIds = Array.isArray(guru?.mapel_ids) ? guru.mapel_ids
-    : (guru?.mapel_ids ? [guru.mapel_ids] : (Array.isArray(guru?.mapelId) ? guru.mapelId : []));
+  // CONTRACT V3.6: guru_id berasal dari authUser.id (JWT token, format g1/g2/... dari BE)
+  // TIDAK menggunakan masterData TEACHERS/ADMIN_GURU_INIT karena id-nya berbeda saat integrasi
+  const guruId = authUser?.id || null;
+
+  // guruMapelIds akan datang dari mapelListApi yang sudah difilter oleh BE (GET /admin/mapel)
+  // Untuk sementara, tampilkan semua mapel yang tersedia dari API tanpa filter client-side
 
   const [jenjang, setJenjang] = useState('X');
   const [kelasId, setKelasId] = useState('');
@@ -1008,6 +1030,10 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   const [mapelLoading, setMapelLoading] = useState(false);
   const [elemenLoading, setElemenLoading] = useState(false);
 
+  // CONTRACT V3.6 §10: kelas list dari profil guru (hanya kelas yang diampu)
+  const [kelasListApi, setKelasListApi] = useState(null); // null = belum di-fetch
+  const [guruMapelIds, setGuruMapelIds] = useState(null);
+
   // Fetch semua mapel dari API saat mount
   useEffect(() => {
     setMapelLoading(true);
@@ -1016,6 +1042,22 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
       .catch(() => { /* fallback ke static */ })
       .finally(() => setMapelLoading(false));
   }, []);
+
+  // CONTRACT V3.6: fetch kelas yang diampu guru dari GET /guru/:id
+  useEffect(() => {
+    if (!guruId) return;
+    getGuruProfile(guruId)
+      .then(data => {
+        if (data?.kelas_aktif?.length) {
+          setKelasListApi(data.kelas_aktif.map(k => ({ id: k.id, nama: k.nama, tingkat: k.tingkat })));
+        }
+        // Simpan id mapel yang diampu guru untuk filter dropdown
+        if (data?.mapel_aktif?.length) {
+          setGuruMapelIds(data.mapel_aktif.map(m => m.id));
+        }
+      })
+      .catch(() => { /* fallback ke ADMIN_KELAS_INIT */ });
+  }, [guruId]);
 
   // Fetch elemen dari API setiap kali mapelId berubah
   useEffect(() => {
@@ -1030,8 +1072,15 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   }, [mapelId]);
 
   // Resolved lists — API data jika ada, fallback ke static masterData
+  // CONTRACT V3.6: filter mapel berdasarkan GET /admin/mapel dari BE (tidak filter client-side
+  // by guruMapelIds karena BE sudah membatasi berdasarkan konteks guru yang login)
   const mapelListRaw = mapelListApi ?? ADMIN_MAPEL_LIST;
-  const mapelList = mapelListRaw.filter(m => guruMapelIds.includes(m.id));
+  // Filter mapel berdasarkan mapel_aktif guru (dari GET /guru/:id).
+  // Di mock mode: guruMapelIds null saat loading → fallback tampilkan semua (tidak block UI).
+  // Di integrasi real: guruMapelIds terisi dari profil guru → hanya tampilkan mapel yang diampu.
+  const mapelList = guruMapelIds != null && guruMapelIds.length > 0
+    ? mapelListRaw.filter(m => guruMapelIds.includes(m.id))
+    : mapelListRaw;
   const elemenList = elemenListApi ?? (KURIKULUM_ELEMEN[mapelId] || []);
   const selectedMapel = mapelList.find(m => m.id === mapelId);
   const selectedElemen = elemenList.find(e => e.id === elemenId);
@@ -1047,7 +1096,9 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
   // publishToast: tampilkan banner sukses singkat setelah publish berhasil
   const [publishToast, setPublishToast] = useState(null); // null | { mapelLabel, elemenLabel, publishedAt }
 
-  const kelasList = ADMIN_KELAS_INIT.filter(k => k.tingkat === jenjang);
+  // CONTRACT V3.6: tampilkan hanya kelas yang diampu guru (dari API), filter per jenjang
+  const kelasListBase = kelasListApi || ADMIN_KELAS_INIT.map(k => ({ id: k.id, nama: k.nama || k.label, tingkat: k.tingkat }));
+  const kelasList = kelasListBase.filter(k => k.tingkat === jenjang);
 
   const config = {
     jenjang, kelasId, mapelId,
@@ -1056,7 +1107,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     materi: materi || selectedElemen?.label || '',
     materiId: materi ? `${mapelId}__${materi.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}` : null,
     atp: atpPoin.filter(p => p.trim()).join('\n'),
-    guruId: guru?.id || 'g1',
+    guruId: guruId,
   };
 
   // Semua konten disetujui = bisa publish
@@ -1078,17 +1129,21 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
         if (raw == null) return;
 
         // kontenMap menyimpan nilai *raw* per tipe:
-        //   bacaan    → string teks markdown
+        //   bacaan    → { text, source } (CONTRACT V3.6: source adalah string, bukan array)
+        //              fallback: string teks markdown (data lama / manual edit)
         //   mindmap   → Array<node> atau string teks
         //   quiz_pg   → { soal: [...] }
         //   quiz_essay→ { pertanyaan: [...] }
-        //   flashcard → { cards: [...] }
+        //   flashcard → { cards: [...], source } (source string jika ada)
         //   game      → object dari generateGame response
         // Harus dibungkus ke shape content sesuai API contract sebelum disimpan.
         let content;
         switch (type.id) {
           case 'bacaan':
-            content = { text: typeof raw === 'string' ? raw : (raw?.text || '') };
+            // CONTRACT V3.6: raw bisa berupa { text, source } (dari API) atau string teks (manual edit / data lama)
+            content = typeof raw === 'string'
+              ? { text: raw, source: '' }
+              : { text: raw?.text || '', source: typeof raw?.source === 'string' ? raw.source : '' };
             break;
           case 'mindmap':
             content = Array.isArray(raw)
@@ -1135,7 +1190,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     // materi_id dibangun dari mapel_id + snake_case(materi) jika materi ada.
     const snakeMateri = materi ? materi.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : null;
     const basePayload = {
-      guru_id: guru?.id || 'g1',
+      guru_id: guruId,
       mapel_id: mapelId,
       elemen_id: elemenId,
       elemen_label: config.elemenLabel,
@@ -1153,7 +1208,8 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
     const promises = [];
 
     // POST /content/generate untuk bacaan — per level (Low/Mid/High)
-    // response: { konten_id, tipe, level, content: { text }, generated_at }
+    // response: { konten_id, tipe, level, content: { text, source }, generated_at }
+    // CONTRACT V3.6: content.source adalah string (nama buku/dokumen dari RAG), simpan full object { text, source }
     // V3.3 REFACTOR 2: simpan konten_id untuk regenerate per card
     const newKontenIds = {};
     const newGameIds = {};
@@ -1162,8 +1218,9 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
       promises.push(
         generateContent({ ...basePayload, tipe: 'bacaan', level })
           .then(res => {
+            // Simpan full content object { text, source } agar source ikut ke publish payload
             resultMap[`bacaan__${level}`] = res?.content?.text
-              ? res.content.text
+              ? res.content
               : generatePlaceholderKonten('bacaan', level, config);
             if (res?.konten_id) newKontenIds[`bacaan__${level}`] = res.konten_id;
           })
@@ -1297,7 +1354,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
         materi_id: snakeM ? `${config.mapelId}__${snakeM}` : null,
         kelas_id: config.kelasId || '__semua__',
         jenjang: config.jenjang,
-        guru_id: guru?.id || 'g1',
+        guru_id: guruId,
         atp: config.atp || '',
         konten_list: kontenList,
       });
@@ -1461,7 +1518,7 @@ const KelolaBelajarSection = ({ onGoToRiwayat }) => {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px 16px', marginBottom: 10 }}>
                 {[
                   { l: 'JENJANG', v: config.jenjang },
-                  { l: 'KELAS', v: config.kelasId === '__semua__' ? `Semua Kelas ${config.jenjang} (${kelasList.length} kelas)` : config.kelasId ? ADMIN_KELAS_INIT.find(k => k.id === config.kelasId)?.nama || config.kelasId : '—' },
+                  { l: 'KELAS', v: config.kelasId === '__semua__' ? `Semua Kelas ${config.jenjang} (${kelasList.length} kelas)` : config.kelasId ? (kelasListBase.find(k => k.id === config.kelasId)?.nama || config.kelasId) : '—' },
                   { l: 'MAPEL', v: config.mapelLabel },
                   { l: 'ELEMEN', v: config.elemenLabel || 'Elemen' },
                   { l: 'MATERI', v: config.materi || '—' },

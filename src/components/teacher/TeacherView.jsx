@@ -15,21 +15,21 @@
  *  2. cls fallback ke CLASSES[0] agar tidak pernah undefined
  *  3. useWebSocket re-seed saat activeClass berubah (via key prop)
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import ForceChangePasswordModal from '../shared/ForceChangePasswordModal';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { SUBJECTS, TEACHERS, CLASSES, STUDENTS } from '../../data/masterData';
-import { kirimRekomendasi } from '../../api/admin'; // FIX P2: sambungkan POST /guru/rekomendasi
+import { kirimRekomendasi, getGuruProfile } from '../../api/admin'; // V3.6: tambah getGuruProfile
 
 import MonitoringSection from './sections/MonitoringSection';
 import KelolaBelajarSection from './sections/KelolaBelajarSection';
 import RiwayatKontenSection from './sections/RiwayatKontenSection';
 import TeacherProfileSection from './sections/TeacherProfileSection';
 
-// FIX 1 + FIX B1: derive count dari STUDENTS — pakai kelas_id (snake_case sesuai masterData)
+// Fallback statis: hanya dipakai jika API /guru/:id belum merespons
 const classesWithCount = CLASSES.map(c => ({
   ...c,
   count: STUDENTS.filter(s => s.kelas_id === c.id).length,
@@ -42,30 +42,77 @@ const TeacherView = () => {
   const isCompact = isMobile || isTablet;
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Lookup teacher berdasarkan user.id dari AuthContext (sama persis dengan sistem siswa).
-  // Fallback ke t2 hanya jika user belum login / role tidak dikenali (seharusnya tidak terjadi).
-  const teacher = TEACHERS.find(t => t.id === user?.id) ?? TEACHERS.find(t => t.id === 't2');
+  // CONTRACT V3.6 §10: ambil profil guru dari GET /guru/:id
+  // seed dari masterData dulu agar tidak ada null phase
+  const [guruProfile, setGuruProfile] = useState(() => {
+    const t = TEACHERS.find(t => t.id === user?.id) ?? TEACHERS[0];
+    const ids = t?.mapel_ids || t?.mapelId || [];
+    const idArr = Array.isArray(ids) ? ids : [ids];
+    return {
+      id: user?.id,
+      nama: user?.nama,
+      mapel_aktif: idArr.map(id => SUBJECTS.find(s => s.id === id)).filter(Boolean)
+        .map(s => ({ id: s.id, label: s.label, icon: s.icon || '' })),
+      kelas_aktif: classesWithCount.map(c => ({ id: c.id, nama: c.label, tingkat: c.tingkat })),
+    };
+  });
+  useEffect(() => {
+    if (!user?.id) return;
+    getGuruProfile(user.id)
+      .then(data => setGuruProfile(data))
+      .catch(() => {
+        // Fallback ke masterData jika API tidak tersedia (dev tanpa BE)
+        const t = TEACHERS.find(t => t.id === user.id) ?? TEACHERS[0];
+        if (t) {
+          const ids = t.mapel_ids || t.mapelId;
+          const idArr = ids ? (Array.isArray(ids) ? ids : [ids]) : [];
+          setGuruProfile({
+            id: user.id,
+            nama: user.nama,
+            mapel_aktif: idArr.map(id => SUBJECTS.find(s => s.id === id)).filter(Boolean).map(s => ({ id: s.id, label: s.label, icon: s.icon || '' })),
+            kelas_aktif: classesWithCount.map(c => ({ id: c.id, nama: c.label, tingkat: c.tingkat })),
+          });
+        }
+      });
+  }, [user?.id]);
 
-  // Revisi 1B: Normalize mapelId → selalu array agar support 1 mapel dan multi-mapel
-  const mapelIds = (teacher?.mapel_ids || teacher?.mapelId)
-    ? (Array.isArray(teacher.mapel_ids || teacher.mapelId) ? (teacher.mapel_ids || teacher.mapelId) : [teacher.mapel_ids || teacher.mapelId])
-    : [];
-  const teacherMapels = mapelIds.map(id => SUBJECTS.find(s => s.id === id)).filter(Boolean);
+  // Derive mapel & kelas dari profile API (atau fallback masterData)
+  const teacherMapels = guruProfile?.mapel_aktif
+    || (() => {
+      const t = TEACHERS.find(t => t.id === user.id) ?? TEACHERS[0];
+      const ids = t?.mapel_ids || t?.mapelId;
+      const idArr = ids ? (Array.isArray(ids) ? ids : [ids]) : [];
+      return idArr.map(id => SUBJECTS.find(s => s.id === id)).filter(Boolean);
+    })();
+  const mapelIds = teacherMapels.map(m => m.id);
 
   // State mapel aktif (default: mapel pertama)
-  const [activeMapelId, setActiveMapelId] = useState(mapelIds[0] || null);
+  const [activeMapelId, setActiveMapelId] = useState(null);
+  // Sync activeMapelId saat guruProfile pertama kali load
+  useEffect(() => {
+    if (!activeMapelId && mapelIds.length > 0) setActiveMapelId(mapelIds[0]);
+  }, [mapelIds.join(',')]);
   const teacherMapelActive = teacherMapels.find(m => m.id === activeMapelId) || teacherMapels[0] || null;
   // Alias agar sharedMonitoring dan semua section tidak perlu diubah
   const teacherMapel = teacherMapelActive;
 
-  // Revisi 1D: baca isFirstLogin dari TEACHERS sebagai fallback
-  const [showForceChange, setShowForceChange] = useState(user?.is_first_login === true || teacher?.isFirstLogin === true);
+  // is_first_login dari AuthContext (JWT token) — tidak butuh masterData
+  const [showForceChange, setShowForceChange] = useState(user?.is_first_login === true);
   const onNavigate = (screen) => {
     if (screen === 'login') { logout(); navigate('/login', { replace: true }); return; }
     if (screen === 'student') { navigate('/siswa'); return; }
   };
 
-  const [activeClass, setActiveClass] = useState(CLASSES[0].id);
+  const [activeClass, setActiveClass] = useState(
+    guruProfile?.kelas_aktif?.[0]?.id || CLASSES[0].id
+  );
+  // Sync activeClass saat kelas_aktif pertama kali load dari API
+  useEffect(() => {
+    if (guruProfile?.kelas_aktif?.[0]?.id) {
+      setActiveClass(prev => prev === CLASSES[0].id ? guruProfile.kelas_aktif[0].id : prev);
+    }
+  }, [guruProfile?.kelas_aktif?.[0]?.id]);
+
   const [activePage, setActivePage] = useState('dashboard');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [recommendations, setRecommendations] = useState({});
@@ -77,8 +124,9 @@ const TeacherView = () => {
   const [barTooltip, setBarTooltip] = useState(null);
   const [pwdToast, setPwdToast] = useState(false);
 
-  // FIX 2
-  const cls = CLASSES.find(c => c.id === activeClass) ?? CLASSES[0];
+  // cls: kelas aktif — dari guruProfile.kelas_aktif atau fallback masterData
+  const kelasList = guruProfile?.kelas_aktif?.map(k => ({ id: k.id, label: k.nama, tingkat: k.tingkat })) || classesWithCount;
+  const cls = kelasList.find(c => c.id === activeClass) ?? kelasList[0] ?? CLASSES[0];
 
   const saveRec = async (studentId) => {
     const text = recText.trim(); if (!text) return;
@@ -90,7 +138,7 @@ const TeacherView = () => {
     try {
       // CONTRACT V3.6 §21: kirim ke POST /notifikasi — muncul di bell notif siswa
       await kirimRekomendasi({
-        guru_id: teacher?.id || 'g1',
+        guru_id: user?.id || '',
         siswa_id: studentId,
         mapel_id: teacherMapel?.id || '',
         pesan: text,
@@ -113,7 +161,8 @@ const TeacherView = () => {
   ];
 
   const sharedMonitoring = {
-    teacher, teacherMapel, cls, activeClass, setActiveClass,
+    teacher: { id: user?.id, name: user?.nama, ...guruProfile },
+    teacherMapel, cls, activeClass, setActiveClass,
     recommendations, recModal, setRecModal, recText, setRecText,
     recPipeline, setRecPipeline, sentToAI, setSentToAI,
     downloadModal, setDownloadModal,
@@ -125,7 +174,7 @@ const TeacherView = () => {
       {/* ForceChangePasswordModal — muncul jika is_first_login true, tidak bisa ditutup */}
       {showForceChange && (
         <ForceChangePasswordModal
-          userName={teacher?.name || user?.nama || ''}
+          userName={user?.nama || ''}
           role="guru"
           userId={user?.id}
           onSuccess={() => {
@@ -185,18 +234,18 @@ const TeacherView = () => {
               ) : (
                 <div style={{
                   width: 40, height: 40, borderRadius: '50%',
-                  background: teacher?.bg || `linear-gradient(135deg,${C.teal},${C.tealL})`,
+                  background: `linear-gradient(135deg,${C.teal},${C.tealL})`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#fff', fontWeight: 700, fontSize: FS.lg,
                   border: `2px solid ${activePage === 'profile' ? C.amber : 'rgba(244,164,53,.35)'}`,
                   flexShrink: 0, transition: 'border-color .15s',
                 }}>
-                  {teacher?.initials || 'GR'}
+                  {user?.nama ? user.nama.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : 'GR'}
                 </div>
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ color: C.white, fontWeight: 700, fontSize: FS.md, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {teacher?.name || 'Guru'}
+                  {user?.nama || 'Guru'}
                 </div>
                 {/* Revisi 1C: single mapel inline, multi-mapel tampil switcher */}
                 {mapelIds.length === 1 ? (

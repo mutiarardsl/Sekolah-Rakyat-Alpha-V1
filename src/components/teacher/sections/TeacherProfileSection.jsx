@@ -13,12 +13,13 @@
  *  - Saat integrasi BE: ganti lookup dengan GET /guru/profile?id=user.id
  *  - Mapel & kelas yang ditampilkan sesuai data guru yang login
  */
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import ChangePasswordModal from '../../shared/ChangePasswordModal';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import { useAuth } from '../../../context/AuthContext';
 import { uploadAvatar } from '../../../api/auth';
+import { getGuruProfile } from '../../../api/admin';
 import {
   ADMIN_GURU_INIT,
   ADMIN_KELAS_INIT,
@@ -125,8 +126,28 @@ const TeacherProfileSection = ({ onPwdSuccess }) => {
 
   // Resolve guru berdasarkan user yang sedang login (DINAMIS)
   // Saat integrasi BE: ganti resolveGuru() dengan data dari GET /guru/profile
-  const guru = resolveGuru(user);
+  const [guru, setGuru] = useState(() => resolveGuru(user));
   const semuaKelas = ADMIN_KELAS_INIT;
+
+  // Fetch profil terbaru dari BE — override data masterData
+  useEffect(() => {
+    if (!user?.id) return;
+    getGuruProfile(user.id)
+      .then(data => {
+        if (!data) return;
+        // Map response BE ke format yang dipakai komponen
+        setGuru(prev => ({
+          ...prev,
+          nama: data.nama ?? prev.nama,
+          nip: data.nip ?? prev.nip,
+          email: data.email ?? prev.email,
+          mapel_ids: data.mapel_aktif?.map(m => m.id) ?? prev.mapel_ids,
+          kelas_ids: data.kelas_aktif?.map(k => k.id) ?? prev.kelas_ids,
+          bergabung: prev.bergabung, // tidak ada di response BE, tetap dari masterData
+        }));
+      })
+      .catch(() => { /* silent — tetap pakai masterData */ });
+  }, [user?.id]);
 
   const waliKelasList = semuaKelas.filter(k => (k.wali_kelas_id || k.waliKelasId) === guru?.id);
   const mapelKelasMap = (guru?.mapel_ids || guru?.mapelId || []).map(mid => ({

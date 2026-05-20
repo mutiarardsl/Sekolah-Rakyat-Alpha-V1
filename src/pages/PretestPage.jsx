@@ -28,6 +28,7 @@ import { useAuth } from '../context/AuthContext'; // FIX B3: ambil user.id untuk
 // Sesuai flow .md: soal pretest dari Tim 3 RAG (5 soal), level dikembalikan Tim 3 setelah submit.
 // Pretest BERBEDA dari quiz MC & essay di chatbot.
 import { getPretestSoal, submitPretestJawaban } from '../api/content';
+import { InlineLatex } from '../components/shared/LatexRenderer';
 
 const MAPEL_LIST = ADMIN_MAPEL_LIST.filter(m => KURIKULUM[m.id]);
 const SOAL_PER_ELEMEN = 5;
@@ -348,8 +349,15 @@ export default function PretestPage() {
                   <div style={{ marginLeft: 'auto', fontSize: FS.sm, color: C.slate }}>Soal {soalIdx + 1}/{total}</div>
                 </div>
 
-                <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark, lineHeight: 1.6, marginBottom: 20 }}>
-                  {s.soal}
+                <div style={{
+                  fontFamily: FONTS.serif,
+                  fontSize: FS.base,
+                  fontWeight: 600,
+                  color: C.dark,
+                  lineHeight: 1.6,
+                  marginBottom: 20,
+                }}>
+                  <InlineLatex text={s.soal} />
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -374,7 +382,7 @@ export default function PretestPage() {
                           background: isChosen ? C.teal : C.cream,
                           color: isChosen ? C.white : C.slate, transition: 'all .2s',
                         }}>{String.fromCharCode(65 + pi)}</span>
-                        {p}
+                        <span style={{ lineHeight: 1.5 }}><InlineLatex text={p} /></span>
                       </button>
                     );
                   })}

@@ -142,30 +142,33 @@ const BellIcon = ({ size = 20, color = 'currentColor' }) => (
 /* ── NotifikasiBell — icon bell + dropdown panel ──────────────────────── */
 const NotifikasiBell = ({ siswaId }) => {
   // CONTRACT V3.6 §11: load notifikasi dari GET /siswa/:id/notifikasi
-  const [notifs, setNotifs] = useState(NOTIFIKASI_GURU_INIT); // seed dengan dummy sambil API load
+  // Mulai dengan array kosong — data real di-load di useEffect di bawah
+  const [notifs, setNotifs] = useState([]);
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const panelRef = useRef(null);
 
-  // Fetch dari backend saat mount — fallback ke dummy jika API belum tersedia
+  // Fetch dari backend saat mount. CONTRACT V3.6 §11: field timestamp = dibuat_at (bukan created_at)
   useEffect(() => {
     (async () => {
       try {
         const data = await getRekomendasiSiswa({ siswa_id: siswaId });
-        if (Array.isArray(data) && data.length > 0) {
-          // Normalise response ke format notif lokal
+        // Update state meski array kosong — agar dummy seed tidak tampil saat siswa belum ada notif
+        if (Array.isArray(data)) {
           setNotifs(data.map(r => ({
             id: r.id,
             guruNama: r.guru_nama || 'Guru',
             guruMapel: r.guru_mapel || '📚 Pelajaran',
             pesan: r.pesan || '',
-            ts: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+            // CONTRACT V3.6 §11: field adalah dibuat_at, bukan created_at
+            ts: (r.dibuat_at || r.created_at)
+              ? new Date(r.dibuat_at || r.created_at).getTime()
+              : Date.now(),
             dibaca: r.dibaca ?? false,
           })));
         }
-        // Jika array kosong — pertahankan dummy seed supaya UI tidak kosong saat dev
       } catch {
-        // Fallback silent — dummy init tetap dipakai
+        // Fallback silent — state awal kosong sudah di-set, tidak perlu tindakan
       }
     })();
   }, [siswaId]);

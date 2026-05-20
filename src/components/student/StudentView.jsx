@@ -14,9 +14,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useStudentStore } from '../../stores/studentStore';
 import { Btn } from '../shared/UI';
 import ChangePasswordModal from '../shared/ChangePasswordModal';
+import { ADMIN_KELAS_INIT } from '../../data/masterData';
 import { C, FONTS, FS } from '../../styles/tokens';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { CONF_CONTENT_INIT, ADMIN_KELAS_INIT } from '../../data/masterData';
 import { getGame, recordGameSelesai } from '../../api/game';
 import { useWebcamEmotion } from '../../hooks/useWebcamEmotion';
 import DashboardSection from './sections/DashboardSection';
@@ -285,7 +285,8 @@ const StudentView = () => {
   const [chatAttachments, setChatAttachments] = useState([]);
 
   /* ── Content / quiz state ───────────────────────────────────── */
-  const [confContent, setConfContent] = useState(CONF_CONTENT_INIT);
+  // CONTRACT V3.6: mulai dengan state kosong — konten real di-load dari API
+  const [confContent, setConfContent] = useState({});
   const [confOverlay, setConfOverlay] = useState(null);
   // confGenerating dihapus — tidak ada generate on-demand, konten dari bank guru
   const [flashIdx, setFlashIdx] = useState(0);
@@ -303,7 +304,8 @@ const StudentView = () => {
 
   // FIX T1: Integrasikan useWebcamEmotion — update store.currentEmosi tiap deteksi
   // siswaId diambil dari user auth agar emosi terkorelasi dengan siswa yang benar
-  const webcamEmotion = useWebcamEmotion(user?.id || 'usr_001');
+  const currentSesiId = useStudentStore(s => s.currentSesiId);
+  const webcamEmotion = useWebcamEmotion(user?.id || '', currentSesiId);
   useEffect(() => {
     setCurrentEmosi(webcamEmotion.emosi);
   }, [webcamEmotion.emosi, setCurrentEmosi]);
@@ -489,10 +491,36 @@ const StudentView = () => {
     sessionVideoRef,
     stopSessionCamera,
     openGame: (ctx) => {
-      // ctx: { mapelId, mapelLabel, mapelIcon, elemenId, elemenLabel, materiId?, level, game_id? }
       setGameContext(ctx);
+
+      // Jika html_string tersedia dari DB BE, konversi ke Blob URL langsung
+      if (ctx.html_string) {
+        try {
+          const blob = new Blob([ctx.html_string], { type: 'text/html' });
+          const html_url = URL.createObjectURL(blob);
+          setGameData({
+            game_id: ctx.game_id,
+            html_url,
+            status: 'ready',
+          });
+        } catch {
+          setGameData({ game_id: ctx.game_id, html_url: null, status: 'failed' });
+        }
+        setGameLoading(false);
+        return;
+      }
+
+      // Jika html_url sudah ada (sudah jadi Blob URL)
+      if (ctx.html_url) {
+        setGameData({ game_id: ctx.game_id, html_url: ctx.html_url, status: 'ready' });
+        setGameLoading(false);
+        return;
+      }
+
+      // Fallback: polling GET /game/:id hanya jika html_url belum tersedia
+      // (kasus game masih "generating" saat guru generate pra-publish — 
+      //  tidak terjadi di flow siswa, tapi dijaga sebagai safety net)
       setGameData(null);
-      // FIX P1: fetch game detail + polling jika status masih "generating"
       if (ctx.game_id) {
         setGameLoading(true);
         let pollInterval = null;
@@ -502,23 +530,17 @@ const StudentView = () => {
             const data = await getGame(ctx.game_id);
             setGameData(data);
             if (data.status !== 'generating') {
-              // Status final (ready/failed) — hentikan polling
               setGameLoading(false);
               if (pollInterval) clearInterval(pollInterval);
             }
-            // Jika masih "generating", biarkan interval lanjut
           } catch {
             setGameLoading(false);
             if (pollInterval) clearInterval(pollInterval);
           }
         };
 
-        // Fetch pertama langsung
         fetchGame();
-        // Mulai polling tiap 3 detik — akan dihentikan sendiri saat status final
         pollInterval = setInterval(fetchGame, 3000);
-
-        // Simpan cleanup function ke ref agar bisa dibersihkan saat game context berubah
         if (gamePollRef.current) clearInterval(gamePollRef.current);
         gamePollRef.current = pollInterval;
       }
@@ -574,7 +596,7 @@ const StudentView = () => {
                   <div style={{ color: C.white, fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.nama || 'Siswa'}</div>
                   <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.xs, marginTop: 1 }}>SR Kota Malang</div>
                   <div style={{ color: 'rgba(255,255,255,.35)', fontSize: 10 }}>
-                    Kelas {ADMIN_KELAS_INIT.find(k => k.id === user?.kelas_id)?.nama || 'X-1'}
+                    Kelas {user?.kelas_nama || ADMIN_KELAS_INIT.find(k => k.id === user?.kelas_id)?.nama || user?.kelas_id || '—'}
                   </div>
                 </div>
                 <span style={{ color: 'rgba(255,255,255,.3)', fontSize: 30 }}>›</span>

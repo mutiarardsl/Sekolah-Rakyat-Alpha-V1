@@ -17,13 +17,12 @@ import { useState, useEffect } from 'react';
 import { Card, Avatar } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { getRiwayatGuru } from '../../../api/content';
+import { MarkdownLatex, InlineLatex } from '../../shared/LatexRenderer';
+import { useAuth } from '../../../context/AuthContext';
 import {
   ADMIN_MAPEL_LIST,
   ADMIN_KELAS_INIT,
   ADMIN_SISWA_INIT,
-  ADMIN_GURU_INIT,
-  TEACHERS,
-  SEEDED_TEACHER_ID,
 } from '../../../data/masterData';
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -111,24 +110,29 @@ const GamePreviewModal = ({ konten, riwayat, onClose }) => {
 /* ── KontenItemRenderer — render isi konten sesuai tipe ──────────── */
 // Input: item KontenItem { tipe, level, content, approved }
 // content shape sesuai API contract (sudah di-wrap oleh buildKontenList):
-//   bacaan    → { text: string }
+//   bacaan    → { text: string, source: string }
 //   mindmap   → { nodes: [...] } atau { text: string } (fallback ke text jika nodes kosong)
 //   quiz_pg   → { soal: [{ id, soal, pilihan, jawaban }] }
 //   quiz_essay→ { pertanyaan: [string | { id, soal, rubrik }] }
-//   flashcard → { cards: [{ depan, belakang }] }
+//   flashcard → { cards: [{ depan, belakang }], source: string }
 //   game      → { game_id, html_url, status, ... }
 const KontenItemRenderer = ({ item }) => {
   const { tipe, content } = item;
 
   if (tipe === 'bacaan') {
-    // content.text = markdown string
     const text = typeof content === 'string' ? content : content?.text;
-    return (
-      <pre style={{ fontFamily: 'inherit', fontSize: FS.sm, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
-        {text || '(konten kosong)'}
-      </pre>
-    );
-  }
+    const source = typeof content === 'object' ? (content?.source || null) : null;
+    return text ? (
+      <div>
+        <MarkdownLatex text={text} style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.8 }} />
+        {source && (
+          <div style={{ marginTop: 8, textAlign: 'right', fontSize: 11, color: '#a0aec0' }}>
+            📚 Sumber: {source}
+          </div>
+        )}
+      </div>
+    ) : <span style={{ color: C.slate, fontSize: FS.sm }}>(konten kosong)</span>;
+}
 
   if (tipe === 'mindmap') {
     // content.nodes = array, atau fallback ke content.text jika nodes kosong
@@ -145,11 +149,9 @@ const KontenItemRenderer = ({ item }) => {
       );
     }
     const text = typeof content === 'string' ? content : content?.text;
-    return (
-      <pre style={{ fontFamily: 'inherit', fontSize: FS.sm, color: C.darkL, lineHeight: 1.8, whiteSpace: 'pre-wrap', margin: 0 }}>
-        {text || '(konten kosong)'}
-      </pre>
-    );
+    return text
+      ? <MarkdownLatex text={text} style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.8 }} />
+      : <span style={{ color: C.slate, fontSize: FS.sm }}>(konten kosong)</span>;
   }
 
   if (tipe === 'quiz_pg') {
@@ -163,13 +165,15 @@ const KontenItemRenderer = ({ item }) => {
           const jawabanIdx = typeof s.jawaban === 'number' ? s.jawaban : -1;
           return (
             <div key={s.id || i} style={{ marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.sm, marginBottom: 5 }}>{i + 1}. {soalText}</div>
+              <div style={{ fontWeight: 700, color: C.dark, fontSize: FS.sm, marginBottom: 5 }}>
+                {i + 1}. <InlineLatex text={soalText} />
+              </div>
               {(s.pilihan || []).map((p, j) => {
                 const isJawaban = jawabanIdx >= 0 ? j === jawabanIdx : p === s.jawaban;
                 return (
                   <div key={j} style={{ paddingLeft: 12, marginBottom: 2 }}>
                     <span style={{ fontSize: FS.sm, color: isJawaban ? C.green : C.darkL, fontWeight: isJawaban ? 700 : 400 }}>
-                      {String.fromCharCode(97 + j)}) {p}{isJawaban ? ' ✓' : ''}
+                      {String.fromCharCode(97 + j)}) <InlineLatex text={p} />{isJawaban ? ' ✓' : ''}
                     </span>
                   </div>
                 );
@@ -190,7 +194,9 @@ const KontenItemRenderer = ({ item }) => {
           const soalText = typeof p === 'string' ? p : (p?.soal || '');
           return (
             <div key={i} style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.7 }}>{i + 1}. {soalText}</div>
+              <div style={{ fontSize: FS.sm, color: C.darkL, lineHeight: 1.7 }}>
+                {i + 1}. <InlineLatex text={soalText} />
+              </div>
             </div>
           );
         })}
@@ -205,11 +211,21 @@ const KontenItemRenderer = ({ item }) => {
         {content.cards.map((c, i) => (
           <div key={i} style={{ border: `1px solid ${C.tealXL}`, borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ background: `${C.teal}18`, padding: '5px 10px', fontSize: FS.xs, fontWeight: 700, color: C.teal, borderBottom: `1px solid ${C.tealXL}` }}>[Depan]</div>
-            <div style={{ padding: '7px 10px', fontSize: FS.sm, color: C.dark }}>{c.depan}</div>
+            <div style={{ padding: '7px 10px', fontSize: FS.sm, color: C.dark }}>
+              <InlineLatex text={c.depan} />
+            </div>
             <div style={{ background: '#F0FFF4', padding: '5px 10px', fontSize: FS.xs, fontWeight: 700, color: C.green, borderTop: `1px solid ${C.tealXL}`, borderBottom: `1px solid ${C.tealXL}` }}>[Belakang]</div>
-            <div style={{ padding: '7px 10px', fontSize: FS.sm, color: C.darkL }}>{c.belakang}</div>
+            <div style={{ padding: '7px 10px', fontSize: FS.sm, color: C.darkL }}>
+              <InlineLatex text={c.belakang} />
+            </div>
           </div>
         ))}
+        {/* CONTRACT V3.6: source flashcard adalah string */}
+        {content?.source && (
+          <div style={{ marginTop: 4, textAlign: 'right', fontSize: 11, color: '#a0aec0' }}>
+            📚 Sumber: {content.source}
+          </div>
+        )}
       </div>
     );
   }
@@ -701,14 +717,9 @@ const RiwayatCard = ({ riwayat }) => {
 
 /* ════════════════════════════════════════════════════════════════════ */
 const RiwayatKontenSection = ({ publishedList = [] }) => {
-  // Resolve guru yang sedang login — sama seperti KelolaBelajarSection
-  const teacherFromTeachers = TEACHERS.find(t => t.id === SEEDED_TEACHER_ID);
-  const guru = ADMIN_GURU_INIT.find(g =>
-    g.id === 'g1' ||
-    (teacherFromTeachers?.name && g.nama.includes(
-      teacherFromTeachers.name.split(',')[0].replace('Bpk. ', '').replace('Ibu ', '').trim()
-    ))
-  ) || ADMIN_GURU_INIT[0];
+  // CONTRACT V3.6: guru_id dari authUser.id (JWT token) bukan masterData
+  const { user: authUser } = useAuth();
+  const guruId = authUser?.id || null;
 
   const [riwayat, setRiwayat] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -717,20 +728,21 @@ const RiwayatKontenSection = ({ publishedList = [] }) => {
 
   useEffect(() => {
     const load = async () => {
+      if (!guruId) return;
       try {
-        // GET /content/riwayat — game sudah embedded di konten_list, tidak perlu /game/list lagi
-        const data = await getRiwayatGuru({ guru_id: guru?.id || 'g1' });
+        // CONTRACT V3.6 §10 GET /guru/:id/konten
+        const data = await getRiwayatGuru({ guru_id: guruId });
         if (Array.isArray(data)) setRiwayat(data);
       } catch { /* silent */ } finally { setLoading(false); }
     };
     load();
-  }, [guru?.id]);
+  }, [guruId]);
 
   // Konversi publishedList (camelCase dari KelolaBelajar) → snake_case agar konsisten
   // dengan shape RiwayatKontenItem dari API
   const normalizedPublished = publishedList.map(p => ({
     publish_id: p.id,
-    guru_id: p.guru_id || 'g1',
+    guru_id: p.guru_id || guruId,
     mapel_id: p.mapelId,
     mapel_label: p.mapelLabel,
     mapel_icon: p.mapelIcon,

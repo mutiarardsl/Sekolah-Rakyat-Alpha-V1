@@ -18,13 +18,14 @@ import { STUDENTS, EMOSI_META, EMOSI_Y } from '../../../data/masterData';
 import { useWebSocket } from '../../../hooks/useWebSocket';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import ReactDOM from 'react-dom';
-import { generateSummary } from '../../../api/content';
+import { generateSummary, getProgressGuru } from '../../../api/content';
 
 /* ── Bobot agregasi nilai quiz sesuai flow .md ──────────────────────────── */
 // MC×60% + Essay×40% — seragam di semua komponen
 const MC_WEIGHT = 0.6;
 const ESSAY_WEIGHT = 0.4;
 
+const IS_MOCK = import.meta.env.VITE_USE_MSW === 'true';
 /* ── Download CSV ────────────────────────────────────────────────── */
 const downloadCSV = (content, filename) => {
   const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
@@ -719,7 +720,7 @@ const MonitoringSection = ({
   downloadModal, setDownloadModal,
   saveRec, barTooltip, setBarTooltip, selectedStudent, setSelectedStudent,
 }) => {
-  const { liveStudents } = useWebSocket({ kelasId: activeClass, mapelId: teacherMapel?.id || null, guruId: teacher?.id || 'g1', enabled: true });
+  const { liveStudents } = useWebSocket({ kelasId: activeClass, mapelId: teacherMapel?.id || null, guruId: teacher?.id || null, enabled: true });
   const { isMobile, isTablet } = useBreakpoint();
   const isCompact = isMobile || isTablet;
   const [smartInfoOpen, setSmartInfoOpen] = useState(false);
@@ -793,8 +794,62 @@ const MonitoringSection = ({
     return () => window.removeEventListener('sr_student_violation', handleSrViolation);
   }, []);
 
-  // FIX B1: pakai kelas_id (snake_case) sesuai normalisasi masterData
-  const classStudents = useMemo(() => activeClass ? STUDENTS.filter(s => s.kelas_id === activeClass) : STUDENTS, [activeClass]);
+  // CONTRACT V3.6 §10: initial load dari GET /kelas/:id/progress sebelum WS aktif
+  const [apiStudents, setApiStudents] = useState(null); // null = belum load
+  useEffect(() => {
+    if (!activeClass) return;
+    setApiStudents(null); // reset saat kelas berubah
+    getProgressGuru({ kelas_id: activeClass, mapel_id: teacherMapel?.id || undefined })
+      .then(data => {
+        const students = (data?.siswa || []).map(s => {
+          // Di mode mock: enrich riwayat dari STUDENTS masterData agar drawer tetap
+          // menampilkan data lengkap selama development. Di real API (mock=false),
+          // riwayat di-fetch on-demand saat guru klik Detail (future implementation).
+          const masterStudent = IS_MOCK
+            ? STUDENTS.find(ms => ms.id === s.siswa_id)
+            : null;
+
+          return {
+            id: s.siswa_id,
+            name: s.nama,
+            nama: s.nama,
+            avatar: s.avatar || masterStudent?.avatar || null,
+            avatarBg: s.avatarBg || masterStudent?.avatarBg || '#0D5C63',
+            kelas_id: activeClass,
+            todayActive: s.aktif,
+            todayLevel: s.level,
+            todayElemenId: s.elemen_id,
+            todayElemenLabel: s.elemen_label,
+            todayMateriId: s.materi_id,
+            todayMateri: s.materi || s.elemen_label || null,
+            todayMapelId: teacherMapel?.id,
+            todayQuizScore: s.nilai_terakhir,
+            todayLastQuiz: s.nilai_terakhir != null
+              ? { aggregated: s.nilai_terakhir, mc_score: s.nilai_terakhir }
+              : null,
+            todayStudyHours: s.durasi_menit != null
+              ? parseFloat((s.durasi_menit / 60).toFixed(1))
+              : null,
+            todayDurasi: s.durasi_menit,
+            lastActive: s.last_active,
+            // PERBAIKAN: Di mock mode, ambil riwayat dari masterData agar drawer
+            // bisa menampilkan data lengkap. Di integrasi real (IS_MOCK=false),
+            // riwayat akan di-fetch terpisah saat drawer dibuka.
+            riwayat: masterStudent?.riwayat || [],
+            emotionKey: masterStudent?.emotionKey || null,
+            violations: [],
+          };
+        });
+        setApiStudents(students);
+      })
+      .catch(() => setApiStudents(null));// API gagal → fallback ke masterData STUDENTS
+  }, [activeClass, teacherMapel?.id]);
+
+  // Gunakan data API jika sudah tersedia, fallback ke masterData selama loading
+  const classStudents = useMemo(() => {
+    if (apiStudents !== null) return apiStudents; // pakai data API (sudah di-enrich riwayat)
+    return activeClass ? STUDENTS.filter(s => s.kelas_id === activeClass) : STUDENTS; // loading state
+  }, [activeClass, apiStudents]);
 
   const studentsWithLive = classStudents.map(s => {
     const live = liveStudents[s.id];
@@ -864,7 +919,7 @@ const MonitoringSection = ({
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: '12px 20px', background: C.white, borderBottom: `3px solid rgba(13,92,99,.08)`, display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
             <div>
-              <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>{cls?.label}</div>
+              <div style={{ fontFamily: FONTS.serif, fontSize: FS.h3, fontWeight: 600, color: C.dark }}>Kelas {cls?.label}</div>
               <div style={{ fontSize: FS.sm, color: C.slate, marginTop: 1 }}>
                 {teacherMapel?.icon} <strong style={{ color: teacherMapel?.color }}>{teacherMapel?.label}</strong>
                 {' · '}{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
@@ -878,7 +933,7 @@ const MonitoringSection = ({
             {/* KPI */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
               {[
-                { icon: '👥', label: 'Total Siswa', value: classStudents.length, sub: `Di ${cls?.label || 'kelas ini'}`, color: C.teal },
+                { icon: '👥', label: 'Total Siswa', value: classStudents.length, sub: `Di Kelas ${cls?.label || 'kelas ini'}`, color: C.teal },
                 { icon: '🟢', label: 'Aktif Hari Ini', value: aktifHariIni.length, sub: `${Math.round(aktifHariIni.length / (classStudents.length || 1) * 100)}% dari total`, color: C.green },
                 { icon: '📊', label: 'Rata-rata Progress', value: `${avgProgress}%`, sub: aktifHariIni.length > 0 ? `${aktifHariIni.length} siswa aktif` : 'Belum ada aktivitas', color: C.purple },
                 { icon: '🚨', label: 'Smart Alert', value: visibleAlerts.length, sub: visibleAlerts.length > 0 ? 'Perlu tindak lanjut' : 'Semua aman ✓', color: visibleAlerts.length > 0 ? C.red : C.green },
@@ -922,7 +977,11 @@ const MonitoringSection = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedStudents.length === 0 ? (
+                    {apiStudents === null ? (
+                      <tr><td colSpan={6} style={{ textAlign: 'center', fontSize: FS.md, padding: 32, color: C.slate }}>
+                        ⏳ Memuat data siswa...
+                      </td></tr>
+                    ) : sortedStudents.length === 0 ? (
                       <tr><td colSpan={6}><EmptyState icon="👥" title="Belum ada siswa" sub="Tambahkan siswa melalui menu Manajemen Kelas" /></td></tr>
                     ) : sortedStudents.map(st => {
                       const isActive = st.todayActive;
@@ -947,8 +1006,10 @@ const MonitoringSection = ({
 
                           {/* Materi */}
                           <td style={{ padding: '10px 12px' }}>
-                            {isActive && st.todayMateriId
-                              ? <span style={{ fontSize: FS.md, color: C.dark, fontWeight: 600 }}>{st.todayMateriId}</span>
+                            {isActive && (st.todayMateri || st.todayElemenLabel)
+                              ? <span style={{ fontSize: FS.md, color: C.dark, fontWeight: 600 }}>
+                                {st.todayMateri || st.todayElemenLabel}
+                              </span>
                               : <span style={{ fontSize: FS.base, color: C.slate }}>—</span>}
                           </td>
 
@@ -1117,7 +1178,8 @@ const MonitoringSection = ({
       {/* Modal Rekomendasi — tanpa upload file */}
       {
         recModal && (() => {
-          const s = STUDENTS.find(x => x.id === recModal);
+          const s = studentsWithLive.find(x => x.id === recModal)
+            || STUDENTS.find(x => x.id === recModal);
           if (!s) return null;
           return (
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(26,35,50,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, backdropFilter: 'blur(3px)' }}

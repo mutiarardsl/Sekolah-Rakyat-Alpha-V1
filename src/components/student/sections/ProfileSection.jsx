@@ -12,7 +12,6 @@ import { useState, useRef } from 'react';
 import { C, FONTS, FS } from '../../../styles/tokens';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 import ChangePasswordModal from '../../shared/ChangePasswordModal';
-import { ADMIN_KELAS_INIT } from '../../../data/masterData';
 import { useAuth } from '../../../context/AuthContext';
 import { uploadAvatar } from '../../../api/auth';
 
@@ -45,7 +44,11 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
     // Gunakan data dari AuthContext sebagai sumber kebenaran (bukan masterData)
     // AuthContext di-seed dari GET /auth/me saat login — selalu fresh per user
     const effectiveData = authUser || {};
-    const kelasData = ADMIN_KELAS_INIT.find(k => k.id === effectiveData?.kelas_id) || null;
+    // Prioritas: kelas_nama dari BE → lookup lokal → kelas_id mentah → '—'
+    const kelasNama = effectiveData?.kelas_nama
+        || ADMIN_KELAS_INIT.find(k => k.id === effectiveData?.kelas_id)?.nama
+        || effectiveData?.kelas_id
+        || '—';
     const { isMobile } = useBreakpoint();
 
     const { updateUser } = useAuth();
@@ -208,7 +211,7 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                             <div style={{ color: C.white, fontWeight: 800, fontSize: FS.h2, marginBottom: 2 }}>{namaEdit}</div>
                             <div style={{ color: 'rgba(255,255,255,.6)', fontSize: FS.base }}>{email}</div>
                             <div style={{ color: 'rgba(255,255,255,.4)', fontSize: FS.sm, marginTop: 3 }}>
-                                Kelas {kelasData?.nama || 'X-1'} · NIS {effectiveData?.nis || effectiveData?.NIS || '—'}
+                                Kelas {kelasNama || effectiveData?.kelas_id || '—'} · NIS {effectiveData?.nis || effectiveData?.NIS || '—'}
                             </div>
                         </div>
                     </div>
@@ -242,7 +245,7 @@ const ProfileSection = ({ progressData, onChangePwd }) => {
                                 <ReadonlyInput value={effectiveData?.nis || effectiveData?.NIS || '—'} />
                             </Field>
                             <Field label="Kelas">
-                                <ReadonlyInput value={kelasData?.nama || 'X-1'} />
+                                <ReadonlyInput value={kelasNama || effectiveData?.kelas_id || '—'} />
                             </Field>
                             <Field label="Bergabung Sejak">
                                 <ReadonlyInput value={effectiveData?.bergabung || 'Jul 2025'} />

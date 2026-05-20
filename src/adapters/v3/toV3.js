@@ -1,12 +1,8 @@
 /** Permintaan UI (legacy keys) → body V3 */
-
 export function toKontenGeneratePayload(raw) {
-  const { guru_id: _g, revisi_guru, instruksi_revisi, ...rest } = raw;
-  void _g;
-  return {
-    ...rest,
-    instruksi_revisi: revisi_guru ?? instruksi_revisi ?? "",
-  };
+  // eslint-disable-next-line no-unused-vars
+  const { guru_id: _g, revisi_guru: _r, instruksi_revisi: _i, ...rest } = raw;
+  return { ...rest };
 }
 
 // V3.3: include konten_id di setiap item konten_list (REFACTOR 2)
@@ -30,7 +26,7 @@ export function toQuizSubmitV3(payload) {
   const level =
     typeof payload.level === "string"
       ? payload.level.charAt(0).toUpperCase() +
-        payload.level.slice(1).toLowerCase()
+      payload.level.slice(1).toLowerCase()
       : payload.level;
   return {
     publish_id: payload.publish_id,
@@ -42,6 +38,7 @@ export function toQuizSubmitV3(payload) {
     tipe: payload.quiz_type === "essay" ? "essay" : "mc",
     level,
     jawaban: payload.answers ?? {},
+    score: payload.score ?? null,  // ← TAMBAH INI: untuk mock scoring; BE real ignore
   };
 }
 
@@ -109,10 +106,10 @@ export function toSummaryPayloadV3(payload) {
     hasil_quiz: hasilQuiz,
     last_quiz: payload.last_quiz
       ? {
-          nilai_mc: payload.last_quiz.mc_score,
-          nilai_essay: payload.last_quiz.essay_score,
-          agregasi: payload.last_quiz.aggregated,
-        }
+        nilai_mc: payload.last_quiz.mc_score,
+        nilai_essay: payload.last_quiz.essay_score,
+        agregasi: payload.last_quiz.aggregated,
+      }
       : null,
     emosi_sesi: normalizeEmosiSesiPayload(payload.emosi_sesi),
     violations,

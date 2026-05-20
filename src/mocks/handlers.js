@@ -35,7 +35,7 @@
  *    POST /siswa/:id/quiz/mc, /siswa/:id/quiz/essay
  *    POST /rag/rekomendasi, /rag/insight
  *    POST /pretest/soal, /pretest/submit
- *    POST /konten/generate, /konten/regenerate, /konten/publish
+ *    POST /konten/generate, /konten/publish
  *    POST /game/generate, /game/regenerate
  *    PATCH /game/:id/penyelesaian
  *    POST /emosi/deteksi
@@ -205,6 +205,50 @@ export const handlers = [
     /** Riwayat chat per sesi_id (proxy mentor V3 ← mock lama) */
     const chatSessions = Object.create(null);
 
+    /**
+     * Snapshot hasil quiz per hasil_quiz_id — dipakai mock POST /mentor/evaluasi saja.
+     * Integrasi BE: Tim 6 lookup DB dari hasil_quiz_id; field ini tidak dipakai.
+     */
+    const mockHasilQuizById = Object.create(null);
+    function rememberMockHasilQuiz(hasilQuizId, row) {
+      if (hasilQuizId) mockHasilQuizById[hasilQuizId] = row;
+    }
+
+    /**
+     * Store nilai MC terbaru per siswa+elemen+level — dipakai saat essay_dinilai
+     * untuk mengisi nilai_mc yang akurat (bukan hardcode 80).
+     * Key: `${siswa_id}__${elemen_id}__${level}`
+     */
+    const mockMcNilaiByKey = Object.create(null);
+    function rememberMockMcNilai(siswaId, elemenId, level, nilai) {
+      const key = `${siswaId}__${elemenId}__${level}`;
+      mockMcNilaiByKey[key] = nilai;
+    }
+    function getMockMcNilai(siswaId, elemenId, level) {
+      const key = `${siswaId}__${elemenId}__${level}`;
+      return mockMcNilaiByKey[key] ?? null;
+    }
+    function buildEvaluasiMcBalasan(materi, levelLc, st) {
+      const nilai = st.nilai ?? 0;
+      const benar = st.benar ?? 0;
+      const total = Math.max(1, st.total ?? 10);
+      const wrong = Math.max(0, total - benar);
+      const tag = `[${String(levelLc || 'low').toLowerCase()}]`;
+      const scoreInfo = `Skor kamu **${nilai}/100** (**${benar}**/${total} soal benar).`;
+      if (wrong === 0) {
+        return `💬 **Mentor AI siap membahas quiz ${materi}** — ${scoreInfo}\n\n🌟 **Semua jawaban benar!** Kalau masih ada konsep yang ingin diperdalam, tulis saja — Mentor AI siap diskusi. 🚀`;
+      }
+      const bullets = Array.from({ length: Math.min(wrong, 5) }, (_, i) =>
+        `• *${tag} Fokus bahasan ${i + 1} — konsep **${materi}** yang perlu dipastikan pemahamannya*`,
+      ).join('\n');
+      return `💬 **Mentor AI siap membahas quiz ${materi}** — ${scoreInfo}\n\nAda **${wrong} soal** yang jawabannya kurang tepat:\n${bullets}\n\n📌 **Soal nomor berapa yang ingin kamu bahas dulu?** Tulis nomornya atau langsung tanyakan bagian yang membingungkan — Mentor AI akan membantu menjelaskan! 🚀`;
+    }
+    function buildEvaluasiEssayBalasan(materi, levelLc, st) {
+      const lv = String(levelLc || 'low').toLowerCase();
+      const nilaiLine = st.nilai != null ? `\n\nNilai essay tercatat untuk attempt ini: **${st.nilai}/100**.` : '';
+      return `📋 **Mentor AI siap membahas jawaban essaymu — ${materi}**${nilaiLine}\n\nKamu sudah mengerjakan **beberapa soal essay** dengan serius. Bagus! Mari kita pilih fokus supaya diskusinya mantap.\n\n✍️ **Soal mana yang ingin kamu bahas dulu?**\n1. *Analisis situasi: Bagaimana kamu menerapkan ${materi} dalam konteks nyata…*\n2. *Buatlah ringkasan singkat tentang ${materi} yang bisa kamu jelaskan ke teman…*\n3. *Bagaimana ${materi} berkaitan dengan pembelajaran di level **${lv}**? Uraikan hubungannya…*\n4. *Jelaskan pengertian ${materi} dengan kata-katamu sendiri!*\n\nTulis nomor soal atau tanya hal spesifik yang membingungkanmu — Mentor AI akan memberikan feedback mendalam pada jawabanmu! 😊`;
+    }
+
     async function legacyJson(pathQuery) {
       const res = await fetch(`${BASE}${pathQuery}`, { credentials: "same-origin" });
       return res.json();
@@ -273,29 +317,93 @@ export const handlers = [
 
       http.get(url('/siswa/:siswaId/konten'), async ({ request, params }) => {
         const inbound = new URL(request.url).searchParams;
-        const q = new URLSearchParams({
-          siswa_id: params.siswaId,
-          mapel_id: inbound.get('mapel_id') || '',
-          elemen_id:
-            inbound.get('elemen_id') || inbound.get('materi_id') || '',
-          materi_id: inbound.get('materi_id') || '',
-        });
+        const filterMapelId = inbound.get('mapel_id') || null;
+        const filterElemenId = inbound.get('elemen_id') || inbound.get('materi_id') || null;
+        const filterMateriId = inbound.get('materi_id') || null;
         await d(150);
-        const arr = await legacyJson(`/content/siswa?${q}`);
-        const mapped = Array.isArray(arr)
-          ? arr.map((paket) => ({
-            ...paket,
-            atp:
-              paket.atp ??
-              paket.ai_atp ??
-              'Siswa mampu memahami topik dalam konteks nyata.',
-            konten_list: (paket.konten_list || []).map((c) => ({
-              ...c,
-              disetujui: true,
-            })),
-          }))
-          : [];
-        return envelope(mapped);
+
+        // Jika ada filter spesifik (siswa akses chatbot) → delegate ke legacy /content/siswa
+        // untuk mendapatkan konten_list lengkap (bacaan, quiz, game, dll)
+        if (filterElemenId || filterMateriId) {
+          const q = new URLSearchParams({
+            siswa_id: params.siswaId,
+            mapel_id: filterMapelId || '',
+            elemen_id: filterElemenId || '',
+            materi_id: filterMateriId || '',
+          });
+          const arr = await legacyJson(`/content/siswa?${q}`);
+          const mapped = Array.isArray(arr)
+            ? arr.map((paket) => ({
+              ...paket,
+              atp: paket.atp ?? paket.ai_atp ?? 'Siswa mampu memahami topik dalam konteks nyata.',
+              konten_list: (paket.konten_list || []).map((c) => ({ ...c, disetujui: true })),
+            }))
+            : [];
+          return envelope(mapped);
+        }
+
+        // Tanpa filter (ProgressSection — ambil semua mapel yang dipublish untuk kelas siswa)
+        // Simulasi BE real: return satu paket per elemen pertama dari setiap mapel di kelas siswa.
+        // BE real: query publish berdasarkan kelas_id siswa → return semua paket published.
+        const KELAS_MAPEL_IDS = {
+          x1: ['mat', 'bio', 'fis', 'kim', 'eko', 'sos', 'geo', 'agama', 'bin', 'eng', 'ppkn', 'pjok', 'info', 'kka', 'sej', 'ant', 'seni'],
+          x2: ['mat', 'bio', 'fis', 'kim', 'eko', 'sos', 'geo', 'agama', 'bin', 'eng', 'ppkn', 'pjok', 'info', 'kka', 'sej', 'ant', 'seni'],
+          x3: ['mat', 'bio', 'fis', 'kim', 'eko', 'sos', 'geo', 'agama', 'bin', 'eng', 'ppkn', 'pjok', 'info', 'kka', 'sej', 'ant', 'seni'],
+        };
+        // Elemen pertama per mapel (representasi paket yang dipublish guru)
+        const ELEMEN_PERTAMA = {
+          mat: { id: 'bil_aljabar', label: 'Bilangan dan Aljabar' },
+          bio: { id: 'pemahaman_bio', label: 'Pemahaman Biologi' },
+          fis: { id: 'pemahaman_fis', label: 'Pemahaman Fisika' },
+          kim: { id: 'pemahaman_kim', label: 'Pemahaman Kimia' },
+          eko: { id: 'pemahaman_eko', label: 'Pemahaman Ekonomi' },
+          sos: { id: 'pemahaman_sos', label: 'Pemahaman Sosiologi' },
+          geo: { id: 'pemahaman_geo', label: 'Pemahaman Geografi' },
+          agama: { id: 'aqidah', label: 'Aqidah' },
+          bin: { id: 'membaca', label: 'Membaca' },
+          eng: { id: 'listening', label: 'Listening' },
+          ppkn: { id: 'pancasila', label: 'Pancasila' },
+          pjok: { id: 'aktivitas_ritmik', label: 'Aktivitas Ritmik' },
+          info: { id: 'berpikir_komputasional', label: 'Berpikir Komputasional' },
+          kka: { id: 'manusia_ruang_waktu', label: 'Manusia, Ruang, dan Waktu' },
+          sej: { id: 'sej_indonesia', label: 'Sejarah Indonesia' },
+          ant: { id: 'pengantar_antropologi', label: 'Pengantar Antropologi' },
+          seni: { id: "berpikir_artistik", label: "Berpikir dan Bekerja Artistik" }
+        };
+
+        // Cari kelas_id siswa dari mock STUDENTS atau fallback x1
+        // Saat integrasi BE real: BE sudah tahu kelas_id siswa dari JWT/DB
+        const MOCK_SISWA_KELAS = {
+          s1: 'x1', s2: 'x1', s3: 'x1', s4: 'x1', s5: 'x1',
+          s6: 'x1', s7: 'x1', s8: 'x1', s9: 'x1',
+          s10: 'x2', s11: 'x2', s12: 'x2', s13: 'x2', s14: 'x2',
+          s15: 'x3', s16: 'x3', s17: 'x3', s18: 'x3',
+        };
+        const kelasId = MOCK_SISWA_KELAS[params.siswaId] || 'x1';
+        const mapelIds = filterMapelId
+          ? [filterMapelId]
+          : (KELAS_MAPEL_IDS[kelasId] || KELAS_MAPEL_IDS.x1);
+
+        const pakets = mapelIds.map(mid => {
+          const el = ELEMEN_PERTAMA[mid] || { id: mid, label: mid };
+          return {
+            publish_id: `pub_${mid}_${el.id}_mock`,
+            mapel_id: mid,
+            elemen_id: el.id,
+            elemen_label: el.label,
+            materi: null,
+            materi_id: null,
+            kelas_id: kelasId,
+            jenjang: 'X',
+            atp: 'Siswa mampu memahami topik dalam konteks nyata.',
+            published_at: new Date(Date.now() - 86400000).toISOString(),
+            // konten_list sengaja kosong di sini — di-fetch terpisah saat siswa buka chatbot
+            // via getKontenSiswa({ elemen_id }) yang sudah ada filter → masuk cabang legacy di atas
+            konten_list: [],
+          };
+        });
+
+        return envelope(pakets);
       }),
 
       http.get(url('/siswa/:siswaId/quiz'), async ({ request, params }) => {
@@ -507,7 +615,7 @@ export const handlers = [
             const gItem = konten_list.find(
               (ci) => ci.tipe === "game" && ci.level === level,
             );
-            const game_id = gItem?.content?.game_id ?? null;
+            const game_id = gItem?.game_id ?? gItem?.content?.game_id ?? null;  // ← ambil dari item level, fallback ke content
             const siswa_selesai = gItem?.content?.siswa_selesai ?? [];
             return { level, game_id, siswa_selesai };
           }).filter((g) => g.game_id);
@@ -527,16 +635,20 @@ export const handlers = [
       http.post(url('/konten/generate'), async ({ request }) => {
         await d(1800);
         const body = await request.json();
-        const { tipe, level, mapel_id, elemen_id, elemen_label, materi } = body;
-        const kontenId = `konten_${mapel_id}_${tipe}_${(level || 'none').toLowerCase()}_${Date.now().toString(36)}`;
+        const { tipe, level, mapel_id, elemen_id, elemen_label, materi, instruksi_revisi, konten_id } = body;
+        const isRegenerate = !!instruksi_revisi;
+        // Jika regenerate, pakai konten_id lama agar FE tahu ID-nya tidak berubah
+        const kontenId = isRegenerate && konten_id
+          ? konten_id
+          : `konten_${mapel_id}_${tipe}_${(level || 'none').toLowerCase()}_${Date.now().toString(36)}`;
         const levelLc = (level || 'none').toLowerCase();
         const topik = materi || elemen_label || 'Materi';
         let content;
         switch (tipe) {
           case 'bacaan':
             content = {
-              text: `# ${topik}\n\n## Pengertian\nKonten mock untuk ${topik} level ${levelLc}.\n\n## Contoh\nContoh penerapan dalam kehidupan sehari-hari.\n\n## Rangkuman\n**${topik}** adalah konsep penting yang perlu dipahami secara mendalam.`,
-              source: [{ judul: 'Buku Teks Mock', penulis: 'Tim Penulis', tahun: '2025' }],
+              text: `# ${topik}${isRegenerate ? ' (Diperbarui)' : ''}\n\n## Pengertian\n${isRegenerate ? `*Instruksi revisi: ${instruksi_revisi}*\n\n` : ''}Konten mock untuk ${topik} level ${levelLc}.\n\n## Contoh\nContoh penerapan dalam kehidupan sehari-hari.\n\n## Rangkuman\n**${topik}** adalah konsep penting.`,
+              source: 'Buku Teks Mock 2025',
             };
             break;
           case 'quiz_pg':
@@ -566,7 +678,7 @@ export const handlers = [
                 { depan: `Contoh ${topik}`, belakang: `Contoh penerapan ${topik} dalam kehidupan sehari-hari` },
                 { depan: `Mengapa ${topik} penting?`, belakang: `${topik} penting karena menjadi fondasi pemahaman level berikutnya` },
               ],
-              source: [{ judul: 'Buku Teks Mock', penulis: 'Tim Penulis', tahun: '2025' }], // CONTRACT V3.4 §4
+              source: 'Buku Teks Mock 2025', // CONTRACT V3.6: source adalah string, bukan array
             };
             break;
           case 'mindmap':
@@ -632,7 +744,7 @@ export const handlers = [
 
       // CONTRACT V3.6 §12 POST /konten/regenerate — native mock (tidak bridge ke /content/generate)
       // V3.3: iterative refinement via konten_id
-      http.post(url('/konten/regenerate'), async ({ request }) => {
+      {/*http.post(url('/konten/regenerate'), async ({ request }) => {
         await d(1500);
         const body = await request.json();
         const { konten_id, tipe, level, elemen_label, materi, instruksi_revisi } = body;
@@ -651,7 +763,7 @@ export const handlers = [
           case 'bacaan':
             content = {
               text: `# ${topik} (Diperbarui)\n\n*Instruksi revisi: ${instruksi_revisi}*\n\n## Pengertian\nKonten ${topik} yang sudah diperbarui sesuai instruksi guru.\n\n## Contoh Baru\nContoh yang lebih relevan sesuai masukan guru.`,
-              source: [{ judul: 'Buku Teks Mock', penulis: 'Tim Penulis', tahun: '2025' }],
+              source: 'Buku Teks Mock 2025', // CONTRACT V3.6: source adalah string, bukan array
             };
             break;
           case 'quiz_pg':
@@ -680,7 +792,7 @@ export const handlers = [
                 { depan: `${topik} (revisi)`, belakang: `Definisi ${topik} yang lebih lengkap sesuai revisi` },
                 { depan: `Aplikasi ${topik}`, belakang: 'Aplikasi baru yang lebih kontekstual' },
               ],
-              source: [{ judul: 'Buku Teks Mock', penulis: 'Tim Penulis', tahun: '2025' }],
+              source: 'Buku Teks Mock 2025', // CONTRACT V3.6: source adalah string, bukan array
             };
             break;
           case 'mindmap':
@@ -702,7 +814,7 @@ export const handlers = [
           content,
           dibuat_at: new Date().toISOString(),
         });
-      }),
+      }),*/},
 
       // V3.3: POST /siswa/:siswaId/quiz/mc — sinkronus, nilai langsung
       http.post(url('/siswa/:siswaId/quiz/mc'), async ({ request, params }) => {
@@ -712,14 +824,23 @@ export const handlers = [
         const hasilQuizId = `hq_mc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
         // Mock: hitung nilai MC dari jawaban siswa
         // Di production: BE Tim 6 hitung dari kunci jawaban di database
+        const nilaiDariFE = typeof body.score === 'number' ? body.score : null;
         const jawaban = body.jawaban || {};
         const totalSoal = Object.keys(jawaban).length || 10;
-        // Simulasi penilaian: jawaban yang dikirim dianggap benar semua
-        // agar mock mencerminkan nilai yang diinput siswa
-        // Nilai realistis: ambil dari jumlah jawaban yang terisi × 10
-        const jumlahDijawab = Object.values(jawaban).filter(v => v !== null && v !== '').length;
-        const nilai = Math.min(100, Math.round((jumlahDijawab / totalSoal) * 100));
-        const benar = Math.round(nilai / 10);
+        // Gunakan score dari FE jika ada; fallback ke hitung jumlah terisi (≥0)
+        const nilai = nilaiDariFE ?? Math.min(100, Math.round(
+          (Object.values(jawaban).filter(v => v !== null && v !== '').length / totalSoal) * 100
+        ));
+        const benar = Math.round((nilai / 100) * totalSoal);
+        rememberMockHasilQuiz(hasilQuizId, {
+          tipe: 'mc',
+          nilai,
+          benar,
+          total: totalSoal,
+          level: levelLc,
+        });
+        // Simpan nilai MC ke store agar bisa dipakai saat essay_dinilai di-dispatch
+        rememberMockMcNilai(params.siswaId, body.elemen_id, levelLc, nilai);
         return envelope({
           tipe: 'mc',
           nilai,
@@ -757,12 +878,21 @@ export const handlers = [
         // berdasarkan rubrik penilaian aktual — mock ini hanya simulasi dev mode.
         const KKM_MOCK = 75;
         const essayNilai = Math.round(KKM_MOCK + Math.random() * 20); // 75–95, selalu layak naik level
-        const mcNilai = 80; // representasi nilai MC yang sudah disubmit siswa
-        const agregasiNilai = Math.round(mcNilai * 0.6 + essayNilai * 0.4);
-        // Guard: pastikan agregasi selalu >= KKM setelah pembulatan
-        const finalAgregasi = Math.max(agregasiNilai, KKM_MOCK);
+        rememberMockHasilQuiz(hasilQuizId, {
+          tipe: 'essay',
+          nilai: essayNilai,
+          level: levelLc,
+        });
+        // Ambil nilai MC aktual dari store — null jika MC belum dikerjakan
+        const mcNilai = getMockMcNilai(body.siswa_id, body.elemen_id, levelLc);
+        // Agregasi hanya dihitung jika MC sudah dikerjakan
+        const agregasiNilai = mcNilai != null
+          ? Math.round(mcNilai * 0.6 + essayNilai * 0.4)
+          : null;
+        const finalAgregasi = agregasiNilai != null
+          ? Math.max(agregasiNilai, KKM_MOCK)
+          : null;
         setTimeout(() => {
-          // Dispatch custom event ke window — ChatSection listen via onEssayDinilai WS callback
           window.dispatchEvent(new CustomEvent('mock_ws_essay_dinilai', {
             detail: {
               type: 'essay_dinilai',
@@ -772,9 +902,9 @@ export const handlers = [
                 materi_id: body.materi_id || null,
                 level: levelLc,
                 nilai_essay: essayNilai,
-                nilai_mc: mcNilai,
-                agregasi: finalAgregasi,
-                naik_level: finalAgregasi >= KKM_MOCK, // selalu true dengan nilai di atas
+                nilai_mc: mcNilai,                              // null jika MC belum dikerjakan
+                agregasi: finalAgregasi,                        // null jika MC belum dikerjakan
+                naik_level: finalAgregasi != null && finalAgregasi >= KKM_MOCK,
                 kkm: KKM_MOCK,
               },
               timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
@@ -906,19 +1036,32 @@ export const handlers = [
       }),
 
       // CONTRACT V3.6 §19 POST /mentor/evaluasi — evaluasi quiz CTA (tidak bridge ke /mentor/chat)
-      // Mock: bedakan MC vs essay dari pola hasil_quiz_id (hq_essay_* / hq_mc_*). Tanpa template "Kamu bertanya:" milik /mentor/pesan.
+      // Mock: isi dari mockHasilQuizById (submit MC/essay); fallback pola id + body.level.
       http.post(url('/mentor/evaluasi'), async ({ request }) => {
         await d(300);
         const body = await request.json();
         const sid = body.sesi_id || 'sesi_unknown';
         const iso = () => new Date().toISOString();
         const materi = body.materi || body.elemen_label || 'materi';
-        const levelLc = String(body.level || 'low').toLowerCase();
+        const snap = body.hasil_quiz_id ? mockHasilQuizById[body.hasil_quiz_id] : null;
+        const levelLc = String((snap && snap.level) || body.level || 'low').toLowerCase();
         const hq = body.hasil_quiz_id || '';
-        const isEssay = /essay|hq_essay/i.test(hq);
-        const balasan = isEssay
-          ? `📋 **Kak Nusa siap membahas jawaban essaymu — ${materi}**\n\nKamu sudah mengerjakan **beberapa soal essay** dengan serius. Bagus! Mari kita pilih fokus supaya diskusinya mantap.\n\n✍️ **Soal mana yang ingin kamu bahas dulu?**\n1. *Analisis situasi: Bagaimana kamu menerapkan ${materi} dalam konteks nyata…*\n2. *Buatlah ringkasan singkat tentang ${materi} yang bisa kamu jelaskan ke teman…*\n3. *Bagaimana ${materi} berkaitan dengan pembelajaran di level ${levelLc}? Uraikan hubungannya…*\n4. *Jelaskan pengertian ${materi} dengan kata-katamu sendiri!*\n\nTulis nomor soal atau tanya hal spesifik yang membingungkanmu — Kak Nusa akan memberikan feedback mendalam pada jawabanmu! 😊`
-          : `💬 **Kak Nusa siap membahas quiz ${materi}** — Skor kamu **80/100** (**8**/10 soal benar).\n\nAda **2 soal** yang jawabannya kurang tepat:\n• *[${levelLc}] Manakah contoh penerapan ${materi} yang paling relevan?*\n• *[${levelLc}] Dalam konteks pembelajaran, ${materi} digunakan untuk?*\n\n📌 **Soal nomor berapa yang ingin kamu bahas dulu?** Tulis nomornya atau langsung tanyakan bagian yang membingungkan — Kak Nusa akan membantu menjelaskan! 🚀`;
+        const isEssay = snap ? snap.tipe === 'essay' : /essay|hq_essay/i.test(hq);
+        let balasan;
+        if (snap && snap.tipe === 'mc') {
+          balasan = buildEvaluasiMcBalasan(materi, levelLc, snap);
+        } else if (snap && snap.tipe === 'essay') {
+          balasan = buildEvaluasiEssayBalasan(materi, levelLc, snap);
+        } else if (isEssay) {
+          balasan = buildEvaluasiEssayBalasan(materi, levelLc, { nilai: null });
+        } else {
+          balasan = buildEvaluasiMcBalasan(materi, levelLc, {
+            nilai: 80,
+            benar: 8,
+            total: 10,
+            level: levelLc,
+          });
+        }
         if (!chatSessions[sid]) chatSessions[sid] = [];
         chatSessions[sid].push({ role: 'ai', teks: balasan, dikirim_at: iso() });
         return envelope({ balasan, sesi_id: sid });
@@ -930,12 +1073,25 @@ export const handlers = [
         const body = await request.json();
         const sid = body.sesi_id || 'sesi_unknown';
         const materi = body.materi || body.elemen_label || 'materi';
-        const levelLc = String(body.level || 'low').toLowerCase();
+        const snap = body.hasil_quiz_id ? mockHasilQuizById[body.hasil_quiz_id] : null;
+        const levelLc = String((snap && snap.level) || body.level || 'low').toLowerCase();
         const hq = body.hasil_quiz_id || '';
-        const isEssay = /essay|hq_essay/i.test(hq);
-        const balasan = isEssay
-          ? `📋 **Kak Nusa siap membahas jawaban essaymu — ${materi}**\n\nKamu sudah mengerjakan **beberapa soal essay** dengan serius. Bagus! Mari kita pilih fokus supaya diskusinya mantap.\n\n✍️ **Soal mana yang ingin kamu bahas dulu?**\n1. *Analisis situasi: Bagaimana kamu menerapkan ${materi} dalam konteks nyata…*\n2. *Buatlah ringkasan singkat tentang ${materi} yang bisa kamu jelaskan ke teman…*\n3. *Bagaimana ${materi} berkaitan dengan pembelajaran di level ${levelLc}? Uraikan hubungannya…*\n4. *Jelaskan pengertian ${materi} dengan kata-katamu sendiri!*\n\nTulis nomor soal atau tanya hal spesifik yang membingungkanmu — Kak Nusa akan memberikan feedback mendalam pada jawabanmu! 😊`
-          : `💬 **Kak Nusa siap membahas quiz ${materi}** — Skor kamu **80/100** (**8**/10 soal benar).\n\nAda **2 soal** yang jawabannya kurang tepat:\n• *[${levelLc}] Manakah contoh penerapan ${materi} yang paling relevan?*\n• *[${levelLc}] Dalam konteks pembelajaran, ${materi} digunakan untuk?*\n\n📌 **Soal nomor berapa yang ingin kamu bahas dulu?** Tulis nomornya atau langsung tanyakan bagian yang membingungkan — Kak Nusa akan membantu menjelaskan! 🚀`;
+        const isEssay = snap ? snap.tipe === 'essay' : /essay|hq_essay/i.test(hq);
+        let balasan;
+        if (snap && snap.tipe === 'mc') {
+          balasan = buildEvaluasiMcBalasan(materi, levelLc, snap);
+        } else if (snap && snap.tipe === 'essay') {
+          balasan = buildEvaluasiEssayBalasan(materi, levelLc, snap);
+        } else if (isEssay) {
+          balasan = buildEvaluasiEssayBalasan(materi, levelLc, { nilai: null });
+        } else {
+          balasan = buildEvaluasiMcBalasan(materi, levelLc, {
+            nilai: 80,
+            benar: 8,
+            total: 10,
+            level: levelLc,
+          });
+        }
         if (!chatSessions[sid]) chatSessions[sid] = [];
         chatSessions[sid].push({ role: 'ai', teks: balasan, dikirim_at: new Date().toISOString() });
         const tokens = balasan.split(/(\s+)/).filter(Boolean);
@@ -1061,6 +1217,7 @@ export const handlers = [
           avatar: account.avatar ?? null,
           is_first_login: account.is_first_login ?? false,
           kelas_id: account.kelas_id ?? null,
+          kelas_nama: store.kelas.find(k => k.id === account.kelas_id)?.nama ?? null,
         },
       },
       meta: null,
@@ -1170,7 +1327,8 @@ export const handlers = [
           nip: null,
           role: 'siswa',
           avatar: null,
-          kelas_id: siswa.kelas_id || null,
+          kelas_id: siswa.kelas_id || 'x1',
+          kelas_nama: ADMIN_KELAS_INIT.find(k => k.id === (siswa.kelas_id || 'x1'))?.nama || 'X-1',
           is_first_login: false,
           status: 'Aktif',
         },
@@ -1264,6 +1422,7 @@ export const handlers = [
         avatar: account.avatar ?? null,
         is_first_login: account.is_first_login ?? false,
         kelas_id: siswaData?.kelas_id ?? account.kelas_id ?? null,
+        kelas_nama: store.kelas.find(k => k.id === (siswaData?.kelas_id ?? account.kelas_id))?.nama ?? null,
       },
       meta: null,
       error: null,
@@ -1640,11 +1799,16 @@ export const handlers = [
     const mapelId = p.get('mapel_id') || 'mat';
     const elemenId = p.get('elemen_id') || p.get('materi_id') || 'bil_aljabar';
     const materiIdParam = p.get('materi_id') || null;
-    const topikLabel = materiIdParam || (elemenId === 'bil_aljabar' ? 'Bilangan dan Aljabar'
-      : elemenId === 'data_statistika' ? 'Data dan Statistika' : elemenId);
-    const elemenLabel = elemenId === 'bil_aljabar' ? 'Bilangan dan Aljabar'
-      : elemenId === 'data_statistika' ? 'Data dan Statistika'
-        : elemenId;
+    // Cari label elemen dari store kurikulum (sudah ada di store.mapel via KURIKULUM_ELEMEN)
+    // Fallback: ubah snake_case ke Title Case jika tidak ditemukan
+    const toTitleCase = (str) => str
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+
+    const elemenList = KURIKULUM_ELEMEN[mapelId] || [];
+    const elemenEntry = elemenList.find(e => e.id === elemenId);
+    const elemenLabel = elemenEntry?.label || toTitleCase(elemenId);
+    const topikLabel = materiIdParam || elemenLabel;
     await d(500);
     const LVLS = ['low', 'mid', 'high']; // CONTRACT V3.5 §2: response level selalu lowercase
 
@@ -1681,7 +1845,7 @@ Excepteur sint occaecat cupidatat non proident. Prinsip **${topik}** diterapkan 
 
 > **${topik}** adalah konsep penting dalam ${elemenLabel} yang dapat membantu kita memahami dan menganalisis berbagai fenomena secara lebih terstruktur.
 
-💡 *Setelah membaca materi ini, klik tombol "Selesai membaca" dan diskusikan dengan Kak Nusa jika ada yang belum dipahami.*`,
+💡 *Setelah membaca materi ini, klik tombol "Selesai membaca" dan diskusikan dengan Mentor AI jika ada yang belum dipahami.*`,
 
         Mid: `# ${topik}: Pemahaman Mendalam
 
@@ -1773,9 +1937,12 @@ Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo
 
 Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kuat sebagai alat analisis, tetap memerlukan pemahaman kontekstual yang mendalam agar dapat diterapkan secara optimal.
 
-🔬 *Tantangan: Cari satu kasus nyata di mana penerapan ${topik} menghasilkan kesimpulan yang berbeda dari intuisi awal. Diskusikan temuanmu dengan Kak Nusa.*`,
+🔬 *Tantangan: Cari satu kasus nyata di mana penerapan ${topik} menghasilkan kesimpulan yang berbeda dari intuisi awal. Diskusikan temuanmu dengan Mentor AI.*`,
       };
-      return { text: depthMap[lv] || depthMap.Low };
+      return {
+        text: depthMap[lv] || depthMap.Low,
+        source: `Buku Teks ${elemenLabel} — Kemendikbud 2022`, // CONTRACT V3.6: source adalah string, bukan array
+      };
     };
 
     // ── Helper: mock quiz_pg per level — 10 soal, key 'soal' ────────
@@ -1871,22 +2038,23 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
         { depan: `Sebutkan contoh penerapan ${topik}!`, belakang: `Contoh: ${topik} dapat ditemukan dalam perencanaan, pemecahan masalah, dan pengambilan keputusan sehari-hari.` },
         { depan: `Mengapa ${topik} penting di level ${lv}?`, belakang: `Di level ${lv}, ${topik} membangun fondasi yang diperlukan untuk menghadapi konsep lebih kompleks berikutnya.` },
       ],
+      source: `Buku Teks ${elemenLabel} — Kemendikbud 2022`, // CONTRACT V3.6: source adalah string, bukan array
     });
 
     // ── Helper: mock game item — CONTRACT V3.6 §11 + V3.4 §1
     // game_id deterministik: hash dari mapel+elemen+level — stabil lintas request.
-    // Saat BE live, game_id ini cocok dengan yang dikembalikan GET /game/list Tim 4.
-    // html_string TIDAK disertakan di sini — FE fetch via GET /game/:id saat siswa klik "Main Game".
     const makeGame = (lv, topik, mapel) => {
       const deterministicId = `g_${mapel}_${elemenId}_${lv.toLowerCase()}`;
+      const html_string = `<!DOCTYPE html><html>...(mock game html level ${lv})...</html>`;
       return {
         game_id: deterministicId,
         tipe: 'game',
-        level: lv.toLowerCase(), // CONTRACT V3.5 §2: lowercase
+        level: lv.toLowerCase(),
         content: {
           status: 'ready',
-          game_selesai: false,   // default: belum selesai — CONTRACT V3.6 §11
-          selesai_at: null,      // null jika belum selesai
+          html_string,           // ← sesuai contract baru: html_string dari DB BE
+          game_selesai: false,
+          selesai_at: null,
         },
       };
     };
@@ -1900,7 +2068,7 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
       ...LVLS.map(lv => ({ tipe: 'flashcard', level: lv, content: makeFlashcard(lv, topikLabel), approved: true })),
       { tipe: 'mindmap', level: null, content: { content: `[Mindmap] Topik: ${topikLabel}\n├─ Definisi\n│  ├─ Pengertian dasar\n│  └─ Komponen utama\n├─ Hubungan dengan ${elemenLabel}\n│  ├─ Keterkaitan konsep\n│  └─ Aplikasi konteks\n├─ Contoh & Penerapan\n│  ├─ Kasus nyata\n│  └─ Simulasi\n└─ Evaluasi\n   ├─ Latihan soal\n   └─ Indikator penguasaan` }, approved: true },
       // game×3 — makeGame sudah return objek lengkap dengan tipe, level, content
-      // CONTRACT V3.6 §11: html_string tidak disertakan di sini (FE fetch via GET /game/:id)
+      // CONTRACT baru: html_string sudah disertakan di content item game (diambil dari DB BE)
       ...LVLS.map(lv => makeGame(lv, topikLabel, mapelId)),
     ];
 
@@ -1909,8 +2077,10 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
       mapel_id: mapelId,
       elemen_id: elemenId,
       elemen_label: elemenLabel,
-      materi: materiIdParam,
-      materi_id: materiIdParam,
+      materi: materiIdParam || null,
+      materi_id: materiIdParam
+        ? `${mapelId}__${materiIdParam.toLowerCase().replace(/\s+/g, '_')}`
+        : null,
       kelas_id: 'x1',
       jenjang: 'X',
       published_at: new Date(Date.now() - 86400000).toISOString(),
@@ -2020,7 +2190,7 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
       ? null // backend aggregate setelah mc_score tersimpan — tidak dihitung di sini
       : score ?? 0;
 
-    // V3.1: hasil_quiz_id untuk CTA "Tanya Kak Nusa"
+    // V3.1: hasil_quiz_id untuk CTA "Tanya Mentor AI"
     const hasilQuizId = `hq_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     return HttpResponse.json({
       submitted: true,
@@ -2035,7 +2205,7 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
       // pending_aggregation: true jika essay baru saja disubmit, perlu tunggu mc_score juga
       pending_aggregation: quiz_type === 'essay',
       recorded_at: nowISO(),
-      // V3.1: opaque ID untuk CTA "Tanya Kak Nusa"
+      // V3.1: opaque ID untuk CTA "Tanya Mentor AI"
       hasil_quiz_id: hasilQuizId,
     });
   }),
@@ -2061,17 +2231,36 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
     if (hasil.length === 0) {
       const LVLS = ['low', 'mid', 'high']; // CONTRACT V3.5 §2: lowercase
       const makeKL = (seedSiswaSelesai = {}) => [
-        ...LVLS.map(lv => ({ tipe: 'bacaan', level: lv, content: { text: '' }, approved: true })),
+        ...LVLS.map(lv => ({
+          tipe: 'bacaan', level: lv,
+          content: {
+            text: `# Persamaan Linear\n\nKonten bacaan level ${lv} untuk Persamaan Linear.\n\n## Pengertian\nPersamaan linear adalah persamaan yang variabelnya berpangkat satu.\n\n## Contoh\n$2x + 3 = 7$ → $x = 2$`,
+            source: 'Matematika SMA Kelas X — Kemendikbud 2022', // CONTRACT V3.6: source adalah string, bukan array
+          },
+          approved: true,
+        })),
         ...LVLS.map(lv => ({ tipe: 'quiz_pg', level: lv, content: { soal: [] }, approved: true })),
         ...LVLS.map(lv => ({ tipe: 'quiz_essay', level: lv, content: { pertanyaan: [] }, approved: true })),
-        ...LVLS.map(lv => ({ tipe: 'flashcard', level: lv, content: { cards: [] }, approved: true })),
+        ...LVLS.map(lv => ({
+          tipe: 'flashcard', level: lv,
+          content: {
+            cards: [
+              { depan: 'Apa itu Persamaan Linear?', belakang: 'Persamaan berderajat satu dengan satu atau lebih variabel.' },
+              { depan: 'Contoh Persamaan Linear', belakang: '$2x + 3 = 7$ → selesaikan dengan mengisolasi variabel $x$.' },
+            ],
+            source: 'Matematika SMA Kelas X — Kemendikbud 2022', // CONTRACT V3.6: source adalah string, bukan array
+          },
+          approved: true,
+        })),
         { tipe: 'mindmap', level: null, content: { content: '' }, approved: true },
         // game per level — CONTRACT V3.6 §11: game_selesai + selesai_at
         ...LVLS.map(lv => ({
-          tipe: 'game', level: lv, // CONTRACT V3.5 §2
+          game_id: `g_seed_mat_bil_aljabar_${lv}`,  // ← game_id di level item
+          tipe: 'game', level: lv,
           content: {
-            game_id: null, status: 'ready',
-            game_selesai: (seedSiswaSelesai[lv] || []).length > 0, // CONTRACT V3.6 §11
+            status: 'ready',
+            html_string: `<!DOCTYPE html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f0fdf4"><div style="text-align:center"><div style="font-size:48px">🎮</div><h2>Game Seed Level ${lv}</h2><button onclick="window.parent.postMessage({type:'game:selesai'},'*')" style="background:#0d9488;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:16px">Selesai</button></div></body></html>`,
+            game_selesai: (seedSiswaSelesai[lv] || []).length > 0,
             selesai_at: (seedSiswaSelesai[lv] || [])[0]?.selesai_at ?? null,
             siswa_selesai: seedSiswaSelesai[lv] || [],
           },
@@ -2240,19 +2429,16 @@ Analisis kritis terhadap **${topik}** menunjukkan bahwa konsep ini, meskipun kua
     if (!mapelId) {
       return HttpResponse.json({ message: 'mapel_id wajib diisi.' }, { status: 400 });
     }
-    // Bangun status dari KURIKULUM_ELEMEN — seed: siswa tertentu sudah pretest elemen awal
+    // Bangun status dari KURIKULUM_ELEMEN — semua 'belum' by default.
+    // Status 'selesai' hanya muncul setelah siswa benar-benar mengerjakan pretest
+    // (POST /pretest/submit) dalam sesi ini. Mock tidak seed status apapun.
     const elemenList = (KURIKULUM_ELEMEN[mapelId] || []);
-    // Seed deterministik: elemen pertama dianggap sudah pretest untuk semua siswa
-    const seedDone = new Set(elemenList.slice(0, 1).map(e => e.id));
-    const result = elemenList.map((el, idx) => {
-      const done = seedDone.has(el.id);
-      return {
-        elemen_id: el.id,
-        materi_id: null,
-        status: done ? 'selesai' : 'belum',
-        level: done ? ['low', 'mid', 'high'][idx % 3] : null,
-      };
-    });
+    const result = elemenList.map((el) => ({
+      elemen_id: el.id,
+      materi_id: null,
+      status: 'belum',
+      level: null,
+    }));
     return HttpResponse.json(result);
   }),
 

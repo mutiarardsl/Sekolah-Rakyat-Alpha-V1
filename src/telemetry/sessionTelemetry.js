@@ -132,7 +132,9 @@ function _flushOnUnload() {
         })),
     };
     // Beacon API — satu-satunya yang dijamin fire saat halaman ditutup
-    const url = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/v1/sesi/${encodeURIComponent(_sesiId)}`;
+    // VITE_API_BASE_URL sudah termasuk /v1 (e.g. https://api.sekolahrakyat.id/v1)
+    // Jangan tambahkan /v1 lagi — lihat contract §1.1
+    const url = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/sesi/${encodeURIComponent(_sesiId)}`;
     const token = localStorage.getItem('sr_access_token');
     try {
         const blob = new Blob([JSON.stringify(body)], { type: 'application/json' });

@@ -7,6 +7,7 @@
  * Lihat REFACTOR_FINAL_CLEAN_V3_6.md §LAYER 3 — Catatan Integrasi BE.
  */
 import { v3 } from "../http/requestV3.js";
+import { getApiMode, shouldTryRealFirst, allowMockFallback } from "../config/apiMode.js"
 
 // CONTRACT V3.4 §1 — bridge html_string → html_url (Blob URL)
 function normalizeGameData(data) {
@@ -23,27 +24,57 @@ function normalizeGameData(data) {
   return data;
 }
 
-export async function generateGame(payload) {
-  const { revisi_guru, instruksi_revisi, ...rest } = payload;
-  const data = await v3.post("/game/generate", {
-    ...rest,
-    instruksi_revisi: revisi_guru ?? instruksi_revisi ?? "",
-  });
-  return normalizeGameData(data); // CONTRACT V3.4 §1 bridge
+async function runHybrid(realExec, mockExec) {
+  if (getApiMode() === "mock") return mockExec();
+  if (shouldTryRealFirst()) {
+    try {
+      return await realExec();
+    } catch (e) {
+      if (allowMockFallback(e)) return mockExec();
+      throw e;
+    }
+  }
+  return realExec();
 }
 
-/**
- * Regenerate game spesifik via game_id — V3.3
- * Dipanggil saat guru klik "Ulangi" di panel review game.
- * POST /game/regenerate
- * CONTRACT V3.6 §17
- */
-export async function regenerateGame(payload) {
-  const data = await v3.post("/game/regenerate", {
-    game_id: payload.game_id,
-    instruksi_revisi: payload.instruksi_revisi ?? "",
+/** Placeholder game saat BE/Tim 4 belum siap */
+function gamePlaceholder(level) {
+  const levelLc = (level || "low").toLowerCase();
+  const html_string = `<!DOCTYPE html><html><head><title>Game Placeholder</title></head><body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f0fdf4"><div style="text-align:center"><div style="font-size:48px">🎮</div><h2 style="color:#0d9488">Game Segera Hadir</h2><p style="color:#6b7280;font-size:14px">Level: ${levelLc}</p><button onclick="window.parent.postMessage({type:'game:selesai'},'*')" style="background:#0d9488;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;margin-top:16px">Tandai Selesai</button></div></body></html>`;
+  return normalizeGameData({
+    game_id: `game_placeholder_${levelLc}_${Date.now()}`,
+    nama: "Game Placeholder",
+    deskripsi: `Game level ${levelLc} — menunggu Tim 4`,
+    level: levelLc,
+    status: "ready",
+    html_string,
   });
-  return normalizeGameData(data); // CONTRACT V3.4 §1 bridge
+}
+
+export async function generateGame(payload) {
+  // instruksi_revisi & revisi_guru di-strip — tidak ada di contract /game/generate
+  // eslint-disable-next-line no-unused-vars
+  const { revisi_guru: _r, instruksi_revisi: _i, ...rest } = payload;
+  return runHybrid(
+    async () => {
+      const data = await v3.post("/game/generate", rest);
+      return normalizeGameData(data);
+    },
+    () => Promise.resolve(gamePlaceholder(payload.level)),
+  );
+}
+
+export async function regenerateGame(payload) {
+  return runHybrid(
+    async () => {
+      const data = await v3.post("/game/regenerate", {
+        game_id: payload.game_id,
+        instruksi_revisi: payload.instruksi_revisi ?? "",
+      });
+      return normalizeGameData(data);
+    },
+    () => Promise.resolve(gamePlaceholder(payload.level)),
+  );
 }
 
 export async function getGameList(params) {

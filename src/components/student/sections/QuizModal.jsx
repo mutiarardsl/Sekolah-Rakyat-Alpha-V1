@@ -23,7 +23,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Btn } from '../../shared/UI';
 import { C, FONTS, FS } from '../../../styles/tokens';
-import { submitQuiz, submitQuizMC, submitQuizEssay } from '../../../api/content'; // FIX P1: simpan hasil quiz ke backend | V3.3: split MC/Essay
+import { submitQuizMC, submitQuizEssay } from '../../../api/content'; // FIX P1: simpan hasil quiz ke backend | V3.3: split MC/Essay
+import { InlineLatex } from '../../shared/LatexRenderer';
 
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -39,13 +40,13 @@ import { submitQuiz, submitQuizMC, submitQuizEssay } from '../../../api/content'
  *
  * ── Fase 2 (sekarang) ───────────────────────────────────────────
  *   Essay TIDAK masuk ke dalam skor numerik total.
- *   Essay dikirim ke Mentor AI (Kak Nusa) sebagai CONTEXT INJECTION
+ *   Essay dikirim ke Mentor AI  sebagai CONTEXT INJECTION
  *   setelah quiz selesai. AI memberi feedback kualitatif berupa:
  *     "Jawaban essaymu tentang X sudah menyentuh poin Y, namun
  *      perlu diperdalam di bagian Z."
  *
  *   Skor quiz = (benar MC / 10) × 100 — hanya dari 10 soal MC.
- *   Essay muncul di review sebagai "Sedang dianalisis Kak Nusa..."
+ *   Essay muncul di review sebagai "Sedang dianalisis Mentor AI..."
  *
  * ── Fase 3 (rekomendasi Tim 3/5) ────────────────────────────────
  *   Opsi A — AI Scoring via RAG:
@@ -307,6 +308,14 @@ const KonteksBox = ({ konteks }) => (
  *   soalSnapshot   : array | null — jika ada, pakai soal ini (mode ulangi dari riwayat)
  *   onSubmit       : (result) => void — dipanggil saat kumpulkan jawaban
  * ═══════════════════════════════════════════════════════════════════ */
+
+// Helper: konversi materiLabel ke format materi_id BE (§23.2 contract)
+// Jika materiLabel = elemenLabel (flag FE untuk elemen tanpa materi) → return null
+const toMateriId = (mapelId, materiLabel, elemenLabel) => {
+  if (!materiLabel || materiLabel === elemenLabel) return null;
+  return `${mapelId}__${materiLabel.toLowerCase().replace(/\s+/g, '_')}`;
+};
+
 /* ── Fisher-Yates shuffle (untuk generate soal baru acak) ── */
 const shuffleArray = (arr) => {
   const a = [...arr];
@@ -323,6 +332,7 @@ const QuizModal = ({
   chatMateri,
   materiId,
   activeKey,
+  confContent,
   quizType = 'mc',
   soalSnapshot = null,  // null = soal baru (diacak); array = soal yang sama dari riwayat
   currentLevel = 'low', // level siswa saat ini di elemen/materi ini ('low'|'mid'|'high')
@@ -432,17 +442,17 @@ const QuizModal = ({
 
       // FIX P1: kirim skor MC ke backend via POST /siswa/:id/quiz/mc (V3.3)
       // Fire-and-forget — tidak block UI jika API gagal
-      const siswaId = chatMateri?.siswaId || 'usr_001';
+      const siswaId = chatMateri?.siswaId || useStudentStore.getState().user?.id || '';
       const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
       // V3.3 REFACTOR 1: gunakan submitQuizMC (sync, nilai langsung tersedia)
       submitQuizMC({
         siswa_id: siswaId,
-        publish_id: chatMateri?.publishId || '',
+        publish_id: confContent?.[activeKey]?._publishId || '',
         mapel_id: chatMateri?.mapelId || '',
         elemen_id: chatMateri?.elemenId || '',
         elemen_label: chatMateri?.elemenLabel || chatMateri?.mapelLabel || '',
         materi: chatMateri?.materiLabel || null,
-        materi_id: materiId || null,
+        materi_id: toMateriId(chatMateri?.mapelId, materiId, chatMateri?.elemenLabel),
         quiz_type: 'mc',
         level: levelCapitalized,
         answers: { ...mcAnswers },
@@ -462,7 +472,7 @@ const QuizModal = ({
           // REVISI FASE 3: sertakan KKM baru agar ChatSection bisa evaluasi level-up
           kkm: KKM,
           passed: mcScore >= KKM,
-          // V3.1: opaque ID untuk CTA "Tanya Kak Nusa"
+          // V3.1: opaque ID untuk CTA "Tanya Mentor AI"
           hasil_quiz_id: hasilQuizId,
         });
       }).catch(() => {
@@ -489,19 +499,19 @@ const QuizModal = ({
       setEssayScoreLoading(true);
       setEssayState('pending'); // V3.3
 
-      const siswaId = chatMateri?.siswaId || 'usr_001';
+      const siswaId = chatMateri?.siswaId || useStudentStore.getState().user?.id || '';
       const levelCapitalized = (currentLevel.charAt(0).toUpperCase() + currentLevel.slice(1));
 
       try {
         // 2. POST ke backend — V3.3: essay async, nilai datang via WebSocket essay_dinilai
         const response = await submitQuizEssay({
           siswa_id: siswaId,
-          publish_id: chatMateri?.publishId || '',
+          publish_id: confContent?.[activeKey]?._publishId || '',
           mapel_id: chatMateri?.mapelId || '',
           elemen_id: chatMateri?.elemenId || '',
           elemen_label: chatMateri?.elemenLabel || chatMateri?.mapelLabel || '',
           materi: chatMateri?.materiLabel || null,
-          materi_id: materiId || null,
+          materi_id: toMateriId(chatMateri?.mapelId, materiId, chatMateri?.elemenLabel),
           quiz_type: 'essay',
           level: levelCapitalized,
           answers: { ...essayAnswers },
@@ -599,7 +609,7 @@ const QuizModal = ({
         onClick={e => e.stopPropagation()}
         style={{
           background: C.white, borderRadius: 16,
-          width: '70vw', maxWidth: '70vw',
+          width: '70vw', maxWidth: 680, minWidth: 320,
           height: 'calc(100vh - 32px)', maxHeight: 'calc(100vh - 32px)',
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 24px 64px rgba(0,0,0,.28)',
@@ -690,14 +700,15 @@ const QuizModal = ({
 
                   {/* Pertanyaan */}
                   <div style={{
-                    fontSize: 13.5, fontWeight: 600, color: C.dark,
+                    fontSize: FS.base,
+                    fontWeight: 600, color: C.dark,
                     marginBottom: 12, lineHeight: 1.6,
                   }}>
-                    {s.soal}
+                    <InlineLatex text={s.soal} />
                   </div>
 
                   {/* Pilihan — grid 2 kolom */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {s.pilihan.map((p, pi) => {
                       const selected = mcAnswers[si] === pi;
                       return (
@@ -719,23 +730,20 @@ const QuizModal = ({
                         >
                           {/* Radio visual */}
                           <span style={{
-                            width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
-                            border: `2px solid ${selected ? color : C.slate}`,
-                            background: selected ? color : 'transparent',
+                            width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: FS.sm, fontWeight: 800,
+                            background: selected ? color : C.cream,
+                            color: selected ? C.white : C.slate,
+                            transition: 'all .15s',
                           }}>
-                            {selected && (
-                              <span style={{
-                                width: 6, height: 6, borderRadius: '50%',
-                                background: C.white, display: 'block',
-                              }} />
-                            )}
+                            {String.fromCharCode(65 + pi)}
                           </span>
                           <span>
                             <span style={{ fontWeight: 800, marginRight: 6 }}>
                               {String.fromCharCode(65 + pi)}.
                             </span>
-                            {p}
+                            <InlineLatex text={p} />
                           </span>
                         </button>
                       );
@@ -759,7 +767,7 @@ const QuizModal = ({
               }}>
                 <span>🤖</span>
                 <div>
-                  Jawaban essaymu akan dianalisis oleh Mentor AI (Kak Nusa).
+                  Jawaban essaymu akan dianalisis oleh Mentor AI.
                   Tulis dengan kata-katamu sendiri, tidak perlu takut salah!
                 </div>
               </div>
@@ -798,7 +806,7 @@ const QuizModal = ({
                       fontSize: 13.5, fontWeight: 600, color: C.dark,
                       marginBottom: 12, lineHeight: 1.7,
                     }}>
-                      {s.soal}
+                      <InlineLatex text={s.soal} />
                     </div>
 
                     {/* Textarea */}
@@ -919,14 +927,16 @@ const QuizModal = ({
                       <div key={si} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: si < mcSoal.length - 1 ? `1px solid rgba(13,92,99,.07)` : 'none' }}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 3 }}>
                           <span style={{ fontSize: FS.base, flexShrink: 0 }}>{correct ? '✅' : '❌'}</span>
-                          <div style={{ fontSize: FS.sm, color: C.dark, fontWeight: 600, lineHeight: 1.4 }}>{si + 1}. {s.soal}</div>
+                          <div style={{ fontSize: FS.sm, color: C.dark, fontWeight: 600, lineHeight: 1.4 }}>
+                            {si + 1}. <InlineLatex text={s.soal} />
+                          </div>
                         </div>
                         <div style={{ marginLeft: 20, fontSize: 11 }}>
                           {correct
-                            ? <span style={{ color: C.green }}>Jawabanmu: {s.pilihan[userAns]}</span>
+                            ? <span style={{ color: C.green }}>Jawabanmu: <InlineLatex text={s.pilihan[userAns]} /></span>
                             : <div>
-                              <span style={{ color: C.red }}>Jawabanmu: {s.pilihan[userAns] ?? '(tidak dijawab)'}</span>
-                              <span style={{ color: C.green, marginLeft: 10 }}>✓ Jawaban benar: {s.pilihan[s.jawaban]}</span>
+                              <span style={{ color: C.red }}>Jawabanmu: <InlineLatex text={s.pilihan[userAns] ?? '(tidak dijawab)'} /></span>
+                              <span style={{ color: C.green, marginLeft: 10 }}>✓ Jawaban benar: <InlineLatex text={s.pilihan[s.jawaban]} /></span>
                             </div>
                           }
                         </div>

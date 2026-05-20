@@ -9,7 +9,7 @@
  *  - Level badge per elemen (Low/Mid/High)
  */
 import { useState, useEffect, useRef } from 'react';
-import { C, FONTS, FS } from '../../../styles/tokens';
+import { C, FONTS, FS, MAPEL_COLOR, MAPEL_COLOR_LIGHT, MAPEL_COLOR_HOVER } from '../../../styles/tokens';
 import { EmptyState } from '../../shared/UI';
 import { useBreakpoint } from '../../../hooks/useBreakpoint';
 // FIX P3: load progress + konten real dari backend
@@ -24,7 +24,8 @@ import {
 import { useStudentStore } from '../../../stores/studentStore';
 import { useAuth } from '../../../context/AuthContext';
 
-const MAPEL_LIST = ADMIN_MAPEL_LIST.filter(m => KURIKULUM_ELEMEN[m.id] || KURIKULUM[m.id]);
+// MAPEL_LIST_BASE: seluruh mapel dari kurikulum — difilter per-siswa di dalam komponen
+const MAPEL_LIST_BASE = ADMIN_MAPEL_LIST.filter(m => KURIKULUM_ELEMEN[m.id] || KURIKULUM[m.id]);
 
 const LEVEL_META = {
   low: { label: 'Low', color: '#276749', bg: '#F0FFF4', border: '#9AE6B4' },
@@ -117,6 +118,7 @@ const PretestGateModal = ({ mapel, elemen, materi, onDoPretest, onDismiss }) => 
 /* ── ElemenPanel (kolom kanan) ───────────────────────────────────── */
 const ElemenPanel = ({ mapel, progressData, onStartBelajar }) => {
   const [expandedElemen, setExpandedElemen] = useState(null);
+
   const { studentLevels, getElemenLevel, getMateriLevel, isPretestMateriDone, isPretestElemenDone } = useStudentStore(s => ({
     studentLevels: s.studentLevels,
     getElemenLevel: s.getElemenLevel,
@@ -200,9 +202,9 @@ const ElemenPanel = ({ mapel, progressData, onStartBelajar }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header mapel */}
-      <div style={{ padding: '18px 20px 14px', borderBottom: `1.5px solid ${mapel.color}18`, background: `linear-gradient(135deg, ${mapel.color}07 0%, transparent 60%)`, flexShrink: 0 }}>
+      <div style={{ padding: '18px 20px 14px', borderBottom: `1.5px solid ${MAPEL_COLOR}18`, background: `linear-gradient(135deg, ${MAPEL_COLOR}07 0%, transparent 60%)`, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${mapel.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${MAPEL_COLOR}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
             {mapel.icon}
           </div>
           <div>
@@ -220,9 +222,9 @@ const ElemenPanel = ({ mapel, progressData, onStartBelajar }) => {
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <div style={{ flex: 1, height: 6, borderRadius: 99, background: '#E8EDF2', overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: `linear-gradient(90deg, ${mapel.color}, ${mapel.color}aa)`, transition: 'width .5s' }} />
+                <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: `linear-gradient(90deg, ${MAPEL_COLOR}, ${MAPEL_COLOR}aa)`, transition: 'width .5s' }} />
               </div>
-              <span style={{ fontSize: FS.sm, fontWeight: 800, color: mapel.color, minWidth: 34 }}>{pct}%</span>
+              <span style={{ fontSize: FS.sm, fontWeight: 800, color: MAPEL_COLOR, minWidth: 34 }}>{pct}%</span>
             </div>
             {/* Legend status */}
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -277,16 +279,16 @@ const ElemenPanel = ({ mapel, progressData, onStartBelajar }) => {
                 }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px',
-                  borderRadius: 10, border: `1.5px solid ${isOpen ? mapel.color : '#EDF2F7'}`,
-                  background: isOpen ? `${mapel.color}08` : elemenStatus === 'done' ? '#F0FFF4' : elemenStatus === 'ongoing' ? '#FFFBF0' : C.white,
+                  borderRadius: 10, border: `1.5px solid ${isOpen ? MAPEL_COLOR : '#EDF2F7'}`,
+                  background: isOpen ? `${MAPEL_COLOR}08` : elemenStatus === 'done' ? '#F0FFF4' : elemenStatus === 'ongoing' ? '#FFFBF0' : C.white,
                   cursor: 'pointer', transition: 'all .2s',
                 }}
-                onMouseEnter={e => { if (!isOpen) { e.currentTarget.style.background = `${mapel.color}06`; e.currentTarget.style.borderColor = `${mapel.color}40`; } }}
+                onMouseEnter={e => { if (!isOpen) { e.currentTarget.style.background = `${MAPEL_COLOR}06`; e.currentTarget.style.borderColor = `${MAPEL_COLOR}40`; } }}
                 onMouseLeave={e => { if (!isOpen) { e.currentTarget.style.background = elemenStatus === 'done' ? '#F0FFF4' : elemenStatus === 'ongoing' ? '#FFFBF0' : C.white; e.currentTarget.style.borderColor = '#EDF2F7'; } }}
               >
                 {/* Nomor + status icon */}
                 <div style={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 7, background: `${mapel.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.md, fontWeight: 700, color: mapel.color }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 7, background: `${MAPEL_COLOR}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.md, fontWeight: 700, color: MAPEL_COLOR }}>
                     {elIdx + 1}
                   </div>
                   {/* Status dot di pojok kanan atas */}
@@ -336,15 +338,15 @@ const ElemenPanel = ({ mapel, progressData, onStartBelajar }) => {
 
               {/* Expanded: list materi dengan status masing-masing */}
               {isOpen && hasMateri && (
-                <div style={{ marginTop: 4, marginLeft: 8, border: `1.5px solid ${mapel.color}20`, borderRadius: 10, overflow: 'hidden', background: `${mapel.color}03` }}>
+                <div style={{ marginTop: 4, marginLeft: 8, border: `1.5px solid ${MAPEL_COLOR}20`, borderRadius: 10, overflow: 'hidden', background: `${MAPEL_COLOR}03` }}>
                   {materiPerElemen.map((mat, matIdx) => {
                     const matStatus = getMateriStatus(mat);
                     const matStatusMeta = STATUS_META[matStatus];
                     return (
                       <div key={matIdx}
                         onClick={() => onStartBelajar({ ...baseParams, materiId: mat })}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: matIdx < materiPerElemen.length - 1 ? `1px solid ${mapel.color}15` : 'none', cursor: 'pointer', transition: 'background .15s', background: matStatus === 'done' ? '#F0FFF413' : 'transparent' }}
-                        onMouseEnter={e => e.currentTarget.style.background = `${mapel.color}08`}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: matIdx < materiPerElemen.length - 1 ? `1px solid ${MAPEL_COLOR}15` : 'none', cursor: 'pointer', transition: 'background .15s', background: matStatus === 'done' ? '#F0FFF413' : 'transparent' }}
+                        onMouseEnter={e => e.currentTarget.style.background = `${MAPEL_COLOR}08`}
                         onMouseLeave={e => e.currentTarget.style.background = matStatus === 'done' ? '#F0FFF413' : 'transparent'}>
                         {/* Status icon */}
                         <span style={{ fontSize: FS.md, flexShrink: 0 }}>{matStatusMeta.icon}</span>
@@ -363,7 +365,7 @@ const ElemenPanel = ({ mapel, progressData, onStartBelajar }) => {
                         <span style={{ fontSize: FS.xs, padding: '1px 6px', borderRadius: 99, fontWeight: 700, background: matStatusMeta.bg, color: matStatusMeta.color, border: `1px solid ${matStatusMeta.border}`, flexShrink: 0 }}>
                           {matStatusMeta.label}
                         </span>
-                        <span style={{ color: mapel.color, fontSize: FS.lg, flexShrink: 0 }}>›</span>
+                        <span style={{ color: MAPEL_COLOR, fontSize: FS.lg, flexShrink: 0 }}>›</span>
                       </div>
                     );
                   })}
@@ -389,40 +391,59 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
   // Modal state
   const [pretestGateData, setPretestGateData] = useState(null);  // { mapel, elemen, materiData }
 
-  // FIX P3: augment progressData dengan data real dari backend
+  // CONTRACT V3.6 §11: progress real dari GET /siswa/:id/progress
   const [apiLearningProgress, setApiLearningProgress] = useState(null);
-  const [publishedKonten, setPublishedKonten] = useState([]);
+  const [publishedKonten, setPublishedKonten] = useState(null);
   useEffect(() => {
     const siswaId = user?.id;
     if (!siswaId) return; // belum login, skip fetch
-    // Fetch progress real dari GET /content/progress
+    // Fetch progress real dari GET /siswa/:id/progress
     getProgressSiswa({ siswa_id: siswaId })
-      .then(data => setApiLearningProgress(data))
+      .then(data => {
+        setApiLearningProgress(data);
+        // Sync completed IDs ke store agar progressData.sudahSelesai akurat (tidak pakai dummy seed)
+        if (data) {
+          const { setProgressFromApi } = useStudentStore.getState();
+          if (typeof setProgressFromApi === 'function') {
+            setProgressFromApi(data);
+          }
+        }
+      })
       .catch(() => { /* silent — pakai progressData lokal */ });
-    // Fetch konten yang sudah dipublish guru untuk siswa ini
-    getKontenSiswa({ siswa_id: siswaId })
-      .then(data => { if (Array.isArray(data) && data.length > 0) setPublishedKonten(data); })
-      .catch(() => { /* silent */ });
-    // Hidrasi status pretest dari BE untuk semua mapel yang dimiliki siswa.
-    // Ini memastikan pretestDoneElemen / pretestDoneMateri / studentLevels di store
-    // tidak kosong setelah refresh halaman (tidak hanya mengandalkan state sesi ini).
+    // Definisi fetchPretest DULU sebelum dipanggil
     const { markPretestElemenDone, markPretestMateriDone } = useStudentStore.getState();
-    const mapelIds = ADMIN_MAPEL_LIST.map(m => m.id);
-    mapelIds.forEach(mapelId => {
-      getPretestStatus({ siswa_id: siswaId, mapel_id: mapelId })
-        .then(statusList => {
-          if (!Array.isArray(statusList)) return;
-          statusList.forEach(item => {
-            if (item.status !== 'selesai' || !item.level) return;
-            if (item.materi_id) {
-              markPretestMateriDone(mapelId, item.elemen_id, item.materi_id, item.level);
-            } else {
-              markPretestElemenDone(mapelId, item.elemen_id, item.level);
-            }
-          });
-        })
-        .catch(() => { /* silent — store lokal tetap dipakai sebagai fallback */ });
-    });
+    const fetchPretest = (mapelIds) => {
+      mapelIds.forEach(mapelId => {
+        getPretestStatus({ siswa_id: siswaId, mapel_id: mapelId })
+          .then(statusList => {
+            if (!Array.isArray(statusList)) return;
+            statusList.forEach(item => {
+              if (item.status !== 'selesai' || !item.level) return;
+              if (item.materi_id) {
+                markPretestMateriDone(mapelId, item.elemen_id, item.materi_id, item.level);
+              } else {
+                markPretestElemenDone(mapelId, item.elemen_id, item.level);
+              }
+            });
+          })
+          .catch(() => { /* silent */ });
+      });
+    };
+
+    // Baru panggil getKontenSiswa yang menggunakan fetchPretest
+    getKontenSiswa({ siswa_id: siswaId })
+      .then(data => {
+        const kontenList = Array.isArray(data) ? data : [];
+        setPublishedKonten(kontenList);
+        const mapelIds = kontenList.length > 0
+          ? [...new Set(kontenList.map(k => k.mapel_id).filter(Boolean))]
+          : ADMIN_MAPEL_LIST.map(m => m.id);
+        fetchPretest(mapelIds);
+      })
+      .catch(() => {
+        setPublishedKonten([]);
+        fetchPretest(ADMIN_MAPEL_LIST.map(m => m.id));
+      });
   }, [user?.id]);
 
   const { isPretestElemenDone, isPretestMateriDone, getElemenLevel, getMateriLevel } = useStudentStore(s => ({
@@ -509,6 +530,19 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
     if (legacyMateri.length > 0) return legacyMateri.every(m => doneSet.has(m));
     return false;
   };
+
+  // Progress menampilkan SEMUA mapel dari kurikulum yang terdaftar.
+  // MAPEL_LIST dibangun dari publishedKonten — mapel yang guru sudah publish ke kelas siswa ini.
+  // null  = masih loading → tampilkan semua (MAPEL_LIST_BASE) sebagai skeleton
+  // []    = sudah fetch, kosong → tampilkan semua (guru belum publish)
+  // [...] = sudah fetch, ada data → filter sesuai mapel yang dipublish
+  const publishedMapelIds = publishedKonten !== null && publishedKonten.length > 0
+    ? [...new Set(publishedKonten.map(k => k.mapel_id).filter(Boolean))]
+    : null;
+  const isPublishedKontenLoading = publishedKonten === null;
+  const MAPEL_LIST = (!isPublishedKontenLoading && publishedMapelIds)
+    ? MAPEL_LIST_BASE.filter(m => publishedMapelIds.includes(m.id))
+    : MAPEL_LIST_BASE;
 
   // ── Hitung counter tab filter ──
   // "Belum selesai" = ada aktivitas TAPI belum semua selesai
@@ -622,7 +656,7 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
         </div>
         <div style={{ fontSize: FS.md, color: C.slate, marginBottom: 16 }}>
           {totalDone > 0 || totalOngoing > 0
-            ? `${totalDone} materi selesai · ${totalOngoing} sedang belajar · Klik materi untuk mulai belajar`
+            ? `${totalDone} mata pelajaran selesai · ${totalOngoing} sedang dipelajari · Klik materi untuk mulai belajar`
             : 'Pilih mata pelajaran dan elemen untuk mulai belajar'}
         </div>
 
@@ -696,20 +730,20 @@ const ProgressSection = ({ progressData, openChatWithWebcam, onNavigateToPretest
             return (
               <div key={mapel.id}
                 onClick={() => setSelectedMapelId(mapel.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 14px', cursor: 'pointer', background: isActive ? `${mapel.color}0e` : 'transparent', borderLeft: `3px solid ${isActive ? mapel.color : 'transparent'}`, borderBottom: '1px solid #F7F9FA', transition: 'all .15s' }}
-                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = '#F7FAFC'; e.currentTarget.style.borderLeftColor = `${mapel.color}44`; } }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px 10px 14px', cursor: 'pointer', background: isActive ? `${MAPEL_COLOR}0e` : 'transparent', borderLeft: `3px solid ${isActive ? MAPEL_COLOR : 'transparent'}`, borderBottom: '1px solid #F7F9FA', transition: 'all .15s' }}
+                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = '#F7FAFC'; e.currentTarget.style.borderLeftColor = `${MAPEL_COLOR}44`; } }}
                 onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderLeftColor = 'transparent'; } }}>
-                <div style={{ width: 34, height: 34, borderRadius: 9, background: `${mapel.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h3, flexShrink: 0 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 9, background: `${MAPEL_COLOR}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: FS.h3, flexShrink: 0 }}>
                   {mapel.icon}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <span style={{ fontSize: FS.base, fontWeight: isActive ? 700 : 500, color: isActive ? mapel.color : C.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: FS.base, fontWeight: isActive ? 700 : 500, color: isActive ? MAPEL_COLOR : C.dark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {mapel.label}
                     </span>
                   </div>
                   <div style={{ height: 3, borderRadius: 99, background: '#E8EDF2', overflow: 'hidden' }}>
-                    <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: mapel.color, transition: 'width .4s' }} />
+                    <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: MAPEL_COLOR, transition: 'width .4s' }} />
                   </div>
                 </div>
               </div>

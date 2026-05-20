@@ -10,37 +10,37 @@
  *            GET    /admin/kelas/:id
  *            GET    /admin/kelas/:id/siswa
  *            POST   /admin/kelas
- *            PUT    /admin/kelas/:id
+ *            PATCH      /admin/kelas/:id
  *            DELETE /admin/kelas/:id
  *
  *  Guru   : GET    /admin/guru
  *            GET    /admin/guru/:id
  *            POST   /admin/guru
- *            PUT    /admin/guru/:id
+ *            PATCH      /admin/guru/:id
  *            DELETE /admin/guru/:id
  *            POST   /admin/guru/bulk
  *
  *  Siswa  : GET    /admin/siswa
  *            GET    /admin/siswa/:id
  *            POST   /admin/siswa
- *            PUT    /admin/siswa/:id
+ *            PATCH      /admin/siswa/:id
  *            DELETE /admin/siswa/:id
  *            POST   /admin/siswa/bulk
  *
  *  Mapel  : GET    /admin/mapel
  *            POST   /admin/mapel
- *            PUT    /admin/mapel/:id
+ *            PATCH      /admin/mapel/:id
  *            DELETE /admin/mapel/:id
  *
  *  Elemen : GET    /admin/elemen?mapel_id=:id         → daftar elemen per mapel
  *            POST   /admin/elemen                      → tambah elemen ke mapel
- *            PUT    /admin/elemen/:id                  → edit label/deskripsi elemen
+ *            PATCH      /admin/elemen/:id                  → edit label/deskripsi elemen
  *            DELETE /admin/elemen/:id                  → hapus elemen
  *
  *  Kelas Detail (manajemen isi kelas):
  *            POST   /admin/kelas/:id/mapel             → tambah mapel + assign guru ke kelas
  *            DELETE /admin/kelas/:id/mapel/:mapel_id   → lepas mapel dari kelas
- *            PUT    /admin/kelas/:id/mapel/:mapel_id/guru → ganti guru pengampu mapel di kelas
+ *            PATCH      /admin/kelas/:id/mapel/:mapel_id/guru → ganti guru pengampu mapel di kelas
  *            POST   /admin/kelas/:id/siswa             → tambah siswa ke kelas (single)
  *            DELETE /admin/kelas/:id/siswa/:siswa_id   → lepas siswa dari kelas
  *

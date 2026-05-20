@@ -4,16 +4,16 @@
  * Delegasi ke service layer (+ adapter V3).
  * Tetap hindari struktur envelope V3 langsung dari komponen.
  *
- * V3.3: tambah submitQuizMC, submitQuizEssay, regenerateContent
+ * V3.3: tambah submitQuizMC, submitQuizEssay
+ * regenerateContent dihapus — digabung ke generateContent (1 endpoint Tim 3)
  */
 export {
-  generateContent,
-  regenerateContent, // V3.3: regenerate konten per card via konten_id (REFACTOR 2)
+  generateContent,   // handles generate baru & regenerate — 1 endpoint Tim 3
   publishKonten,
   getKontenSiswa,
   getProgressSiswa,
   getProgressGuru,
-  submitQuiz,
+  // submitQuiz — DEPRECATED (V3.3): gunakan submitQuizMC / submitQuizEssay dari quiz.service.js
   getRecommendations,
   getRiwayatGuru,
   getPretestSoal,
