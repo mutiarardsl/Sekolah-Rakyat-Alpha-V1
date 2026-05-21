@@ -25,7 +25,7 @@
 14. [PRETEST — Tim 3 RAG (generate) + Tim 6 BE (serve)](#14-pretest--tim-3-rag-generate--tim-6-be-serve)
 15. [QUIZ — Tim 6 BE](#15-quiz--tim-6-be)
 16. [RAG — Tim 3](#16-rag--tim-3)
-17. [GAME — Tim 4](#17-game--tim-4)
+17. [GAME — Tim 4 + Tim 6 BE](#17-game--tim-4--tim-6-BE)
 18. [EMOSI — Tim 1](#18-emosi--tim-1)
 19. [MENTOR — Tim 5](#19-mentor--tim-5)
 20. [LEADERBOARD — Tim 6 BE](#20-leaderboard--tim-6-be)
@@ -157,7 +157,7 @@ Perubahan V3.3 bersifat **additive**.
 |-------|-----------|
 | `POST /siswa/:id/quiz` | **Deprecated** → dipecah menjadi `POST /siswa/:id/quiz/mc` dan `POST /siswa/:id/quiz/essay` |
 | `POST /konten/generate` | **Tambah** field `konten_id` di response — identifier per konten per level untuk regenerate |
-| `POST /konten/regenerate` | **Baru** — iterative refinement per konten per level menggunakan `konten_id` |
+| `POST /konten/regenerate` | Deprecated — digabung ke `POST /konten/generate`.<br>instruksi_revisi ada = regenerate, tidak ada = generate baru |
 | `POST /game/regenerate` | **Baru** — iterative refinement per game menggunakan `game_id` |
 | `POST /mentor/evaluasi` | **Baru** — evaluasi quiz CTA, system prompt Tim 5 terpisah dari chat normal |
 | `POST /mentor/evaluasi/stream` | **Baru** — versi SSE dari evaluasi |
@@ -216,7 +216,7 @@ Perubahan V3.4 bersifat **additive pada struktur `content`** — tidak ada endpo
 | 2 | `POST /konten/generate` (tipe `quiz_pg`), semua endpoint yang kembalikan/simpan `quiz_pg` | **Tambah field `penjelasan`** di setiap soal MC |
 | 3 | `POST /konten/generate` (tipe `mindmap`), semua endpoint yang kembalikan/simpan `mindmap` | **Tambah field `penjelasan`** di setiap node mindmap |
 | 4 | `POST /konten/generate` (tipe `bacaan` & `flashcard`), semua endpoint yang kembalikan/simpan tipe tersebut | **Tambah field `source`** — sumber buku/dokumen hasil retrieve RAG |
-| 5 | `POST /konten/generate`, `POST /konten/publish`, semua endpoint terkait pretest | **Pretest di-generate bersamaan konten** oleh Tim 3 RAG secara internal; tidak dikembalikan ke FE/guru |
+| 5 | `POST /konten/generate`, `POST /konten/publish`, semua endpoint terkait pretest | ~~Pretest di-generate bersamaan konten secara internal~~ → **Direvisi di V3.6 Revisi** — lihat catatan Pretest di section 12 |
 | 6 | `PATCH /game/:id/penyelesaian` | **Trigger selesai via `postMessage`** — game HTML kirim `{ type: 'game:selesai' }` ke parent FE |
 
 > **Catatan kompatibilitas:** FE yang masih membaca `html_url` dari response game akan gagal. Adapter `studentContent.js` dan `game.js` **wajib diperbarui** untuk menggunakan `html_string`.
@@ -256,7 +256,7 @@ Perubahan V3.6 bersifat **additive dan backward-compatible**.
 |---|-------|-----------|
 | 1 | `GET /siswa/:id/quiz` — response | **Tambah field `hasil_quiz_id`** di setiap item `riwayat[]` — dipakai FE trigger CTA "Tanya Kak Nusa" dari riwayat lama |
 | 2 | `POST /konten/publish` — deskripsi | **Tambah catatan atomik** — operasi ini atomik, FE aman retry jika gagal |
-| 3 | `POST /konten/generate` — catatan Pretest | **Perjelas timing trigger pretest** — generate pretest di-trigger pada panggilan `POST /konten/generate` pertama dari 13 panggilan paralel |
+| 3 | `POST /konten/generate` — catatan Pretest | **Revisi mekanisme pretest** — FE kirim 1 request eksplisit `tipe: "pretest"` (total 14 panggilan paralel). Pretest deterministik format quiz_pg tanpa `penjelasan`. `kelas_id` wajib disertakan. Response diabaikan FE. |
 | 4 | Section 10 GURU | **Tambah `GET /kelas/:id/progress` sebagai section resmi** — endpoint kritis untuk initial load monitoring guru; sebelumnya hanya ada di Quick Reference |
 | 5 | Section 22 WebSocket | **Tambah `22.1.2 WebSocket Siswa`** — endpoint `wss://.../ws/siswa` tersendiri untuk siswa; clarify bahwa event `essay_dinilai` dikirim ke dua channel (siswa + guru) |
 | 6 | Daftar Isi | **Renumbering** — tambah entry Changelog V3.6 (nomor 6), section domain mulai dari 7 |
@@ -1165,9 +1165,7 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
           "level": "low",
           "content": {
             "text": "# Persamaan Linear\n\n## A. Pengertian\n...",
-            "source": [
-              { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
-            ]
+            "source": "Matematika SMA Kelas X"
           }
         },
         {
@@ -1195,8 +1193,7 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
               {
                 "id": "e1",
                 "soal": "Jelaskan langkah-langkah menyelesaikan persamaan linear satu variabel.",
-                "rubrik": "Menyebutkan 3+ langkah dengan benar",
-                "placeholder": "Tuliskan jawabanmu di sini..."
+                "rubrik": "Menyebutkan 3+ langkah dengan benar"
               }
             ]
           }
@@ -1209,9 +1206,7 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
             "cards": [
               { "depan": "Persamaan Linear", "belakang": "Persamaan berderajat satu dengan satu atau lebih variabel" }
             ],
-            "source": [
-              { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
-            ]
+            "source": "Matematika SMA Kelas X"
           }
         },
         {
@@ -1231,6 +1226,7 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
           "level": "low",
           "content": {
             "status": "ready",
+            "html_string": "<!DOCTYPE html>...",
             "game_selesai": true,
             "selesai_at": "2026-05-01T10:00:00.000Z"
           }
@@ -1248,7 +1244,9 @@ Semua paket konten yang sudah dipublish guru untuk kelas siswa ini.
 >
 > FE memfilter `konten_list` berdasarkan level siswa saat ini (hasil pretest).  
 > Konten `bacaan` dirender dari `content.text` (markdown) di chatbot.  
-> Konten `game` di sini **tidak** mengandung `html_string` — FE fetch `html_string` via `GET /game/:id` saat siswa klik "Main Game".  
+> Konten `game` di sini sudah mengandung `html_string` yang diambil 
+dari DB BE — FE tidak perlu call `GET /game/:id` saat siswa akses game.
+`GET /game/:id` hanya digunakan guru saat polling pra-publish. 
 > Field `game_selesai: true` berarti siswa sudah menyelesaikan game di level tersebut; `false` atau `null` berarti belum.
 
 ---
@@ -1468,12 +1466,13 @@ Siswa ambil semua notifikasi dari guru.
 ---
 
 ### POST /konten/generate — Tim 3 RAG
-Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× paralel** saat klik "Generate Konten":
+Guru generate satu tipe konten per request. FE memanggil endpoint ini **14× paralel** saat klik "Generate Konten":
 - `bacaan` × 3 level (Low/Mid/High)
 - `quiz_pg` × 3 level
 - `quiz_essay` × 3 level
 - `flashcard` × 3 level
 - `mindmap` × 1 (tanpa level)
+- `pretest` × 1 (tanpa level)
 
 > Game **tidak** melalui endpoint ini — gunakan `POST /game/generate` (Tim 4).
 
@@ -1487,16 +1486,23 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
   "elemen_label": "Bilangan dan Aljabar",
   "materi": "Persamaan Linear",
   "materi_id": "mat__persamaan_linear",
+  "kelas_id": "x1",
   "jenjang": "X",
   "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel dalam konteks nyata.",
   "tipe": "bacaan",
-  "level": "Low"
+  "level": "Low",
+  "konten_id": "konten_mat_bacaan_low_1746342000",    // opsional — referensi konteks untuk Tim 3
+  "instruksi_revisi": "Tambahkan contoh soal cerita"  // opsional — jika ada = regenerate
+
 }
 ```
 
 > - `materi` dan `materi_id`: opsional — hanya diisi jika guru menentukan sub-materi spesifik
 > - `atp`: opsional tapi **sangat disarankan**
 > - `level`: `"Low"` | `"Mid"` | `"High"` — **null atau omit** untuk `mindmap`
+> - `konten_id`: opsional — referensi konteks untuk Tim 3
+> - `instruksi_revisi`: opsional — jika ada = regenerate
+> - `kelas_id`: **wajib** — digunakan Tim 3 RAG untuk konteks generate konten dan pretest per kelas. Isi `null` hanya jika konten bersifat lintas kelas.
 
 **Response 200 (contoh `bacaan`):**
 ```json
@@ -1507,9 +1513,7 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
     "level": "low",
     "content": {
       "text": "# Persamaan Linear\n\n## A. Pengertian\n...",
-      "source": [
-        { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
-      ]
+      "source": "Matematika SMA Kelas X",
     },
     "dibuat_at": "2026-05-01T09:00:00.000Z"
   },
@@ -1564,81 +1568,77 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
 }
 ```
 
-> `konten_id`: identifier per konten per level, di-generate Tim 3. FE simpan di state review guru untuk dipakai di `POST /konten/regenerate` jika guru klik "Ulangi".
-
-**Struktur `content` per `tipe`:**
-
-| tipe | Struktur `content` | Jumlah |
-|------|-------------------|--------|
-| `bacaan` | `{ "text": "markdown string", "source": [{ "judul", "penulis", "tahun" }] }` | — |
-| `quiz_pg` | `{ "soal": [{ "id", "soal", "pilihan": string[], "jawaban": number, "penjelasan": string }] }` | 10 soal |
-| `quiz_essay` | `{ "pertanyaan": [{ "id", "soal", "rubrik", "placeholder" }] }` | 5 pertanyaan |
-| `flashcard` | `{ "cards": [{ "depan", "belakang" }], "source": [{ "judul", "penulis", "tahun" }] }` | 5–10 kartu |
-| `mindmap` | `{ "nodes": [{ "id", "label", "parent_id", "penjelasan": string }] }` | — |
-
-> `quiz_pg.soal[].jawaban` = **index integer** dari array `pilihan` (bukan string jawaban).  
-> `quiz_pg.soal[].penjelasan` = ditampilkan FE **setelah** siswa submit quiz MC, tidak saat mengerjakan.  
-> `mindmap.nodes[].penjelasan` = tooltip saat hover. Boleh string kosong `""` untuk node root.  
-> `bacaan.source` & `flashcard.source` = array kosong `[]` jika tidak ada sumber spesifik.
-
-> **Pretest (V3.4):** Tim 3 generate soal pretest bersamaan dengan ke-13 konten — **secara internal, tanpa request tambahan dari FE**. Trigger generate pretest terjadi pada **panggilan `POST /konten/generate` pertama** dari 13 panggilan paralel (Tim 3 RAG mendeteksi ini adalah batch baru berdasarkan kombinasi `mapel_id + elemen_id + materi_id + kelas_id`). Soal pretest disimpan langsung ke database Tim 6 BE. **Tidak dikembalikan** di response ini dan **tidak ditampilkan** di panel review guru.
-
-**Error 422:** "elemen_id tidak dikenal di VectorDB."  
-**Error 429:** "Terlalu banyak request. Coba beberapa saat lagi."
-
----
-
-### POST /konten/regenerate — Tim 3 RAG
-Guru minta generate ulang satu konten spesifik. Iterative refinement — Tim 3 menggunakan konten sebelumnya sebagai referensi.
-
-Dipanggil saat guru klik **"Ulangi"** di panel review per konten per level.
-
-**Auth:** role `guru`
-
-**Request:**
-```json
-{
-  "konten_id": "konten_mat_bacaan_low_1746342000",
-  "mapel_id": "mat",
-  "elemen_id": "bil_aljabar",
-  "elemen_label": "Bilangan dan Aljabar",
-  "materi": "Persamaan Linear",
-  "materi_id": "mat__persamaan_linear",
-  "jenjang": "X",
-  "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel dalam konteks nyata.",
-  "tipe": "bacaan",
-  "level": "Low",
-  "instruksi_revisi": "Tambahkan contoh soal cerita konteks kehidupan sehari-hari di setiap sub-bab"
-}
-```
-
-> - `konten_id`: **wajib** — identifier dari response `POST /konten/generate`
-> - `instruksi_revisi`: **wajib** — deskripsi perubahan yang diinginkan guru
-
-**Response 200:**
+**Response 200 (contoh `pretest`):**
 ```json
 {
   "data": {
-    "konten_id": "konten_mat_bacaan_low_1746342000",
-    "tipe": "bacaan",
-    "level": "low",
+    "konten_id": "konten_mat_pretest_1746342000",
+    "tipe": "pretest",
+    "level": null,
     "content": {
-      "text": "# Persamaan Linear\n\n## A. Pengertian\n... (versi baru)",
-      "source": [
-        { "judul": "Matematika SMA Kelas X", "penulis": "Kemendikbud", "tahun": "2022" }
+      "soal": [
+        {
+          "id": "pretest_mat_bil_aljabar_1",
+          "soal": "Diketahui persamaan 2x + 4 = 10. Berapakah nilai x?",
+          "pilihan": ["2", "3", "4", "5"],
+          "jawaban": 1
+        },
+        {
+          "id": "pretest_mat_bil_aljabar_2",
+          "soal": "Manakah yang merupakan contoh persamaan linear satu variabel?",
+          "pilihan": ["x² + 2 = 6", "2x + 3 = 7", "x + y = 5", "x² + y = 3"],
+          "jawaban": 1
+        }
       ]
     },
-    "dibuat_at": "2026-05-01T09:05:00.000Z"
+    "dibuat_at": "2026-05-01T09:00:00.000Z"
   },
   "meta": null,
   "error": null
 }
 ```
 
-> `konten_id` tetap sama — hanya `content` yang berubah. FE replace konten di state review guru.
+> - `tipe: "pretest"` → Tim 3 generate 5 soal deterministik (format sama dengan `quiz_pg` tanpa `penjelasan`)
+> - `level: null` — pretest tidak berlevel
+> - `content.soal[].jawaban` = index integer kunci jawaban (sama dengan `quiz_pg`)
+> - Response ini **diabaikan FE** — Tim 3 menyimpan soal langsung ke database Tim 6 BE
 
-**Error 404:** "konten_id tidak ditemukan."  
-**Error 422:** "instruksi_revisi wajib diisi untuk regenerate."  
+**Struktur `content` per `tipe`:**
+
+| tipe | Struktur `content` | Jumlah |
+|------|-------------------|--------|
+| `bacaan` | `{ "text": "markdown string", "source": "buku" }` | — |
+| `quiz_pg` | `{ "soal": [{ "id", "soal", "pilihan": string[], "jawaban": number, "penjelasan": string }] }` | 10 soal |
+| `quiz_essay` | `{ "pertanyaan": [{ "id", "soal", "rubrik"}] }` | 5 pertanyaan |
+| `flashcard` | `{ "cards": [{ "depan", "belakang" }], "source": "buku"  }` | 5–10 kartu |
+| `mindmap` | `{ "nodes": [{ "id", "label", "parent_id", "penjelasan": string }] }` | — |
+| `pretest` | `{ "soal": [{ "id", "soal", "pilihan": string[], "jawaban": number }] }` | 5 soal |
+
+> `quiz_pg.soal[].jawaban` = **index integer** dari array `pilihan` (bukan string jawaban).  
+> `quiz_pg.soal[].penjelasan` = ditampilkan FE **setelah** siswa submit quiz MC, tidak saat mengerjakan.  
+> `mindmap.nodes[].penjelasan` = tooltip saat hover. Boleh string kosong `""` untuk node root.  
+> `bacaan.source` & `flashcard.source` =  kosong jika tidak ada sumber spesifik.
+
+> **Pretest (V3.6 — Revisi):** FE mengirim **1 request eksplisit** dengan `tipe: "pretest"` sebagai bagian dari batch 14 panggilan paralel (13 konten + 1 pretest). Tim 3 RAG men-generate 5 soal pretest berdasarkan konteks `mapel_id + elemen_id + materi_id + kelas_id` dan menyimpannya langsung ke database Tim 6 BE. Response dari request `tipe: "pretest"` **tidak digunakan FE** (diabaikan / `.catch()` silent) — FE hanya membutuhkan konfirmasi bahwa request terkirim. Pretest **tidak ditampilkan** di panel review guru.
+>
+> Request pretest eksplisit:
+> ```json
+> {
+>   "mapel_id": "mat",
+>   "elemen_id": "bil_aljabar",
+>   "elemen_label": "Bilangan dan Aljabar",
+>   "materi": "Persamaan Linear",
+>   "materi_id": "mat__persamaan_linear",
+>   "kelas_id": "x1",
+>   "jenjang": "X",
+>   "atp": "Siswa mampu ...",
+>   "tipe": "pretest",
+>   "level": null
+> }
+> ```
+> Tim 3 cukup return `{ "status": "ok" }` atau HTTP 200 kosong — FE tidak membaca response ini.
+
+**Error 422:** "elemen_id tidak dikenal di VectorDB."  
 **Error 429:** "Terlalu banyak request. Coba beberapa saat lagi."
 
 ---
@@ -1667,21 +1667,21 @@ Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disi
       "konten_id": "konten_mat_bacaan_low_1746342000",
       "tipe": "bacaan",
       "level": "Low",
-      "content": { "text": "# Persamaan Linear\n...", "source": [{ "judul": "...", "penulis": "...", "tahun": "..." }] },
+      "content": { "text": "# Persamaan Linear\n...", "source": "..." },
       "disetujui": true
     },
     {
       "konten_id": "konten_mat_bacaan_mid_1746342000",
       "tipe": "bacaan",
       "level": "Mid",
-      "content": { "text": "# Persamaan Linear — Menengah\n...", "source": [] },
+      "content": { "text": "# Persamaan Linear — Menengah\n...", "source": " " },
       "disetujui": true
     },
     {
       "konten_id": "konten_mat_bacaan_high_1746342000",
       "tipe": "bacaan",
       "level": "High",
-      "content": { "text": "# Persamaan Linear — Lanjutan\n...", "source": [] },
+      "content": { "text": "# Persamaan Linear — Lanjutan\n...", "source": " " },
       "disetujui": true
     },
     {
@@ -1695,14 +1695,14 @@ Guru publish paket konten ke siswa setelah **semua item disetujui**. Konten disi
       "konten_id": "konten_mat_quiz_essay_low_1746342000",
       "tipe": "quiz_essay",
       "level": "Low",
-      "content": { "pertanyaan": [{ "id": "e1", "soal": "...", "rubrik": "...", "placeholder": "..." }] },
+      "content": { "pertanyaan": [{ "id": "e1", "soal": "...", "rubrik": "..."}] },
       "disetujui": true
     },
     {
       "konten_id": "konten_mat_flashcard_low_1746342000",
       "tipe": "flashcard",
       "level": "Low",
-      "content": { "cards": [{ "depan": "...", "belakang": "..." }], "source": [{ "judul": "...", "penulis": "...", "tahun": "..." }] },
+      "content": { "cards": [{ "depan": "...", "belakang": "..." }], "source": "..."},
       "disetujui": true
     },
     {
@@ -1948,13 +1948,15 @@ Ambil 5 soal pretest untuk elemen/materi yang akan dipelajari.
     "soal": [
       {
         "id": "pretest_mat_bil_aljabar_1",
-        "soal": "Seberapa familiar kamu dengan topik 'Bilangan dan Aljabar'?",
-        "pilihan": [
-          "Belum pernah mempelajari topik ini sama sekali",
-          "Pernah mendengar tapi belum memahami konsepnya",
-          "Sudah memahami sebagian konsep dasar",
-          "Sudah memahami dan bisa menerapkan konsepnya"
-        ]
+        "soal": "Diketahui persamaan 2x + 4 = 10. Berapakah nilai x?",
+        "pilihan": ["2", "3", "4", "5"],
+        "jawaban": 1
+      },
+      {
+        "id": "pretest_mat_bil_aljabar_2",
+        "soal": "Manakah yang merupakan contoh persamaan linear satu variabel?",
+        "pilihan": ["x² + 2 = 6", "2x + 3 = 7", "x + y = 5", "x² + y = 3"],
+        "jawaban": 1
       }
     ]
   },
@@ -1963,7 +1965,7 @@ Ambil 5 soal pretest untuk elemen/materi yang akan dipelajari.
 }
 ```
 
-> **Catatan keamanan:** Field `jawaban` (kunci jawaban) **tidak dikembalikan** ke client. Penilaian dilakukan server-side saat `POST /pretest/submit`.
+> **Error 404:** `NOT_FOUND` — "Soal pretest untuk elemen ini belum tersedia. Pastikan guru sudah mempublish konten untuk elemen ini."
 
 ---
 
@@ -2104,7 +2106,7 @@ Generate teks insight personal untuk Hero Banner dashboard siswa.
 
 ---
 
-## 17. GAME — Tim 4
+## 17. GAME — Tim 4 + Tim 6 BE
 
 > Tim 4 deliver game dalam format **HTML string** (bukan URL). FE me-render via:
 > ```html
@@ -2118,7 +2120,7 @@ Generate teks insight personal untuk Hero Banner dashboard siswa.
 > ```
 > FE listen via `window.addEventListener('message', ...)` dan memanggil `PATCH /game/:id/penyelesaian`.  
 > FE juga menerima format lama `'game:selesai'` (string) dan `{ event: 'game:selesai' }` untuk kompatibilitas.  
-> Tim 4 **tidak** memanggil endpoint ini langsung — tanggung jawab FE.
+> Tim 6 BE yang menghandle pencatatan penyelesaian game siswa. Tim 4 **tidak** terlibat setelah fase publish — tanggung jawab pencatatan progress siswa sepenuhnya ada di Tim 6 BE. FE tetap listen postMessage dari iframe dan memanggil endpoint ini.
 
 ### POST /game/generate — Tim 4
 Guru generate game baru. Dipanggil **3×** (Low/Mid/High) paralel saat guru klik "Generate Konten".
@@ -2161,7 +2163,10 @@ Guru generate game baru. Dipanggil **3×** (Low/Mid/High) paralel saat guru klik
 }
 ```
 
-> Jika `status: "generating"` → `html_string: null` → FE **poll** `GET /game/:id` setiap 3 detik hingga `status: "ready"`.
+> Jika `status: "generating"` → `html_string: null` → FE **poll** `GET /game/:id` setiap 3 detik hingga `status: "ready"`. lalu html_string disimpan ke state FE. 
+> Setelah status "ready":
+- Guru preview → ambil html_string dari state FE (tidak perlu call ini)
+- Siswa akses game → ambil dari GET /siswa/:id/konten (tidak perlu call ini)
 
 **Error 422:** "elemen_id tidak dikenal."
 
@@ -2208,9 +2213,9 @@ Guru minta generate ulang game spesifik. Iterative refinement menggunakan kontek
 ---
 
 ### GET /game/:id — Tim 4
-Detail satu game. Digunakan untuk polling saat status masih `"generating"`, dan untuk mengambil `html_string` saat siswa klik "Main Game".
+Detail satu game. Digunakan untuk polling saat status masih `"generating"`
 
-**Auth:** role `siswa` (saat buka game) atau `guru` (saat polling setelah generate)
+**Auth:** role `guru` (saat polling setelah generate)
 
 **Response 200:**
 ```json
@@ -2231,12 +2236,17 @@ Detail satu game. Digunakan untuk polling saat status masih `"generating"`, dan 
 }
 ```
 
-> `GET /siswa/:id/konten` **tidak** menyertakan `html_string` di item game — FE fetch via `GET /game/:id` saat siswa klik "Main Game".  
-> Jika `status: "generating"` → `html_string: null` → FE poll setiap 3 detik hingga `status: "ready"`.
+> `GET /game/:id` hanya digunakan untuk dua kondisi:
+1. Guru polling status generate sebelum publish 
+   (saat status masih "generating")
+2. Guru preview game sebelum publish
+
+Setelah konten dipublish, `html_string` sudah tersedia langsung 
+di `GET /siswa/:id/konten` — siswa tidak perlu memanggil endpoint ini.
 
 ---
 
-### PATCH /game/:id/penyelesaian — Tim 4
+### PATCH /game/:id/penyelesaian — Tim 6 BE
 Catat bahwa siswa **menyelesaikan** game.
 
 **Auth:** role `siswa`
@@ -3054,7 +3064,7 @@ Kurikulum Merdeka
 | POST | `/game/generate` | Tim 4 | Generate game baru |
 | POST | `/game/regenerate` | Tim 4 | Regenerate game via `game_id` |
 | GET | `/game/:id` | Tim 4 | Detail game + polling |
-| PATCH | `/game/:id/penyelesaian` | Tim 4 | Catat penyelesaian game |
+| PATCH | `/game/:id/penyelesaian` | Tim 6 BE | Catat penyelesaian game |
 
 ### Emosi
 | Method | Path | Tim | Keterangan |
