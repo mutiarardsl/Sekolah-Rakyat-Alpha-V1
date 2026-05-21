@@ -216,7 +216,7 @@ Perubahan V3.4 bersifat **additive pada struktur `content`** — tidak ada endpo
 | 2 | `POST /konten/generate` (tipe `quiz_pg`), semua endpoint yang kembalikan/simpan `quiz_pg` | **Tambah field `penjelasan`** di setiap soal MC |
 | 3 | `POST /konten/generate` (tipe `mindmap`), semua endpoint yang kembalikan/simpan `mindmap` | **Tambah field `penjelasan`** di setiap node mindmap |
 | 4 | `POST /konten/generate` (tipe `bacaan` & `flashcard`), semua endpoint yang kembalikan/simpan tipe tersebut | **Tambah field `source`** — sumber buku/dokumen hasil retrieve RAG |
-| 5 | `POST /konten/generate`, `POST /konten/publish`, semua endpoint terkait pretest | **Pretest di-generate bersamaan konten** oleh Tim 3 RAG secara internal; tidak dikembalikan ke FE/guru |
+| 5 | `POST /konten/generate`, `POST /konten/publish`, semua endpoint terkait pretest | ~~Pretest di-generate bersamaan konten secara internal~~ → **Direvisi di V3.6 Revisi** — lihat catatan Pretest di section 12 |
 | 6 | `PATCH /game/:id/penyelesaian` | **Trigger selesai via `postMessage`** — game HTML kirim `{ type: 'game:selesai' }` ke parent FE |
 
 > **Catatan kompatibilitas:** FE yang masih membaca `html_url` dari response game akan gagal. Adapter `studentContent.js` dan `game.js` **wajib diperbarui** untuk menggunakan `html_string`.
@@ -256,7 +256,7 @@ Perubahan V3.6 bersifat **additive dan backward-compatible**.
 |---|-------|-----------|
 | 1 | `GET /siswa/:id/quiz` — response | **Tambah field `hasil_quiz_id`** di setiap item `riwayat[]` — dipakai FE trigger CTA "Tanya Kak Nusa" dari riwayat lama |
 | 2 | `POST /konten/publish` — deskripsi | **Tambah catatan atomik** — operasi ini atomik, FE aman retry jika gagal |
-| 3 | `POST /konten/generate` — catatan Pretest | **Perjelas timing trigger pretest** — generate pretest di-trigger pada panggilan `POST /konten/generate` pertama dari 13 panggilan paralel |
+| 3 | `POST /konten/generate` — catatan Pretest | **Revisi mekanisme pretest** — FE kirim 1 request eksplisit `tipe: "pretest"` (total 14 panggilan paralel). Pretest deterministik format quiz_pg tanpa `penjelasan`. `kelas_id` wajib disertakan. Response diabaikan FE. |
 | 4 | Section 10 GURU | **Tambah `GET /kelas/:id/progress` sebagai section resmi** — endpoint kritis untuk initial load monitoring guru; sebelumnya hanya ada di Quick Reference |
 | 5 | Section 22 WebSocket | **Tambah `22.1.2 WebSocket Siswa`** — endpoint `wss://.../ws/siswa` tersendiri untuk siswa; clarify bahwa event `essay_dinilai` dikirim ke dua channel (siswa + guru) |
 | 6 | Daftar Isi | **Renumbering** — tambah entry Changelog V3.6 (nomor 6), section domain mulai dari 7 |
@@ -1466,12 +1466,13 @@ Siswa ambil semua notifikasi dari guru.
 ---
 
 ### POST /konten/generate — Tim 3 RAG
-Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× paralel** saat klik "Generate Konten":
+Guru generate satu tipe konten per request. FE memanggil endpoint ini **14× paralel** saat klik "Generate Konten":
 - `bacaan` × 3 level (Low/Mid/High)
 - `quiz_pg` × 3 level
 - `quiz_essay` × 3 level
 - `flashcard` × 3 level
 - `mindmap` × 1 (tanpa level)
+- `pretest` × 1 (tanpa level)
 
 > Game **tidak** melalui endpoint ini — gunakan `POST /game/generate` (Tim 4).
 
@@ -1485,6 +1486,7 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
   "elemen_label": "Bilangan dan Aljabar",
   "materi": "Persamaan Linear",
   "materi_id": "mat__persamaan_linear",
+  "kelas_id": "x1",
   "jenjang": "X",
   "atp": "Siswa mampu menjelaskan dan menyelesaikan persamaan linear satu variabel dalam konteks nyata.",
   "tipe": "bacaan",
@@ -1500,6 +1502,7 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
 > - `level`: `"Low"` | `"Mid"` | `"High"` — **null atau omit** untuk `mindmap`
 > - `konten_id`: opsional — referensi konteks untuk Tim 3
 > - `instruksi_revisi`: opsional — jika ada = regenerate
+> - `kelas_id`: **wajib** — digunakan Tim 3 RAG untuk konteks generate konten dan pretest per kelas. Isi `null` hanya jika konten bersifat lintas kelas.
 
 **Response 200 (contoh `bacaan`):**
 ```json
@@ -1565,6 +1568,41 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
 }
 ```
 
+**Response 200 (contoh `pretest`):**
+```json
+{
+  "data": {
+    "konten_id": "konten_mat_pretest_1746342000",
+    "tipe": "pretest",
+    "level": null,
+    "content": {
+      "soal": [
+        {
+          "id": "pretest_mat_bil_aljabar_1",
+          "soal": "Diketahui persamaan 2x + 4 = 10. Berapakah nilai x?",
+          "pilihan": ["2", "3", "4", "5"],
+          "jawaban": 1
+        },
+        {
+          "id": "pretest_mat_bil_aljabar_2",
+          "soal": "Manakah yang merupakan contoh persamaan linear satu variabel?",
+          "pilihan": ["x² + 2 = 6", "2x + 3 = 7", "x + y = 5", "x² + y = 3"],
+          "jawaban": 1
+        }
+      ]
+    },
+    "dibuat_at": "2026-05-01T09:00:00.000Z"
+  },
+  "meta": null,
+  "error": null
+}
+```
+
+> - `tipe: "pretest"` → Tim 3 generate 5 soal deterministik (format sama dengan `quiz_pg` tanpa `penjelasan`)
+> - `level: null` — pretest tidak berlevel
+> - `content.soal[].jawaban` = index integer kunci jawaban (sama dengan `quiz_pg`)
+> - Response ini **diabaikan FE** — Tim 3 menyimpan soal langsung ke database Tim 6 BE
+
 **Struktur `content` per `tipe`:**
 
 | tipe | Struktur `content` | Jumlah |
@@ -1574,13 +1612,31 @@ Guru generate satu tipe konten per request. FE memanggil endpoint ini **13× par
 | `quiz_essay` | `{ "pertanyaan": [{ "id", "soal", "rubrik"}] }` | 5 pertanyaan |
 | `flashcard` | `{ "cards": [{ "depan", "belakang" }], "source": "buku"  }` | 5–10 kartu |
 | `mindmap` | `{ "nodes": [{ "id", "label", "parent_id", "penjelasan": string }] }` | — |
+| `pretest` | `{ "soal": [{ "id", "soal", "pilihan": string[], "jawaban": number }] }` | 5 soal |
 
 > `quiz_pg.soal[].jawaban` = **index integer** dari array `pilihan` (bukan string jawaban).  
 > `quiz_pg.soal[].penjelasan` = ditampilkan FE **setelah** siswa submit quiz MC, tidak saat mengerjakan.  
 > `mindmap.nodes[].penjelasan` = tooltip saat hover. Boleh string kosong `""` untuk node root.  
 > `bacaan.source` & `flashcard.source` =  kosong jika tidak ada sumber spesifik.
 
-> **Pretest (V3.4):** Tim 3 generate soal pretest bersamaan dengan ke-13 konten — **secara internal, tanpa request tambahan dari FE**. Trigger generate pretest terjadi pada **panggilan `POST /konten/generate` pertama** dari 13 panggilan paralel (Tim 3 RAG mendeteksi ini adalah batch baru berdasarkan kombinasi `mapel_id + elemen_id + materi_id + kelas_id`). Soal pretest disimpan langsung ke database Tim 6 BE. **Tidak dikembalikan** di response ini dan **tidak ditampilkan** di panel review guru.
+> **Pretest (V3.6 — Revisi):** FE mengirim **1 request eksplisit** dengan `tipe: "pretest"` sebagai bagian dari batch 14 panggilan paralel (13 konten + 1 pretest). Tim 3 RAG men-generate 5 soal pretest berdasarkan konteks `mapel_id + elemen_id + materi_id + kelas_id` dan menyimpannya langsung ke database Tim 6 BE. Response dari request `tipe: "pretest"` **tidak digunakan FE** (diabaikan / `.catch()` silent) — FE hanya membutuhkan konfirmasi bahwa request terkirim. Pretest **tidak ditampilkan** di panel review guru.
+>
+> Request pretest eksplisit:
+> ```json
+> {
+>   "mapel_id": "mat",
+>   "elemen_id": "bil_aljabar",
+>   "elemen_label": "Bilangan dan Aljabar",
+>   "materi": "Persamaan Linear",
+>   "materi_id": "mat__persamaan_linear",
+>   "kelas_id": "x1",
+>   "jenjang": "X",
+>   "atp": "Siswa mampu ...",
+>   "tipe": "pretest",
+>   "level": null
+> }
+> ```
+> Tim 3 cukup return `{ "status": "ok" }` atau HTTP 200 kosong — FE tidak membaca response ini.
 
 **Error 422:** "elemen_id tidak dikenal di VectorDB."  
 **Error 429:** "Terlalu banyak request. Coba beberapa saat lagi."
@@ -1892,13 +1948,15 @@ Ambil 5 soal pretest untuk elemen/materi yang akan dipelajari.
     "soal": [
       {
         "id": "pretest_mat_bil_aljabar_1",
-        "soal": "Seberapa familiar kamu dengan topik 'Bilangan dan Aljabar'?",
-        "pilihan": [
-          "Belum pernah mempelajari topik ini sama sekali",
-          "Pernah mendengar tapi belum memahami konsepnya",
-          "Sudah memahami sebagian konsep dasar",
-          "Sudah memahami dan bisa menerapkan konsepnya"
-        ]
+        "soal": "Diketahui persamaan 2x + 4 = 10. Berapakah nilai x?",
+        "pilihan": ["2", "3", "4", "5"],
+        "jawaban": 1
+      },
+      {
+        "id": "pretest_mat_bil_aljabar_2",
+        "soal": "Manakah yang merupakan contoh persamaan linear satu variabel?",
+        "pilihan": ["x² + 2 = 6", "2x + 3 = 7", "x + y = 5", "x² + y = 3"],
+        "jawaban": 1
       }
     ]
   },
@@ -1907,7 +1965,7 @@ Ambil 5 soal pretest untuk elemen/materi yang akan dipelajari.
 }
 ```
 
-> **Catatan keamanan:** Field `jawaban` (kunci jawaban) **tidak dikembalikan** ke client. Penilaian dilakukan server-side saat `POST /pretest/submit`.
+> **Error 404:** `NOT_FOUND` — "Soal pretest untuk elemen ini belum tersedia. Pastikan guru sudah mempublish konten untuk elemen ini."
 
 ---
 
